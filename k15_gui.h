@@ -248,10 +248,12 @@ typedef struct _K15_GUILayout
 	} params;
 } K15_GUILayout;
 /*********************************************************************************/
-enum K15_GUIContextCreationFlags
+enum K15_GUIContextInitFlags
 {
-	K15_GUI_CONTEXT_INSIDE_WINDOW_FLAG		= 0x01,
-	K15_GUI_CONTEXT_INSIDE_MENU_FLAG		= 0x02
+	K15_GUI_SHAPE_BASED_DRAW_COMMANDS = 0x001,
+	K15_GUI_VERTEX_BASED_DRAW_COMMANDS = 0x002,
+
+	K15_GUI_DEFAULT_INIT_FLAGS = K15_GIU_VERTEX_BASED_DRAW_COMMANDS
 };
 /*********************************************************************************/
 enum K15_GUIDrawCommandCreationFlags
@@ -402,11 +404,7 @@ typedef struct _K15_GUIContext
 	K15_GUIContextStyle style;
 	K15_GUIContextEvents events;
 	K15_GUILayout layoutStack[K15_GUI_MAX_LAYOUTS];
-	kg_u8 numMenus;
-	kg_u8 numLayouts;
-	kg_u8 layoutIndex;
-	kg_u16 windowWidth;
-	kg_u16 windowHeight;
+	K15_GUIRectangle clipRect;
 	kg_u32 focusedElementIdHash;
 	kg_u32 clickedElementIdHash;
 	kg_u32 activatedElementIdHash;
@@ -415,6 +413,9 @@ typedef struct _K15_GUIContext
 	kg_u32 memoryBufferCapacityInBytes;
 	kg_u32 memoryBufferSizeInBytes;
 	kg_u32 flagMask;
+	kg_u8 numMenus;
+	kg_u8 numLayouts;
+	kg_u8 layoutIndex;
 } K15_GUIContext;
 /*********************************************************************************/
 
@@ -426,9 +427,10 @@ typedef struct _K15_GUIContext
 // - iterate over elements (rendering)
 // - Call gui logic (next frame - retrieve results from last frame. Mainly results of the input)
 
-kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, kg_u32 p_InitFlag);
-kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
-	kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes);
+kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRect[4],
+	kg_u32 p_InitFlag = K15_GUI_DEFAULT_INIT_FLAGS);
+kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRect[4],
+	kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes, kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS);
 
 kg_byte* K15_GUIGetGUIElementMemory(K15_GUIElement* p_GUIElement);
 
@@ -1048,18 +1050,20 @@ intern K15_GUIElement* K15_InternalGUIMenuItemBase(K15_GUIContext* p_GUIContext,
 
 
 /*********************************************************************************/
-kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext);
+kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRect[4],
+	kg_u32 p_InitFlags)
 {
 	kg_byte* guiMemory = (kg_byte*)malloc(K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
 
 	if (!guiMemory)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	return K15_CreateGUIContextWithCustomAllocator();
+	return K15_CreateGUIContextWithCustomAllocator(p_OutGUIContext, p_ClipRect, 
+		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES, p_InitFlags);
 }
 /*********************************************************************************/
-kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
-	kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes)
+kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRect[4], 
+	kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes, kg_u32 p_InitFlags)
 {
 	if (!p_Memory)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
@@ -1091,10 +1095,11 @@ kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
 	guiContext->style = K15_InternalCreateDefaultStyle();
 	guiContext->events.numBufferedKeyboardInputs = 0;
 	guiContext->events.numBufferedMouseInputs = 0;
-	guiContext->windowHeight = 0;
-	guiContext->windowWidth = 0;
 	guiContext->flagMask = 0;
-
+	guiContext->clipRect.pixelPosLeft = p_ClipRect[0];
+	guiContext->clipRect.pixelPosTop = p_ClipRect[1];
+	guiContext->clipRect.pixelPosRight = p_ClipRect[2];
+	guiContext->clipRect.pixelPosBottom = p_ClipRect[3];
 	//assign newly created gui context
 	*p_OutGUIContext = *guiContext;
 
