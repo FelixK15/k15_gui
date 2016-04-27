@@ -1,3 +1,4 @@
+#define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
 
 void setupResources(K15_GUIResourceContext* p_GUIResourceContext)
@@ -32,23 +33,23 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 	{
 		K15_GUIBeginToolBar(&guiContext, "toolbar_1");
 
-		if (K15_GUIBeginMenu(p_GUIContext, "&File", "file_1"))
+		if (K15_GUIBeginMenu(p_GUIContext, "File", "file_1"))
 		{
-			if (K15_GUIMenuItem(p_GUIContext, "&Open...", "open_1"))
+			if (K15_GUIMenuItem(p_GUIContext, "Open...", "open_1"))
 			{
 				printf("Open pressed...\n");
 			}
 
-			if (K15_GUIMenuItem(p_GUIContext, "&Close", "close_1"))
+			if (K15_GUIMenuItem(p_GUIContext, "Close", "close_1"))
 			{
 				exit(0);
 			}
 
 			K15_GUISeparator(p_GUIContext);
 
-			if (K15_GUIBeginMenu(p_GUIContext, "Even &More", "more_1"))
+			if (K15_GUIBeginMenu(p_GUIContext, "Even More", "more_1"))
 			{
-				if (K15_GUIMenuItem(p_GUIContext, "Open &Window", "open_window_1"))
+				if (K15_GUIMenuItem(p_GUIContext, "Open Window", "open_window_1"))
 				{
 					showWindow = !showWindow;
 				}
@@ -117,7 +118,7 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 				break;
 			}
 
-			if ((cmd.flags & K15_GUI_USE_TEXTURE) > 0)
+			
 		}
 
 		kg_u32 triCount = drawCmd->numTriangles;
