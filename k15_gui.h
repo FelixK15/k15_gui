@@ -31,6 +31,9 @@
 #define K15_GUI_RESULT_SUCCESS 0
 #define K15_GUI_RESULT_OUT_OF_MEMORY 1
 #define K15_GUI_RESULT_NOT_ENOUGH_MEMORY 2
+#define K15_GUI_RESULT_FONT_DATA_ERROR 3
+#define K15_GUI_RESULT_NOT_SUPPORTED 4
+#define K15_GUI_RESULT_FILE_NOT_FOUND 5
 
 #define kg_size_kilo_bytes(n) (n*1024)
 
@@ -53,7 +56,6 @@ typedef unsigned char kg_b8;
 typedef unsigned int kg_result;
 
 struct K15_GUIContext;
-
 
 /*********************************************************************************/
 enum _K15_GUIContextInitFlags
@@ -284,18 +286,26 @@ typedef struct _K15_GUIContextStyle
 } K15_GUIContextStyle;
 
 /*********************************************************************************/
-typedef struct _K15_GUIContextResources
+typedef struct _K15_GUIResourceDatabase
 {
 	int placeholder;
-} K15_GUIContextResources;
+} K15_GUIResourceDatabase;
+/*********************************************************************************/
+typedef struct _K15_GUIClipRect
+{
+	kg_s16 left;
+	kg_s16 top;
+	kg_s16 right;
+	kg_s16 bottom;
+} K15_GUIClipRect;
 /*********************************************************************************/
 typedef struct _K15_GUIContext
 {
 	kg_byte* memoryBuffer;
-	K15_GUIContextResources* resources;
+	K15_GUIResourceDatabase* resourceDatabase;
 	K15_GUIContextStyle style;
 	K15_GUIContextEvents events;
-	K15_GUIRectangle clipRect;
+	K15_GUIClipRect clipRect;
 	kg_u32 focusedElementIdHash;
 	kg_u32 clickedElementIdHash;
 	kg_u32 activatedElementIdHash;
@@ -346,75 +356,194 @@ void K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKe
 void K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent* p_SystemEvent);
 
 #ifdef K15_GUI_IMPLEMENTATION
+#define internal 
+#define K15_GUI_SWAP(a, b) {a ^= b; b ^= a; a ^= b;}
+
+#ifndef K15_GUI_STRIP_STANDARD_IO
+# include "stdio.h"
+#endif //!K15_GUI_STRIP_STANDARD_IO
+
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+
+typedef enum _K15_GUIFontInitFlags
+{
+	K15_GUI_FONT_INCLUDE_LATIN_GLYPHS = 0x01,
+	K15_GUI_FONT_INCLUDE_CHINESE_GLYPHS = 0x02,
+	K15_GUI_FONT_INCLUDE_CYRILLIC_GLYPHS = 0x04,
+	K15_GUI_FONT_INCLUDE_KOREAN_GLYPHS = 0x08,
+
+	K15_GUI_FONT_INCLUDE_ALL_GPYPS = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS | K15_GUI_FONT_INCLUDE_CHINESE_GLYPHS | K15_GUI_FONT_INCLUDE_CYRILLIC_GLYPHS | K15_GUI_FONT_INCLUDE_KOREAN_GLYPHS
+} K15_GUIFontInitFlags;
 
 /*********************************************************************************/
-static K15_GUIContextStyle K15_InternalCreateDefaultStyle(K15_GUIContextResources* p_GUIContextResources)
+#ifndef K15_GUI_STRIP_STANDARD_IO
+static kg_result K15_GUIOpenFileForReading(const char* p_FilePath,
+	FILE** p_FileHandlePtr, kg_u32* p_FileSizePtr)
+{
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+	FILE* fileHandle = fopen(p_FontFilePath, "rb");
+
+	if (!fileHandle)
+		result = K15_GUI_RESULT_FILE_NOT_FOUND;
+
+	if (fileHandle)
+	{
+		fseek(fileHandle, 0, SEEK_END);
+		*p_FileSizePtr = (kg_u32)ftell(fileHandle);
+		fseek(fileHandle, 0, SEEK_SET);
+
+		*p_FileHandlePtr = fileHandle;
+	}
+
+	return result;
+}
+#endif //!K15_GUI_STRIP_STANDARD_IO
+/*********************************************************************************/
+static kg_u32 K15_GUIGetGlyphCountForGlyphRanges(kg_u8 p_GlyphRangeFlags)
+{
+	kg_u32 numGlyphes = 0;
+	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_LATIN_GLYPHS) > 0)
+		numGlyphes += 223; //32-255
+	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_CHINESE_GLYPHS) > 0)
+		numGlyphes += 255 + 15 + 239 + 20911; //12288-12543 & 12784-12799 & 65280-65519 & 19968-40879
+	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_CYRILLIC_GLYPHS) > 0)
+		numGlyphes += 303 + 31 + 105; //1024-1327 & 11744-11775 & 42560-42665
+	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_KOREAN_GLYPHS) > 0)
+		numGlyphes += 50 + 11165; //12593-12643 & 44032-55197
+	return numGlyphes;
+}
+/*********************************************************************************/
+static void K15_GUICalculateTextureDimensionForGlyphRange(stbtt_fontinfo* p_FontInfo, float p_ScaleFactor,
+	kg_u8 p_GlyphRangeFlags, kg_u32* p_OutTextureWidth, kg_u32* p_OutTextureHeight)
+{
+	kg_u32 textureWidth = 0;
+	kg_u32 textureHeight = 0;
+	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
+
+	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_LATIN_GLYPHS) > 0)
+		
+}
+/*********************************************************************************/
+static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIFont* p_OutFont, kg_byte* p_TrueTypeFontBuffer, kg_u8 p_FontSize, const char* p_FontName,
+	kg_u8 p_GlyphRangeFlags = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS)
+{
+	stbtt_fontinfo fontInfo = {};
+	int result = stbtt_InitFont(&fontInfo, p_TrueTypeFontBuffer, 0);
+
+	if (result == 0)
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+
+	float scaleFac = stbtt_ScaleForPixelHeight(&fontInfo, (float)p_FontSize);
+	kg_u32 textureWidth = 0;
+	kg_u32 textureHeight = 0;
+	K15_GUICalculateTextureDimensionForGlyphRange(&fontInfo, scaleFac, p_GlyphRangeFlags, &textureWidth, &textureHeight);
+}
+/*********************************************************************************/
+static kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIFont* p_OutFont, const char* p_FontFilePath, kg_u8 p_FontSize, const char* p_FontName,
+	kg_u8 p_GlyphRangeFlags = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS)
+{
+	kg_result result = K15_GUI_RESULT_NOT_SUPPORTED;
+#ifndef K15_GUI_STRIP_STANDARD_IO
+	FILE* fileHandle = 0;
+	kg_u32 fileSizeInBytes = 0;
+
+	result = K15_GUIOpenFileForReading(p_FontFilePath, &fileHandle, &fileSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS &&
+		fileSizeInBytes > 0)
+	{
+		kg_byte* tempFontBuffer = (kg_byte*)malloc(fileSizeInBytes);
+
+		if (!tempFontBuffer)
+			result = K15_GUI_RESULT_OUT_OF_MEMORY;
+
+		if (tempFontBuffer)
+		{ 
+			fread(tempFontBuffer, 1, fileSizeInBytes, fileHandle);
+			fclose(fileHandle);
+
+			result = K15_GUICreateFontResourceFromMemory(p_GUIResourceDatabase, p_OutFont,
+				tempFontBuffer, p_FontSize, p_FontName, p_GlyphRangeFlags);
+		}
+
+		free(tempFontBuffer);
+	}
+
+#endif //K15_GUI_STRIP_STANDARD_IO
+	return result;
+}
+/*********************************************************************************/
+static K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
 	K15_GUIContextStyle defaultStyle;
 
-	K15_GUIFont* defaultFont = K15_GUICreateFontResource(p_GUIContextResources, "Cousine-Regular.ttf", 12, "default_font");
-// 
-// 	//Button Style
-// 	defaultStyle.buttonStyle.borderLowerColor = K15_GUI_COLOR_RGB(16, 16, 16);
-// 	defaultStyle.buttonStyle.borderUpperColor = K15_GUI_COLOR_RGB(96, 96, 96);
-// 	defaultStyle.buttonStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(80, 80, 80);
-// 	defaultStyle.buttonStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(48, 48, 48);
-// 	defaultStyle.buttonStyle.textColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.buttonStyle.borderPixelThickness = 2;
-// 	defaultStyle.buttonStyle.horizontalPixelPadding = 4;
-// 	defaultStyle.buttonStyle.verticalPixelPadding = 2;
-// 	defaultStyle.buttonStyle.font = defaultFont;
-// 
-// 	//Window Style
-// 	defaultStyle.windowStyle.borderLowerColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.windowStyle.borderUpperColor = K15_GUI_COLOR_RGB(5, 5, 69);
-// 	defaultStyle.windowStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.windowStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
-// 	defaultStyle.windowStyle.upperTitleBackgroundColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.windowStyle.lowerTitleBackgroundColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.windowStyle.titleTextColor = K15_GUI_COLOR_RGB(238, 238, 238);
-// 	defaultStyle.windowStyle.borderPixelThickness = 2;
-// 	defaultStyle.windowStyle.titlePixelPadding = 2;
-// 	defaultStyle.windowStyle.font = defaultFont;
-// 
-// 	//Label Style
-// 	defaultStyle.labelStyle.textColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.labelStyle.font = defaultFont;
-// 
-// 	//Toolbar Style
-// 	defaultStyle.toolBarStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
-// 	defaultStyle.toolBarStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.toolBarStyle.pixelHeight = 22;
-// 
-// 	//Menu Style
-// 	defaultStyle.menuStyle.font = defaultFont;
-// 	defaultStyle.menuStyle.menuColors.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.menuStyle.menuColors.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
-// 	defaultStyle.menuStyle.menuColors.lowerFocusedBackgroundColor = K15_GUI_COLOR_RGB(48, 48, 48);
-// 	defaultStyle.menuStyle.menuColors.upperFocusedBackgroundColor = K15_GUI_COLOR_RGB(96, 96, 96);
-// 	defaultStyle.menuStyle.menuColors.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
-// 	defaultStyle.menuStyle.menuColors.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
-// 	defaultStyle.menuStyle.subMenuColors.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.menuStyle.subMenuColors.upperBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.menuStyle.subMenuColors.lowerFocusedBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
-// 	defaultStyle.menuStyle.subMenuColors.upperFocusedBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
-// 	defaultStyle.menuStyle.subMenuColors.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
-// 	defaultStyle.menuStyle.subMenuColors.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
-// 	defaultStyle.menuStyle.textColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.menuStyle.verticalPixelPadding = 2;
-// 	defaultStyle.menuStyle.horizontalPixelPadding = 8;
-// 
-// 	//Menu Item Style
-// 	defaultStyle.menuItemStyle.font = defaultFont;
-// 	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-// 	defaultStyle.menuItemStyle.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
-// 	defaultStyle.menuItemStyle.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
-// 	defaultStyle.menuItemStyle.lowerMouseDownBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
-// 	defaultStyle.menuItemStyle.upperMouseDownBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
-// 	defaultStyle.menuItemStyle.textColor = K15_GUI_COLOR_BLACK;
-// 	defaultStyle.menuItemStyle.verticalPixelPadding = 2;
-// 	defaultStyle.menuItemStyle.horizontalPixelPadding = 8;
+	K15_GUIFont defaultFont = {};
+	K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &defaultFont, "Cousine-Regular.ttf", 12, "default_font");
+
+	//Button Style
+	defaultStyle.buttonStyle.borderLowerColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.buttonStyle.borderUpperColor = K15_GUI_COLOR_RGB(96, 96, 96);
+	defaultStyle.buttonStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(80, 80, 80);
+	defaultStyle.buttonStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(48, 48, 48);
+	defaultStyle.buttonStyle.textColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.buttonStyle.borderPixelThickness = 2;
+	defaultStyle.buttonStyle.horizontalPixelPadding = 4;
+	defaultStyle.buttonStyle.verticalPixelPadding = 2;
+	defaultStyle.buttonStyle.font = defaultFont;
+
+	//Window Style
+	defaultStyle.windowStyle.borderLowerColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.windowStyle.borderUpperColor = K15_GUI_COLOR_RGB(5, 5, 69);
+	defaultStyle.windowStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.windowStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.windowStyle.upperTitleBackgroundColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.windowStyle.lowerTitleBackgroundColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.windowStyle.titleTextColor = K15_GUI_COLOR_RGB(238, 238, 238);
+	defaultStyle.windowStyle.borderPixelThickness = 2;
+	defaultStyle.windowStyle.titlePixelPadding = 2;
+	defaultStyle.windowStyle.font = defaultFont;
+
+	//Label Style
+	defaultStyle.labelStyle.textColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.labelStyle.font = defaultFont;
+
+	//Toolbar Style
+	defaultStyle.toolBarStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.toolBarStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.toolBarStyle.pixelHeight = 22;
+
+	//Menu Style
+	defaultStyle.menuStyle.font = defaultFont;
+	defaultStyle.menuStyle.menuColors.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.menuStyle.menuColors.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.menuStyle.menuColors.lowerFocusedBackgroundColor = K15_GUI_COLOR_RGB(48, 48, 48);
+	defaultStyle.menuStyle.menuColors.upperFocusedBackgroundColor = K15_GUI_COLOR_RGB(96, 96, 96);
+	defaultStyle.menuStyle.menuColors.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.menuStyle.menuColors.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
+	defaultStyle.menuStyle.subMenuColors.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.menuStyle.subMenuColors.upperBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.menuStyle.subMenuColors.lowerFocusedBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
+	defaultStyle.menuStyle.subMenuColors.upperFocusedBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
+	defaultStyle.menuStyle.subMenuColors.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
+	defaultStyle.menuStyle.subMenuColors.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
+	defaultStyle.menuStyle.textColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.menuStyle.verticalPixelPadding = 2;
+	defaultStyle.menuStyle.horizontalPixelPadding = 8;
+
+	//Menu Item Style
+	defaultStyle.menuItemStyle.font = defaultFont;
+	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.menuItemStyle.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
+	defaultStyle.menuItemStyle.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
+	defaultStyle.menuItemStyle.lowerMouseDownBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
+	defaultStyle.menuItemStyle.upperMouseDownBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
+	defaultStyle.menuItemStyle.textColor = K15_GUI_COLOR_BLACK;
+	defaultStyle.menuItemStyle.verticalPixelPadding = 2;
+	defaultStyle.menuItemStyle.horizontalPixelPadding = 8;
 
 	return defaultStyle;
 }
@@ -441,11 +570,22 @@ static void K15_InternalGUIHandleInput(K15_GUIContextEvents* p_GUIContextEvents)
 /*********************************************************************************/
 
 
-
-
 /*********************************************************************************/
-kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRect[4],
-	kg_u32 p_InitFlags)
+static kg_result K15_GUIValidateClipRect(K15_GUIClipRect* p_ClipRect)
+{
+	if ((p_ClipRect->right - p_ClipRect->left) == 0 || (p_ClipRect->bottom - p_ClipRect->top) == 0)
+		return K15_GUI_RESULT_EMPTY_CLIP_RECT;
+
+	if (p_ClipRect->left > p_ClipRect->right)
+		K15_GUI_SWAP(p_ClipRect->left, p_ClipRect->right);
+	
+	if (p_ClipRect->top > p_ClipRect->bottom)
+		K15_GUI_SWAP(p_ClipRect->top, p_ClipRect->bottom);
+}
+/*********************************************************************************/
+kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
+	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, 
+	kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS)
 {
 	kg_byte* guiMemory = (kg_byte*)malloc(K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
 
@@ -456,14 +596,27 @@ kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRec
 		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES, p_InitFlags);
 }
 /*********************************************************************************/
-kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, kg_s16 p_ClipRect[4], 
-	kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes, kg_u32 p_InitFlags)
+kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
+	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
+	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes, 
+	kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS)
 {
 	if (!p_Memory)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
 	if (p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
 		return K15_GUI_RESULT_NOT_ENOUGH_MEMORY;
+
+	K15_GUIClipRect clipRect = {};
+	clipRect.left = p_ClipPosLeft;
+	clipRect.top = p_ClipPosTop;
+	clipRect.right = p_ClipPosRight;
+	clipRect.bottom = p_ClipPosBottom;
+
+	kg_result clipRectValidationResult = K15_GUIValidateClipRect(&clipRect);
+
+	if (clipRectValidationResult != K15_GUI_RESULT_SUCCESS)
+		return clipRectValidationResult;
 
 	kg_byte* guiMemory = p_Memory;
 	kg_u32 guiMemorySizeInBytes = p_MemorySizeInBytes;
@@ -475,6 +628,7 @@ kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
 	//nullify the rest of the memory
 	memset(guiMemory, 0, guiMemorySizeInBytes);
 
+	guiContext->memoryBuffer = guiMemory;
 	guiContext->memoryBufferSizeInBytes = guiMemorySizeInBytes;
 	guiContext->memoryBufferCapacityInBytes = guiMemorySizeInBytes;
 	guiContext->focusedElementIdHash = 0;
@@ -484,27 +638,23 @@ kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
 	guiContext->layoutIndex = 0;
 	guiContext->numLayouts = 0;
 	guiContext->numMenus = 0;
+	guiContext->style = K15_InternalCreateDefaultStyle(p_ContextResources);
+	guiContext->resourceDatabase = p_ContextResources;
 	guiContext->activatedElementIdHash = 0;
-	guiContext->memoryBuffer = guiMemory;
-	guiContext->style = K15_InternalCreateDefaultStyle();
 	guiContext->events.numBufferedKeyboardInputs = 0;
 	guiContext->events.numBufferedMouseInputs = 0;
 	guiContext->flagMask = 0;
-	guiContext->clipRect.pixelPosLeft = p_ClipRect[0];
-	guiContext->clipRect.pixelPosTop = p_ClipRect[1];
-	guiContext->clipRect.pixelPosRight = p_ClipRect[2];
-	guiContext->clipRect.pixelPosBottom = p_ClipRect[3];
+	guiContext->clipRect = clipRect;
+
 	//assign newly created gui context
 	*p_OutGUIContext = *guiContext;
-
-	K15_GUILoadFont(&guiContext, "arial.ttf")
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
 void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier)
 {
-	K15_GUIBeginToolBarEX(p_GUIContext, p_Identifier, &p_GUIContext->style.toolBarStyle);
+	
 }
 /*********************************************************************************/
 kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,

@@ -3,7 +3,6 @@
 
 void setupResources(K15_GUIResourceContext* p_GUIResourceContext)
 {
-	K15_GUIFont* arial12 = K15_GUICreateFontResource(p_GUIResourceContext, "arial.ttf", 12, "default");
 	K15_GUIIcon* load = K15_GUICreateIconResource(p_GUIResourceContext, "load.png", "load");
 	K15_GUIIconSet* icons = K15_GUIBakeIconResources(p_GUIResourceContext);
 
@@ -143,8 +142,11 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 
 int main(int argc, char** argv)
 {
+	K15_GUIResourceDatabase guiResourceDatabase = {};
+	kg_result result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
+
 	K15_GUIContext guiContext = {};
-	kg_result result = K15_CreateGUIContext(&guiContext);
+	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, 800, 600);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{

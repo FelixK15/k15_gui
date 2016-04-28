@@ -35,13 +35,10 @@ FOR /l %%G IN (10, 1, 14) DO (
 ::check if a path was found
 IF !FOUND_PATH!==0 (
 	echo Could not find valid Visual Studio installation.
-	goto END
 ) ELSE (
 	echo Starting build process...
 	set CL_PATH=!VS_PATH!..\..\VC\bin\cl.exe
-	set BUILD_COMMAND=!CL_PATH! example.c
+	set CL_OPTIONS=/Od /TP
+	set BUILD_COMMAND=!CL_PATH! example.c %CL_OPTIONS%
 	call !BUILD_COMMAND!
 ) 
-
-:END
-PAUSE
