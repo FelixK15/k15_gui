@@ -14,7 +14,7 @@ IF %OS%==32BIT set REG_FOLDER=HKLM\SOFTWARE\Microsoft\VisualStudio\
 IF %REG_FOLDER%=="" GOTO DECISION
 
 ::try to get get visual studio path from registry for different versions
-FOR /l %%G IN (10, 1, 14) DO (
+FOR /l %%G IN (14, -1, 8) DO (
 	set REG_PATH=%REG_FOLDER%%%G.0
 	set REG_COMMAND=reg query !REG_PATH! /v InstallDir
 
@@ -23,8 +23,10 @@ FOR /l %%G IN (10, 1, 14) DO (
 	::if errorlevel is 0, we found a valid installDir
 	if !errorlevel! == 0 (
 		::issue reg command again but evaluate output
-		FOR /F "tokens=3" %%V IN ('!REG_COMMAND!') DO (
-			set VS_PATH=%%V
+		FOR /F "skip=2 tokens=*" %%A IN ('!REG_COMMAND!') DO (
+			set VS_PATH=%%A
+			::truncate stuff we don't want from the output
+			set VS_PATH=!VS_PATH:~24!
 			set FOUND_PATH=1
 			goto DECISION
 		)
@@ -37,7 +39,7 @@ IF !FOUND_PATH!==0 (
 	echo Could not find valid Visual Studio installation.
 ) ELSE (
 	echo Starting build process...
-	set CL_PATH=!VS_PATH!..\..\VC\bin\cl.exe
+	set CL_PATH="!VS_PATH!..\..\VC\bin\cl.exe"
 	set CL_OPTIONS=/Od /TP
 	set BUILD_COMMAND=!CL_PATH! example.c %CL_OPTIONS%
 	call !BUILD_COMMAND!
