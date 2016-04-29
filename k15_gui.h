@@ -411,6 +411,7 @@ static kg_u32 K15_GUIGetGlyphCountForGlyphRanges(kg_u8 p_GlyphRangeFlags)
 		numGlyphes += 303 + 31 + 105; //1024-1327 & 11744-11775 & 42560-42665
 	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_KOREAN_GLYPHS) > 0)
 		numGlyphes += 50 + 11165; //12593-12643 & 44032-55197
+
 	return numGlyphes;
 }
 /*********************************************************************************/
@@ -421,8 +422,7 @@ static void K15_GUICalculateTextureDimensionForGlyphRange(stbtt_fontinfo* p_Font
 	kg_u32 textureHeight = 0;
 	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
 
-	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_LATIN_GLYPHS) > 0)
-		
+	K15_GUIRect* glyphRects 
 }
 /*********************************************************************************/
 static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
