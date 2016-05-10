@@ -1,22 +1,27 @@
 #define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
 
-void setupResources(K15_GUIResourceContext* p_GUIResourceContext)
+void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
-	K15_GUIIcon* load = K15_GUICreateIconResource(p_GUIResourceContext, "load.png", "load");
-	K15_GUIIconSet* icons = K15_GUIBakeIconResources(p_GUIResourceContext);
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "load.png", "load");
 
-	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
-	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
+	K15_GUIIconSet* icons = 0;
+	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
+	
+	K15_GUIFont* arial12 = 0;
+	K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &arial12, "arial.ttf", 12, "arial");
 
-	K15_GUIGetFontTextureData(arial12, &fontTextureData, fontTextureDataSizeInBytes);
-	arial12->texture.userData = 1;
-
-	kg_u32 iconTextureDataSizeInBytes = K15_GUIGetIconSetTextureSizeInBytes(icons);
-	kg_byte* iconsTextureData = (kg_byte*)malloc(iconTextureDataSizeInBytes);
-
-	K15_GUIGetIconSetTextureData(icons, &iconsTextureData, iconTextureDataSizeInBytes);
-	icons->texture.userData = 2;
+// 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
+// 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
+// 
+// 	K15_GUIGetFontTextureData(arial12, &fontTextureData, fontTextureDataSizeInBytes);
+// 	arial12->texture.userData = 1;
+// 
+// 	kg_u32 iconTextureDataSizeInBytes = K15_GUIGetIconSetTextureSizeInBytes(icons);
+// 	kg_byte* iconsTextureData = (kg_byte*)malloc(iconTextureDataSizeInBytes);
+// 
+// 	K15_GUIGetIconSetTextureData(icons, &iconsTextureData, iconTextureDataSizeInBytes);
+// 	icons->texture.userData = 2;
 }
 
 void updateGUI(K15_GUIContext* p_GUIContext)
@@ -30,7 +35,7 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 	for (;;)
 	{
-		K15_GUIBeginToolBar(&guiContext, "toolbar_1");
+		K15_GUIBeginToolBar(p_GUIContext, "toolbar_1");
 
 		if (K15_GUIBeginMenu(p_GUIContext, "File", "file_1"))
 		{
@@ -56,15 +61,15 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 			K15_GUIEndMenu(p_GUIContext);
 		}
 
-		K15_GUIEndToolBar(&guiContext);
+		K15_GUIEndToolBar(p_GUIContext);
 
 		if (showWindow)
 		{
 			if (K15_GUIBeginWindow(p_GUIContext, &windowPosY, &windowPosY, &windowHeight, &windowHeight, "Test Window", "test_window_1"))
 			{
 				K15_GUILabel(p_GUIContext, "Print float:", "label_1");
-				K15_GUINextLine(p_GUIContext);
-				K15_GUIFloatSlider(p_GUIContext, &sliderValue, 0.f, 10.f, "slider_1");
+//				K15_GUINextLine(p_GUIContext);
+//				K15_GUIFloatSlider(p_GUIContext, &sliderValue, 0.f, 10.f, "slider_1");
 				if (K15_GUIButton(p_GUIContext, "Print float", "print_1"))
 				{
 					printf("Float: %.3f\n", sliderValue);
@@ -79,65 +84,65 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
-	K15_GUIDrawCommandBuffer guiDrawCommandBuffer = {};
-
-	kg_result result = K15_GUICreateDrawCommandBuffer(p_GUIContext, &guiDrawCommandBuffer);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		char errorMsg[256];
-		K15_GUIConvertResultToMessage(result, errorMsg, 256);
-
-		printf("Error during command buffer creation: '%s'\n", errorMsg);
-	}
-
-	K15_GUIDrawCommand drawCmd = {};
-
-	for (kg_u32 cmdIndex = 0;
-		cmdIndex < guiDrawCommandBuffer.numCommands;
-		++cmdIndex)
-	{
-		kg_result result = K15_GUIGetNextDrawCommand(&guiDrawCommandBuffer, &drawCmd);
-
-		if (result == K15_GUI_RESULT_NO_MORE_DRAW_COMMANDS)
-		{
-			break;
-		}
-
-		if (drawCmd.type == K15_GUI_DRAW_VERTICES_COMMAND)
-		{
-			K15_GUIDrawVerticesCommand cmd = {};
-			kg_result result = K15_GUIGetDrawVerticesCommand(&guiDrawCommandBuffer, &drawCmd, &cmd);
-
-			if (result != K15_GUI_RESULT_SUCCESS)
-			{
-				char errorMsg[256];
-				K15_GUIConvertResultToString(result, errorMsg, 256);
-				printf("Error during 'DrawVerticesCommand' retrieval: '%s'\n", errorMsg);
-				break;
-			}
-
-			
-		}
-
-		kg_u32 triCount = drawCmd->numTriangles;
-		kg_u32 indexCount = primCount * 3;
-
-		float* vertexData = drawCmd->vertexData;
-
-		//upload to vertex buffer
-
-		if ((drawCmd->attributeFlags & K15_GUI_UV_ATTRIBUTE_FLAG) > 0)
-		{
-			kg_u64 textureUserData = drawCmd->textureUserData;
-
-		}
-
-		if ((drawCmd->attributeFlags & K15_GUI_COLOR_ATTRIBUTE_FLAG) > 0)
-		{
-
-		}
-	}
+// 	K15_GUIDrawCommandBuffer guiDrawCommandBuffer = {};
+// 
+// 	kg_result result = K15_GUICreateDrawCommandBuffer(p_GUIContext, &guiDrawCommandBuffer);
+// 
+// 	if (result != K15_GUI_RESULT_SUCCESS)
+// 	{
+// 		char errorMsg[256];
+// 		K15_GUIConvertResultToMessage(result, errorMsg, 256);
+// 
+// 		printf("Error during command buffer creation: '%s'\n", errorMsg);
+// 	}
+// 
+// 	K15_GUIDrawCommand drawCmd = {};
+// 
+// 	for (kg_u32 cmdIndex = 0;
+// 		cmdIndex < guiDrawCommandBuffer.numCommands;
+// 		++cmdIndex)
+// 	{
+// 		kg_result result = K15_GUIGetNextDrawCommand(&guiDrawCommandBuffer, &drawCmd);
+// 
+// 		if (result == K15_GUI_RESULT_NO_MORE_DRAW_COMMANDS)
+// 		{
+// 			break;
+// 		}
+// 
+// 		if (drawCmd.type == K15_GUI_DRAW_VERTICES_COMMAND)
+// 		{
+// 			K15_GUIDrawVerticesCommand cmd = {};
+// 			kg_result result = K15_GUIGetDrawVerticesCommand(&guiDrawCommandBuffer, &drawCmd, &cmd);
+// 
+// 			if (result != K15_GUI_RESULT_SUCCESS)
+// 			{
+// 				char errorMsg[256];
+// 				K15_GUIConvertResultToString(result, errorMsg, 256);
+// 				printf("Error during 'DrawVerticesCommand' retrieval: '%s'\n", errorMsg);
+// 				break;
+// 			}
+// 
+// 			
+// 		}
+// 
+// 		kg_u32 triCount = drawCmd->numTriangles;
+// 		kg_u32 indexCount = primCount * 3;
+// 
+// 		float* vertexData = drawCmd->vertexData;
+// 
+// 		//upload to vertex buffer
+// 
+// 		if ((drawCmd->attributeFlags & K15_GUI_UV_ATTRIBUTE_FLAG) > 0)
+// 		{
+// 			kg_u64 textureUserData = drawCmd->textureUserData;
+// 
+// 		}
+// 
+// 		if ((drawCmd->attributeFlags & K15_GUI_COLOR_ATTRIBUTE_FLAG) > 0)
+// 		{
+// 
+// 		}
+// 	}
 }
 
 int main(int argc, char** argv)
@@ -150,13 +155,13 @@ int main(int argc, char** argv)
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
-		char errorMsg[256];
-		K15_GUIConvertResultToMessage(result, errorMsg, 256);
+		char* errorMsg = (char*)alloca(256);
+		K15_GUIConvertResultToMessage(result, &errorMsg, 256);
 
 		printf("Error during context creation: '%s'\n", errorMsg);
 	}
 
-	setup(&guiContext);
+	setupResources(&guiResourceDatabase);
 	updateGUI(&guiContext);
 	drawGUI(&guiContext);
 	
