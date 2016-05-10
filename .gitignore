@@ -1,0 +1,14 @@
+*.vcxproj
+*.filters
+bin
+CMakeFiles
+*.cmake
+Debug
+*.dir
+lib
+*.sdf
+*.sln
+Win32
+*.opendb
+.vs/
+CMakeCache.txt
