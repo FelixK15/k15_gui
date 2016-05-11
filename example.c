@@ -4,12 +4,19 @@
 void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
 	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "load.png", "load");
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "load.png", "load2");
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "load.png", "load3");
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "load.png", "load4");
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "load.png", "load5");
 
 	K15_GUIIconSet* icons = 0;
 	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
 	
 	K15_GUIFont* arial12 = 0;
 	K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &arial12, "arial.ttf", 12, "arial");
+
+	stbi_write_tga("icons.tga", icons->texture.pixelWidth, icons->texture.pixelHeight,
+		icons->texture.numColorComponents, icons->texture.pixelData);
 
 // 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
 // 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
@@ -149,6 +156,14 @@ int main(int argc, char** argv)
 {
 	K15_GUIResourceDatabase guiResourceDatabase = {};
 	kg_result result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		char* errorMsg = (char*)alloca(256);
+		K15_GUIConvertResultToMessage(result, &errorMsg, 256);
+
+		printf("Error during resource database creation: '%s'\n", errorMsg);
+	}
 
 	K15_GUIContext guiContext = {};
 	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, 800, 600);
