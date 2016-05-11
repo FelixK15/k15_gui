@@ -536,7 +536,7 @@ kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GU
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define K15_TA_IMPLEMENTATION
+#define K15_IA_IMPLEMENTATION
 #include "K15_TextureAtlas.h"
 
 #define STB_IMAGE_IMPLEMENTATION
