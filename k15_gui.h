@@ -537,7 +537,7 @@ kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GU
 #include "stb_image_write.h"
 
 #define K15_IA_IMPLEMENTATION
-#include "K15_TextureAtlas.h"
+#include "K15_ImageAtlas.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_GIF
@@ -625,13 +625,13 @@ static kg_u32 K15_GUIGetGlyphRanges(kg_u8 p_GlyphRangeFlags, K15_GUIGlyphRange**
 	return glyphRangeIndex;
 }
 /*********************************************************************************/
-static kg_result K15_GUIConvertTAResult(kta_result p_ResultTA)
+static kg_result K15_GUIConvertIAResult(kia_result p_ResultIA)
 {
-	if (p_ResultTA == K15_TA_RESULT_OUT_OF_MEMORY)
+	if (p_ResultIA == K15_IA_RESULT_OUT_OF_MEMORY)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	else if (p_ResultTA == K15_TA_RESULT_OUT_OF_RANGE)
+	else if (p_ResultIA == K15_IA_RESULT_OUT_OF_RANGE)
 		return K15_GUI_RESULT_OUT_OF_RANGE;
-	else if (p_ResultTA == K15_TA_RESULT_INVALID_ARGUMENTS)
+	else if (p_ResultIA == K15_IA_RESULT_INVALID_ARGUMENTS)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -899,12 +899,12 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
 
 	kg_u32 numComponents = 1;
-	K15_TextureAtlas textureAtlas = {};
-	kta_result taResult = K15_TACreateAtlas(&textureAtlas, numComponents);
+	K15_ImageAtlas textureAtlas = {};
+	kia_result taResult = K15_IACreateAtlas(&textureAtlas, numComponents);
 
-	if (taResult != K15_TA_RESULT_SUCCESS)
+	if (taResult != K15_IA_RESULT_SUCCESS)
 	{
-		result = K15_GUIConvertTAResult(taResult);
+		result = K15_GUIConvertIAResult(taResult);
 		goto freeResources;
 	}
 	
@@ -970,10 +970,10 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				glyphBitmapHeight > 0 && 
 				glyphBitmapWidth > 0)
 			{
-				kta_u32 glyphBitmapPosX = 0;
-				kta_u32 glyphBitmapPosY = 0;
+				kia_u32 glyphBitmapPosX = 0;
+				kia_u32 glyphBitmapPosY = 0;
 
-				taResult = K15_TAAddTextureToAtlas(&textureAtlas, glyphBitmap,
+				taResult = K15_IAAddImageToAtlas(&textureAtlas, glyphBitmap,
 					numComponents, glyphBitmapWidth, glyphBitmapHeight, 
 					&glyphBitmapPosX, &glyphBitmapPosY);
 
@@ -987,9 +987,9 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				glyphRect->pixelPosRight = glyphBitmapPosX + glyphBitmapWidth;
 				glyphRect->pixelPosBottom = glyphBitmapPosY + glyphBitmapHeight;
 
-				if (taResult != K15_TA_RESULT_SUCCESS)
+				if (taResult != K15_IA_RESULT_SUCCESS)
 				{
-					result = K15_GUIConvertTAResult(taResult);
+					result = K15_GUIConvertIAResult(taResult);
 					goto freeResources;
 				}
 
@@ -1004,12 +1004,12 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		}
 	}
 
-	kta_u32 textureWidth = 0;
-	kta_u32 textureHeight = 0;
-	kta_byte* texturePixelData = K15_TAGetAtlasPixelData(&textureAtlas, &textureWidth, &textureHeight);
-	kta_u32 texturePixelDataSizeInBytes = K15_TAGetAtlasPixelDataSizeInBytes(&textureAtlas);
+	kia_u32 textureWidth = 0;
+	kia_u32 textureHeight = 0;
+	kia_byte* texturePixelData = K15_IAGetAtlasPixelData(&textureAtlas, &textureWidth, &textureHeight);
+	kia_u32 texturePixelDataSizeInBytes = K15_IAGetAtlasPixelDataSizeInBytes(&textureAtlas);
 
-	kg_byte* copyTexturePixelDataMemory = (kta_byte*)K15_GUI_MALLOC(texturePixelDataSizeInBytes);
+	kg_byte* copyTexturePixelDataMemory = (kia_byte*)K15_GUI_MALLOC(texturePixelDataSizeInBytes);
 
 	if (!copyTexturePixelDataMemory)
 	{
@@ -1026,7 +1026,7 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	guiFont->texture.userData = 0;
 
 freeResources:
-	if (result == K15_TA_RESULT_SUCCESS)
+	if (result == K15_IA_RESULT_SUCCESS)
 	{
 		guiFont->glyphRangeMask = p_GlyphRangeFlags;
 		guiFont->fontSize = p_FontSize;
@@ -1043,7 +1043,7 @@ freeResources:
 		K15_GUIRemoveResourceTableEntryByName(p_GUIResourceDatabase, tableEntry->name);
 	}
 
-	K15_TAFreeAtlas(&textureAtlas);
+	K15_IAFreeAtlas(&textureAtlas);
 	K15_GUI_FREE(glyphRanges);
 	K15_GUI_FREE(glyphRects);
 
@@ -1158,14 +1158,14 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
-	K15_TextureAtlas iconTextureAtlas = {};
+	K15_ImageAtlas iconTextureAtlas = {};
 
-	kta_u8 numColorComponents = 4;
-	kta_result resultTA = K15_TACreateAtlas(&iconTextureAtlas, numColorComponents);
+	kia_u8 numColorComponents = 4;
+	kia_result resultTA = K15_IACreateAtlas(&iconTextureAtlas, numColorComponents);
 
-	if (resultTA != K15_TA_RESULT_SUCCESS)
+	if (resultTA != K15_IA_RESULT_SUCCESS)
 	{
-		result = K15_GUIConvertTAResult(resultTA);
+		result = K15_GUIConvertIAResult(resultTA);
 		goto freeResources;
 	}
 
@@ -1211,12 +1211,12 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 			kg_u32 iconAtlasPosX = 0;
 			kg_u32 iconAtlasPosY = 0;
 
-			resultTA = K15_TAAddTextureToAtlas(&iconTextureAtlas, pixelData, iconNumColorComponents,
+			resultTA = K15_IAAddImageToAtlas(&iconTextureAtlas, pixelData, iconNumColorComponents,
 				pixelWidth, pixelHeight, &iconAtlasPosX, &iconAtlasPosY);
 
-			if (resultTA != K15_TA_RESULT_SUCCESS)
+			if (resultTA != K15_IA_RESULT_SUCCESS)
 			{
-				result = K15_GUIConvertTAResult(resultTA);
+				result = K15_GUIConvertIAResult(resultTA);
 				goto freeResources;
 			}
 
@@ -1244,8 +1244,8 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 	
 	kg_u32 atlasPixelHeight = 0;
 	kg_u32 atlasPixelWidth = 0;
-	kg_u32 atlasPixelDataSizeInBytes = K15_TAGetAtlasPixelDataSizeInBytes(&iconTextureAtlas);
-	kg_byte* atlasPixelData = K15_TAGetAtlasPixelData(&iconTextureAtlas, &atlasPixelWidth, &atlasPixelHeight);
+	kg_u32 atlasPixelDataSizeInBytes = K15_IAGetAtlasPixelDataSizeInBytes(&iconTextureAtlas);
+	kg_byte* atlasPixelData = K15_IAGetAtlasPixelData(&iconTextureAtlas, &atlasPixelWidth, &atlasPixelHeight);
 
 	kg_byte* copyAtlasPixelData = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
@@ -1269,7 +1269,7 @@ freeResources:
 		K15_GUIRemoveResourceTableEntryByName(p_GUIResourceDatabase, tableEntry->name);
 	}
 
-	K15_TAFreeAtlas(&iconTextureAtlas);
+	K15_IAFreeAtlas(&iconTextureAtlas);
 
 	return result;
 }
