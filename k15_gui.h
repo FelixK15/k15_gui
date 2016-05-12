@@ -449,6 +449,12 @@ kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase* p_GUIR
 kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase, 
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName);
 
+kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIFont** p_OutFont, const char* p_FontName);
+
+kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName);
+
 void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier);
 void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier, K15_GUIToolBarStyle* p_Style);
 
@@ -898,8 +904,9 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 	const kg_u32 glyphRangeArrayCapacity= 10;
 	K15_GUIGlyphRange glyphRanges[glyphRangeArrayCapacity] = { 0 };
+	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
 
-	kg_u32 glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRanges, glyphRangeArrayCapacity);
+	kg_u32 glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRangesPtr, glyphRangeArrayCapacity);
 
 	kg_u32 glyphIndex = 0;
 
@@ -1229,6 +1236,46 @@ functionEnd:
 	K15_IAFreeAtlas(&iconTextureAtlas);
 
 	return result;
+}
+/*********************************************************************************/
+kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
+{
+	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	K15_GUIResourceTableEntry* tableEntry = 0;
+	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
+	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
+	kg_u32 resourceMemoryPosition = 0;
+
+	while (resourceMemoryPosition < resourceMemorySizeInBytes)
+	{
+		tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
+
+		if (tableEntry->type == p_ResourceType &&
+			K15_GUI_STRCMP(p_ResourceName, tableEntry->name) == 0)
+		{
+			*p_OutMemory = (void*)(resourceMemory + resourceMemoryPosition + sizeof(K15_GUIResourceTableEntry));
+			return K15_GUI_RESULT_SUCCESS;
+		}
+	}	
+
+	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
+}
+/*********************************************************************************/
+kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIFont** p_OutFont, const char* p_FontName)
+{
+	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutFont,
+		p_FontName, K15_GUI_FONT_RESOURCE_TYPE);
+}
+/*********************************************************************************/
+kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
+{
+	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutIconSet,
+		p_IconSetName, K15_GUI_ICONSET_RESOURCE_TYPE);
 }
 /*********************************************************************************/
 static K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_GUIResourceDatabase)
