@@ -14,9 +14,9 @@
 #define K15_GUI_FALSE 0
 
 #define kg_size_kilo_bytes(n) (n*1024)
-
+#define kg_size_mega_bytes(n) (n*1024*1024)
 #define K15_GUI_MIN_MEMORY_SIZE_IN_BYTES sizeof(K15_GUIContext) + kg_size_kilo_bytes(10)
-#define K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE kg_size_kilo_bytes(256)
+#define K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE kg_size_mega_bytes(5)
 
 typedef unsigned long long kg_u64;
 typedef unsigned int kg_u32;
@@ -50,7 +50,8 @@ typedef enum _K15_GUIResults
 	K15_GUI_RESULT_IMAGE_DATA_ERROR = 10,
 	K15_GUI_RESULT_FILE_FORMAT_NOT_SUPPORTED = 11,
 	K15_GUI_RESULT_TOO_MANY_ICONS = 12,
-	K15_GUI_RESULT_NO_ICONS = 13
+	K15_GUI_RESULT_NO_ICONS = 13,
+	K15_GUI_RESULT_UNKNOWN_ERROR = 14
 } kg_result;
 /*********************************************************************************/
 enum _K15_GUIContextInitFlags
@@ -594,8 +595,9 @@ static kg_u32 K15_GUIGetGlyphRanges(kg_u8 p_GlyphRangeFlags, K15_GUIGlyphRange**
 #define K15_GUI_SET_GLYPH_RANGE(f, t) \
 	if (glyphRangeIndex < p_GlyphRangeArraySize) \
 	{ \
-		p_OutGlyphRangeArray[glyphRangeIndex]->from = f;\
-		p_OutGlyphRangeArray[glyphRangeIndex++]->to = t;\
+		(*p_OutGlyphRangeArray + glyphRangeIndex)->from = f; \
+		(*p_OutGlyphRangeArray + glyphRangeIndex)->to = t; \
+		glyphRangeIndex += 1; \
 	}
 	
 	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_LATIN_GLYPHS) > 0) 
@@ -634,7 +636,7 @@ static kg_result K15_GUIConvertIAResult(kia_result p_ResultIA)
 	else if (p_ResultIA == K15_IA_RESULT_INVALID_ARGUMENTS)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	return K15_GUI_RESULT_SUCCESS;
+	return K15_GUI_RESULT_UNKNOWN_ERROR;
 }
 /*********************************************************************************/
 static kg_result K15_GUIConvertSTBIResult(const char* p_ResultSTBI)
@@ -659,7 +661,7 @@ static kg_result K15_GUIConvertSTBIResult(const char* p_ResultSTBI)
 	if (K15_GUI_STRCMP(p_ResultSTBI, "Unable to open file"))
 		return K15_GUI_RESULT_FILE_NOT_FOUND;
 
-	return K15_GUI_RESULT_SUCCESS;
+	return K15_GUI_RESULT_UNKNOWN_ERROR;
 }
 /*********************************************************************************/
 static kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase)
@@ -727,31 +729,6 @@ static kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GU
 	return result;
 }
 /*********************************************************************************/
-static kg_result K15_GUIGrowResourceTable(K15_GUIResourceDatabase* p_GUIResourceDatabase)
-{
-	kg_u32 resourceMemoryGrowSizeInBytes= kg_size_kilo_bytes(256);
-	kg_u32 sizeMemoryBufferInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
-	kg_u32 capacityMemoryBufferInBytes = p_GUIResourceDatabase->resourceMemoryCapacityInBytes;
-
-	kg_u32 newResourceMemoryBufferSizeInBytes = capacityMemoryBufferInBytes + resourceMemoryGrowSizeInBytes;
-
-	K15_GUIResourceTableEntry* newResourceTable = 
-		(K15_GUIResourceTableEntry*)K15_GUI_MALLOC(newResourceMemoryBufferSizeInBytes);
-
-	K15_GUIResourceTableEntry* currentResourceTable = p_GUIResourceDatabase->resourceTable;
-
-	if (!newResourceTable)
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-
-	K15_GUI_MEMCPY(newResourceTable, currentResourceTable, sizeMemoryBufferInBytes);
-
-	K15_GUI_FREE(currentResourceTable);
-
-	p_GUIResourceDatabase->resourceMemoryCapacityInBytes = newResourceMemoryBufferSizeInBytes;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
 static kg_b8 K15_GUIFitsIntoResourceTableMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_u32 p_SizeInBytes)
 {
@@ -795,11 +772,7 @@ static kg_result K15_GUICreateResourceTableEntry(K15_GUIResourceDatabase* p_GUIR
 	kg_u32 sizeResourceMemoryInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
 
 	if (!K15_GUIFitsIntoResourceTableMemory(p_GUIResourceDatabase, sizeof(K15_GUIResourceTableEntry)))
-	{
-		kg_result growResult = K15_GUIGrowResourceTable(p_GUIResourceDatabase);
-		if (growResult != K15_GUI_RESULT_SUCCESS)
-			return growResult;
-	}
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
 	kg_u32 nameLength = K15_GUI_MIN(K15_GUI_STRLEN(p_Name), K15_GUI_MAX_RESOURCE_NAME_LENGTH);
 
@@ -824,12 +797,8 @@ static kg_result K15_GUIGetResourceTableEntryMemory(K15_GUIResourceDatabase* p_G
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
 	kg_u32 sizeResourceMemoryInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
 
-	while (!K15_GUIFitsIntoResourceTableMemory(p_GUIResourceDatabase, p_SizeInBytes))
-	{
-		kg_result growResult = K15_GUIGrowResourceTable(p_GUIResourceDatabase);
-		if (growResult != K15_GUI_RESULT_SUCCESS)
-			return growResult;
-	}
+	if (!K15_GUIFitsIntoResourceTableMemory(p_GUIResourceDatabase, p_SizeInBytes))
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
 	p_TableEntry->sizeInBytes += p_SizeInBytes;
 
@@ -875,8 +844,6 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	K15_GUIFont** p_OutFont, kg_byte* p_TrueTypeFontBuffer, kg_u8 p_FontSize, const char* p_FontName,
 	kg_u8 p_GlyphRangeFlags)
 {
-	K15_GUIRectangle* glyphRects = 0;
-	K15_GUIGlyphRange* glyphRanges = 0;
 	K15_GUIResourceTableEntry* tableEntry = 0;
 	kg_s32 ascent = 0;
 	kg_s32 descent = 0;
@@ -905,42 +872,34 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	if (taResult != K15_IA_RESULT_SUCCESS)
 	{
 		result = K15_GUIConvertIAResult(taResult);
-		goto freeResources;
+		goto functionEnd;
 	}
 	
 	result = K15_GUICreateResourceTableEntry(p_GUIResourceDatabase, &tableEntry,
 		p_FontName, K15_GUI_FONT_RESOURCE_TYPE);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 	K15_GUIFont* guiFont = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&guiFont, sizeof(K15_GUIFont));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 	K15_GUIFontGlyph* guiFontGlyphs = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&guiFontGlyphs, sizeof(K15_GUIFontGlyph) * numGlyphs);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 
-	kg_u32 glyphRangeArraySize = 10;
+	const kg_u32 glyphRangeArrayCapacity= 10;
+	K15_GUIGlyphRange glyphRanges[glyphRangeArrayCapacity] = { 0 };
 
-	glyphRects = (K15_GUIRectangle*)K15_GUI_MALLOC(numGlyphs * sizeof(K15_GUIRectangle));
-	glyphRanges = (K15_GUIGlyphRange*)K15_GUI_MALLOC(sizeof(K15_GUIGlyphRange) * glyphRangeArraySize);
-
-	if (!glyphRects || !glyphRanges)
-	{
-		result = K15_GUI_RESULT_OUT_OF_MEMORY;
-		goto freeResources;
-	}
-
-	glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRanges, glyphRangeArraySize);
+	kg_u32 glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRanges, glyphRangeArrayCapacity);
 
 	kg_u32 glyphIndex = 0;
 
@@ -955,7 +914,7 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		kg_u32 glyphArrayIndex = 0;
 		while (codepoint < endCodepoint)
 		{
-			K15_GUIRectangle* glyphRect = glyphRects + glyphArrayIndex;
+			K15_GUIRectangle glyphRect = {};
 			
 			kg_s32 glyphIndex = stbtt_FindGlyphIndex(&fontInfo, codepoint);
 			codepoint += 1;
@@ -982,20 +941,20 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 				stbtt_GetGlyphHMetrics(&fontInfo, glyphIndex, &advanceWidth, &leftSideBearing);
 
-				glyphRect->pixelPosLeft = glyphBitmapPosX;
-				glyphRect->pixelPosTop = glyphBitmapPosY;
-				glyphRect->pixelPosRight = glyphBitmapPosX + glyphBitmapWidth;
-				glyphRect->pixelPosBottom = glyphBitmapPosY + glyphBitmapHeight;
+				glyphRect.pixelPosLeft = glyphBitmapPosX;
+				glyphRect.pixelPosTop = glyphBitmapPosY;
+				glyphRect.pixelPosRight = glyphBitmapPosX + glyphBitmapWidth;
+				glyphRect.pixelPosBottom = glyphBitmapPosY + glyphBitmapHeight;
 
 				if (taResult != K15_IA_RESULT_SUCCESS)
 				{
 					result = K15_GUIConvertIAResult(taResult);
-					goto freeResources;
+					goto functionEnd;
 				}
 
 				K15_GUIFontGlyph* fontGlyph = guiFontGlyphs + glyphArrayIndex;
 				fontGlyph->codepoint = codepoint;
-				fontGlyph->glyphRect = *glyphRect;
+				fontGlyph->glyphRect = glyphRect;
 				fontGlyph->leftSideBearing = leftSideBearing;
 				fontGlyph->advancewidth = advanceWidth;
 				
@@ -1014,7 +973,7 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	if (!copyTexturePixelDataMemory)
 	{
 		result = K15_GUI_RESULT_OUT_OF_MEMORY;
-		goto freeResources;
+		goto functionEnd;
 	}
 
 	K15_GUI_MEMCPY(copyTexturePixelDataMemory, texturePixelData, texturePixelDataSizeInBytes);
@@ -1025,7 +984,7 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	guiFont->texture.numColorComponents = numComponents;
 	guiFont->texture.userData = 0;
 
-freeResources:
+functionEnd:
 	if (result == K15_IA_RESULT_SUCCESS)
 	{
 		guiFont->glyphRangeMask = p_GlyphRangeFlags;
@@ -1044,8 +1003,6 @@ freeResources:
 	}
 
 	K15_IAFreeAtlas(&textureAtlas);
-	K15_GUI_FREE(glyphRanges);
-	K15_GUI_FREE(glyphRects);
 
 	return result;
 }
@@ -1130,21 +1087,21 @@ kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase* p_GUIR
 		p_IconName, K15_GUI_ICON_RESOURCE_TYPE);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 	K15_GUIIcon* guiIcon = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&guiIcon, sizeof(K15_GUIIcon));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 	guiIcon->numColorComponents = p_ColorComponents;
 	guiIcon->pixelData = p_IconPixelDataBuffer;
 	guiIcon->pixelHeight = p_PixelHeight;
 	guiIcon->pixelWidth = p_PixelWidth;
 
-freeResources:
+functionEnd:
 	if (result != K15_GUI_RESULT_SUCCESS)
 		K15_GUIRemoveResourceTableEntryByName(p_GUIResourceDatabase, tableEntry->name);
 
@@ -1166,7 +1123,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 	if (resultTA != K15_IA_RESULT_SUCCESS)
 	{
 		result = K15_GUIConvertIAResult(resultTA);
-		goto freeResources;
+		goto functionEnd;
 	}
 
 	K15_GUIResourceTableEntry* tableEntry = 0;
@@ -1175,7 +1132,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 		p_IconSetName, K15_GUI_ICONSET_RESOURCE_TYPE);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		return result;
+		goto functionEnd;
 
 	K15_GUIIconSet* iconSet = 0;
 
@@ -1183,7 +1140,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 		(void**)&iconSet, sizeof(K15_GUIIconSet));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 	K15_GUIResourceTableEntry* currentTableEntry = 0;
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
@@ -1217,7 +1174,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 			if (resultTA != K15_IA_RESULT_SUCCESS)
 			{
 				result = K15_GUIConvertIAResult(resultTA);
-				goto freeResources;
+				goto functionEnd;
 			}
 
 			K15_GUIIconMarker* iconMarker = iconSet->iconMarker + iconIndex;
@@ -1237,7 +1194,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 	if (iconIndex == 0)
 	{
 		result = K15_GUI_RESULT_NO_ICONS;
-		goto freeResources;
+		goto functionEnd;
 	}
 
 	iconSet->numIconMarker = iconIndex;
@@ -1252,7 +1209,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 		(void**)&copyAtlasPixelData, atlasPixelDataSizeInBytes);
 	
 	if (result != K15_GUI_RESULT_SUCCESS)
-		goto freeResources;
+		goto functionEnd;
 
 	K15_GUI_MEMCPY(copyAtlasPixelData, atlasPixelData, atlasPixelDataSizeInBytes);
 
@@ -1263,7 +1220,7 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 
 	*p_OutIconSet = iconSet;
 
-freeResources:
+functionEnd:
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		K15_GUIRemoveResourceTableEntryByName(p_GUIResourceDatabase, tableEntry->name);
@@ -1280,10 +1237,10 @@ static K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_
 
 	K15_GUIFont* defaultFont = 0;
 	kg_result result = K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &defaultFont, 
-		"Cousine-Regular.ttf", 12, "default_font");
+		"Cousine-Regular.ttf", 24, "default_font");
 
-// 	stbi_write_tga("bla.tga", defaultFont->texture.pixelWidth, defaultFont->texture.pixelHeight,
-// 		defaultFont->texture.numColorComponents, defaultFont->texture.pixelData);
+	stbi_write_tga("bla.tga", defaultFont->texture.pixelWidth, defaultFont->texture.pixelHeight,
+		defaultFont->texture.numColorComponents, defaultFont->texture.pixelData);
 
 	//Button Style
 	defaultStyle.buttonStyle.borderLowerColor = K15_GUI_COLOR_RGB(16, 16, 16);
@@ -1590,6 +1547,10 @@ void K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMessage, kg_u
 		errorMsg = "File format not supported";
 	else if (p_Result == K15_GUI_RESULT_TOO_MANY_ICONS)
 		errorMsg = "Too many icons";
+	else if (p_Result == K15_GUI_RESULT_NO_ICONS)
+		errorMsg = "No icons";
+	else if (p_Result == K15_GUI_RESULT_UNKNOWN_ERROR)
+		errorMsg = "Unknown error";
 
 	if (errorMsg)
 	{
