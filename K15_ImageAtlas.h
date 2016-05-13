@@ -244,67 +244,47 @@ static void K15_IAFreeAtlas(K15_ImageAtlas* p_ImageAtlas)
 		K15_IA_FREE(p_ImageAtlas->pixelData);
 }
 /*********************************************************************************/
-kia_result K15_IAAddImageToAtlasLargestToSmallest_R(K15_IAImageNode* p_RootNode,
+kia_b8 K15_IATryToInsertRight_R(K15_IAImageNode* p_RootNode,
 	K15_IAImageNode* p_NodeToInsert, kia_u32 p_VirtualWidth, kia_u32 p_VirtualHeight)
 {
 	kia_u32 nodeWidth = p_NodeToInsert->pixelWidth;
-	kia_u32 nodeHeight = p_NodeToInsert->pixelHeight;
-
-	kia_u32 rootNodeWidth = p_RootNode->pixelWidth;
-	kia_u32 rootNodeHeight = p_RootNode->pixelHeight;
 	kia_u32 rootNodePosX = p_RootNode->pixelPosX;
-	kia_u32 rootNodePosY = p_RootNode->pixelPosY;
-
+	kia_u32 rootNodeWidth = p_RootNode->pixelWidth;
 	kia_u32 spaceUntilRightBorder = p_VirtualWidth - (rootNodePosX + rootNodeWidth);
-	kia_u32 spaceUntilLowerBorder = p_VirtualHeight - (rootNodePosY + rootNodeHeight);
 
-	if (p_RootNode->right == 0 && nodeHeight < rootNodeHeight)
+	if (spaceUntilRightBorder < nodeWidth)
+		return K15_IA_FALSE;
+
+	if (p_RootNode->right == 0)
 	{
-		if (spaceUntilRightBorder < p_NodeToInsert->pixelWidth)
-			return K15_IA_RESULT_ATLAS_TOO_SMALL;
-
 		p_RootNode->right = p_NodeToInsert;
-		p_NodeToInsert->pixelPosY = p_RootNode->pixelPosY;
-		p_NodeToInsert->pixelPosX = p_RootNode->pixelPosX + p_RootNode->pixelWidth;
-		return K15_IA_RESULT_SUCCESS;
+		return K15_IA_TRUE;
 	}
 
-	if (p_RootNode->beneath == 0 && nodeWidth < rootNodeWidth)
-	{
-		if (spaceUntilLowerBorder < p_NodeToInsert->pixelHeight)
-			return K15_IA_RESULT_ATLAS_TOO_SMALL;
-
-		p_RootNode->beneath = p_NodeToInsert;
-		p_NodeToInsert->pixelPosX = p_RootNode->pixelPosX;
-		p_NodeToInsert->pixelPosY = p_RootNode->pixelPosY + p_RootNode->pixelHeight;
-		return K15_IA_RESULT_SUCCESS;
-	}
-
-	kia_result result = K15_IA_RESULT_SUCCESS;
-	if (p_RootNode->right)
-	{
-		//Insert Right Function
-		result = K15_IAAddImageToAtlasLargestToSmallest_R(p_RootNode->right, p_NodeToInsert,
-			p_VirtualWidth, p_VirtualHeight);
-
-		if (result == K15_IA_RESULT_SUCCESS)
-			return result;
-	}
-
-	if (p_RootNode->beneath)
-	{
-		//Insert Beneath Function
-		result = K15_IAAddImageToAtlasLargestToSmallest_R(p_RootNode->beneath, p_NodeToInsert,
-			p_VirtualWidth, p_VirtualHeight);
-
-		if (result == K15_IA_RESULT_SUCCESS)
-			return result;
-	}
-
-	return K15_IA_RESULT_OUT_OF_RANGE;
+	return K15_IATryToInsertRight_R(p_RootNode->right, p_NodeToInsert, p_VirtualWidth, p_VirtualHeight);
 }
 /*********************************************************************************/
-kia_result K15_IATryToGroVirtualAtlasSize(K15_ImageAtlas* p_ImageAtlas)
+kia_b8 K15_IATryToInsertBeneath_R(K15_IAImageNode* p_RootNode,
+	K15_IAImageNode* p_NodeToInsert, kia_u32 p_VirtualWidth, kia_u32 p_VirtualHeight)
+{
+	kia_u32 nodeHeight = p_NodeToInsert->pixelHeight;
+	kia_u32 rootNodePosY = p_RootNode->pixelPosX;
+	kia_u32 rootNodeHeight = p_RootNode->pixelWidth;
+	kia_u32 spaceUntilLowerBorder = p_VirtualHeight - (rootNodePosY + rootNodeHeight);
+
+	if (spaceUntilLowerBorder  < nodeHeight)
+		return K15_IA_FALSE;
+
+	if (p_RootNode->beneath == 0)
+	{
+		p_RootNode->beneath = p_NodeToInsert;
+		return K15_IA_TRUE;
+	}
+
+	return K15_IATryToInsertBeneath_R(p_RootNode->beneath, p_NodeToInsert, p_VirtualWidth, p_VirtualHeight);
+}
+/*********************************************************************************/
+kia_result K15_IATryToGrowVirtualAtlasSize(K15_ImageAtlas* p_ImageAtlas)
 {
 	kia_u32 virtualWidth = p_ImageAtlas->virtualPixelWidth;
 	kia_u32 virtualHeight = p_ImageAtlas->virtualPixelHeight;
@@ -325,7 +305,33 @@ kia_result K15_IATryToGroVirtualAtlasSize(K15_ImageAtlas* p_ImageAtlas)
 	return K15_IA_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kia_result K15_IAAddImageToAtlasLargestToSmallest(K15_ImageAtlas* p_ImageAtlas, K15_IAImageNode* p_ImageNode, 
+kia_result K15_IATryToGrowVirtualAtlasSizeToFit(K15_ImageAtlas* p_ImageAtlas,
+	kia_u32 p_MinWidth, kia_u32 p_MinHeight)
+{
+	kia_u32 virtualWidth = p_ImageAtlas->virtualPixelWidth;
+	kia_u32 virtualHeight = p_ImageAtlas->virtualPixelHeight;
+
+	if (virtualHeight >= p_MinHeight &&
+		virtualWidth >= p_MinWidth)
+	{
+		return K15_IA_RESULT_SUCCESS;
+	}
+
+	while (virtualHeight < p_MinHeight || virtualWidth < p_MinWidth)
+	{
+		kia_result result = K15_IATryToGrowVirtualAtlasSize(p_ImageAtlas);
+	
+		if (result != K15_IA_RESULT_SUCCESS)
+			return result;
+
+		virtualWidth = p_ImageAtlas->virtualPixelWidth;
+		virtualHeight = p_ImageAtlas->virtualPixelHeight;
+	}
+
+	return K15_IA_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kia_result K15_IAAddImageToAtlasLargestToSmallest(K15_ImageAtlas* p_ImageAtlas, K15_IAImageNode* p_NodeToInsert, 
 	kia_u32* p_OutX, kia_u32* p_OutY)
 {
 	kia_result result = K15_IA_RESULT_SUCCESS;
@@ -335,10 +341,14 @@ kia_result K15_IAAddImageToAtlasLargestToSmallest(K15_ImageAtlas* p_ImageAtlas, 
 	kia_u32 virtualWidth = p_ImageAtlas->virtualPixelWidth;
 	kia_u32 virtualHeight = p_ImageAtlas->virtualPixelHeight;
 
-	while (p_ImageNode->pixelWidth > virtualHeight ||
-		p_ImageNode->pixelHeight > virtualWidth)
+	kia_u32 nodeWidth = p_NodeToInsert->pixelWidth;
+	kia_u32 nodeHeight = p_NodeToInsert->pixelHeight;
+
+	if (nodeWidth > virtualHeight ||
+		nodeHeight > virtualWidth)
 	{
-		result = K15_IATryToGroVirtualAtlasSize(p_ImageAtlas);
+		result = K15_IATryToGrowVirtualAtlasSizeToFit(p_ImageAtlas, 
+			p_NodeToInsert->pixelWidth, p_NodeToInsert->pixelHeight);
 		
 		virtualWidth = p_ImageAtlas->virtualPixelWidth;
 		virtualHeight = p_ImageAtlas->virtualPixelHeight;
@@ -347,39 +357,63 @@ kia_result K15_IAAddImageToAtlasLargestToSmallest(K15_ImageAtlas* p_ImageAtlas, 
 			return result;
 	}
 
-	//if the first node has not the root flag, than p_ImageNode is the first node
-	if ((nodes[0].flags & KIA_ROOT_NODE_FLAG) == 0)
+	if (numNodes == 1)
 	{
-		p_ImageNode->flags |= KIA_ROOT_NODE_FLAG;
+		nodes[0] = *p_NodeToInsert;
+		nodes[0].flags |= KIA_ROOT_NODE_FLAG;
 		return K15_IA_RESULT_SUCCESS;
 	}
 
-	while (result != K15_IA_RESULT_SUCCESS || result != K15_IA_RESULT_ATLAS_TOO_SMALL)
+	kia_b8 nodeInserted = K15_IA_FALSE;
+	K15_IAImageNode* lastRoot = 0;
+
+	for (kia_u32 nodeIndex = 0;
+		nodeIndex < numNodes;
+		++nodeIndex)
 	{
-		virtualWidth = p_ImageAtlas->virtualPixelWidth;
-		virtualHeight = p_ImageAtlas->virtualPixelHeight;
+		K15_IAImageNode* node = nodes + nodeIndex;
 
-		K15_IAImageNode* node = 0;
-
-		for (kia_u32 nodeIndex = 0;
-			nodeIndex < numNodes;
-			++nodeIndex)
+		if ((node->flags & KIA_ROOT_NODE_FLAG) > 0)
 		{
-			node = nodes + nodeIndex;
+			lastRoot = node;
 
-			if ((node->flags & KIA_ROOT_NODE_FLAG) > 0)
+			kia_u32 nodeWidth = p_NodeToInsert->pixelWidth;
+			kia_u32 nodeHeight = p_NodeToInsert->pixelHeight;
+
+			kia_u32 rootNodeHeight = node->pixelHeight;
+
+			if (nodeWidth > nodeHeight)
+				nodeInserted = K15_IATryToInsertRight_R(node, p_NodeToInsert, virtualWidth, virtualHeight);
+			else
+				nodeInserted = K15_IATryToInsertBeneath_R(node, p_NodeToInsert, virtualWidth, virtualHeight);
+
+			if (nodeInserted)
 			{
-				result = K15_IAAddImageToAtlasLargestToSmallest_R(node, p_ImageNode, virtualWidth, virtualHeight);
-
-				if (result == K15_IA_RESULT_SUCCESS)
-					return result;
+				result = K15_IA_RESULT_SUCCESS;
+				break;
 			}
 		}
+	}
 
-		if (result != K15_IA_RESULT_SUCCESS)
-			result = K15_IATryToGroVirtualAtlasSize(p_ImageAtlas);
+	if (!nodeInserted && p_ImageAtlas->imageNodeIndex < p_ImageAtlas->numImageNodes)
+	{
+		K15_IAImageNode* newRoot = nodes + p_ImageAtlas->imageNodeIndex++;
+		newRoot->pixelPosX = lastRoot->pixelPosX + lastRoot->pixelWidth;
+		newRoot->pixelPosY = lastRoot->pixelPosY + lastRoot->pixelHeight;
+		newRoot->flags |= KIA_ROOT_NODE_FLAG;
+
+		result = K15_IAAddImageToAtlasLargestToSmallest(p_ImageAtlas, p_NodeToInsert, p_OutX, p_OutY);
+	}
+	else if (nodeInserted)
+	{
+		result = K15_IA_RESULT_SUCCESS;
+	}
+	else
+	{
+		result = K15_IA_RESULT_OUT_OF_MEMORY;
 	}
 	
+
 	return result;
 }
 /*********************************************************************************/
