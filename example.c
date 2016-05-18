@@ -184,7 +184,7 @@
 int main(int argc, char** argv)
 {
 	K15_ImageAtlas atlas = {};
-	kia_result result = K15_IACreateAtlas(&atlas, KIA_PIXEL_FORMAT_R8, 20, KIA_INSERT_LARGEST_TO_SMALLEST);
+	kia_result result = K15_IACreateAtlas(&atlas, KIA_PIXEL_FORMAT_R8, 20);
 
 	kia_byte pixelData[25 * 25];
 	kia_u32 b;
