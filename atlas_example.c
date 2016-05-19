@@ -1,7 +1,9 @@
 #include <windows.h>
 #include <stdio.h>
+#include <time.h>
 
 #define K15_IA_IMPLEMENTATION
+#define K15_IA_DEFAULT_MAX_ATLAS_DIMENSION 512
 #include "K15_ImageAtlas.h"
 
 #pragma comment(lib, "kernel32.lib")
@@ -22,6 +24,11 @@ typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 HDC textDC = 0;
 HDC backbufferDC = 0;
 HBITMAP backbufferBitmap = 0;
+HBRUSH transparentBrush = 0;
+HPEN redPen = 0;
+HPEN greenPen = 0;
+HPEN whitePen = 0;
+HPEN magentaPen = 0;
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
 
@@ -29,9 +36,14 @@ struct pos
 {
 	int x;
 	int y;
+	int width;
+	int height;
 };
-K15_ImageAtlas atlas = {};
-uint32 numNodes = 20;
+K15_ImageAtlas currentAtlas = {};
+K15_ImageAtlas lastAtlas = {};
+K15_ImageAtlas tempAtlas = {};
+
+uint32 numNodes = 200;
 uint32 insertedNodes = 0;
 pos positions[20];
 
@@ -51,9 +63,19 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
 	bool8 wasDown = ((p_lParam & (1 << 30)) != 0);
 	bool8 isDown = ((p_lParam & (1 << 31)) == 0);
+	uint16 key = (uint16)p_wParam;
 
 	if (isDown != wasDown)
 	{
+		if (key == VK_LEFT && !lastAtlasActive && isDown)
+		{
+			lastAtlasActive = K15_TRUE;
+			insertedNodes -= ;
+			
+			//copy last atlas to current atlas
+		
+		}
+		
 		if (isDown)
 			pressedLastFrame = K15_TRUE;
 	}
@@ -138,11 +160,11 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
 		p_Width, p_Height, 0, 0, p_Instance, 0);
 
-	if (hwnd == INVALID_HANDLE_VALUE)
-		MessageBox(0, "Error creating Window.\n", "Error!", 0);
-	else
-		ShowWindow(hwnd, SW_SHOW);
-	return hwnd;
+if (hwnd == INVALID_HANDLE_VALUE)
+MessageBox(0, "Error creating Window.\n", "Error!", 0);
+else
+ShowWindow(hwnd, SW_SHOW);
+return hwnd;
 }
 
 uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
@@ -157,6 +179,8 @@ uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
 
 void setup(HWND p_HWND)
 {
+	srand(time(NULL));
+
 	HDC originalDC = GetDC(p_HWND);
 	textDC = CreateCompatibleDC(originalDC);
 	backbufferDC = CreateCompatibleDC(originalDC);
@@ -169,12 +193,18 @@ void setup(HWND p_HWND)
 
 	if (K15_IACreateAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, numNodes) != K15_IA_RESULT_SUCCESS)
 		MessageBox(0, "Error creating atlas!", "Error", 0);
+
+	redPen = CreatePen(0, 1, RGB(255, 0, 0));
+	greenPen = CreatePen(0, 1, RGB(0, 255, 0));
+	whitePen = CreatePen(0, 1, RGB(255, 255, 255));
+	magentaPen = CreatePen(0, 4, RGB(255, 0, 255));
+	transparentBrush = CreateSolidBrush(TRANSPARENT);
 }
 
 void swapBuffers(HWND p_HWND)
 {
 	HDC originalDC = GetDC(p_HWND);
-	
+
 	//blit to front buffer
 	BitBlt(originalDC, 0, 0, screenWidth, screenHeight, backbufferDC, 0, 0, SRCCOPY);
 
@@ -193,26 +223,82 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 	textRect.bottom = screenHeight;
 	textRect.right = screenWidth;
 
-	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
-	swapBuffers(p_HWND);
+	uint32 deltaVirtualHeight = screenHeight - atlas.virtualPixelHeight;
+	uint32 deltaVirtualWidth = screenWidth - atlas.virtualPixelWidth;
+	uint32 deltaHeight = screenHeight - atlas.maxPixelHeight;
+	uint32 deltaWidth = screenWidth - atlas.maxPixelWidth;
 
+	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
+
+	if (pressedLastFrame && insertedNodes != numNodes)
+	{
+		int width = rand() % 45 + 4;
+		int height = rand() % 45 + 5;
+		
+		positions[insertedNodes].width = width;
+		positions[insertedNodes].height = height;
+		K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, (kia_byte*)2, width, height, &positions[insertedNodes].x, &positions[insertedNodes].y);
+		++insertedNodes;
+	}
+
+	SelectObject(backbufferDC, transparentBrush);
+	SelectObject(backbufferDC, greenPen);
+	Rectangle(backbufferDC, deltaWidth / 2, deltaHeight / 2, screenWidth - deltaWidth / 2, screenHeight - deltaHeight / 2);
+
+	SelectObject(backbufferDC, redPen);
+	Rectangle(backbufferDC, deltaVirtualWidth / 2, deltaVirtualHeight / 2, screenWidth - deltaVirtualWidth / 2, screenHeight - deltaVirtualHeight / 2);
+
+	SelectObject(backbufferDC, whitePen);
 	for (uint32 nodeIndex = 0;
-		nodeIndex < insertedNodes;
+	nodeIndex < insertedNodes;
 		++nodeIndex)
 	{
 		HBRUSH tempBrush = CreateSolidBrush(RGB((24 * nodeIndex) % 255, 200, 200));
 		SelectObject(backbufferDC, tempBrush);
-		Rectangle(backbufferDC, positions[nodeIndex].x, positions[nodeIndex].y, positions[nodeIndex].x + 40, positions[nodeIndex].y + 60);
+		uint32 posX = deltaVirtualWidth / 2 + positions[nodeIndex].x;
+		uint32 posY = deltaVirtualHeight / 2 + positions[nodeIndex].y;
+		uint32 width = positions[nodeIndex].width;
+		uint32 height = positions[nodeIndex].height;
+
+		Rectangle(backbufferDC, posX, posY, posX + width, posY + height);
 		DeleteObject(tempBrush);
 	}
 
-	if (pressedLastFrame)
+	SelectObject(backbufferDC, magentaPen);
+	for (uint32 skylineIndex = 0;
+		skylineIndex < atlas.numSkylines;
+		++skylineIndex)
 	{
-		K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, (kia_byte*)2, 40, 60, &positions[insertedNodes].x, &positions[insertedNodes].y);
-		++insertedNodes;
+		K15_IASkyline* skyline = atlas.skylines + skylineIndex;
+
+		uint32 posX = skyline->baseLinePosX + deltaVirtualWidth / 2;
+		uint32 posY = skyline->baseLinePosY + deltaVirtualHeight / 2;
+
+		Rectangle(backbufferDC, posX, posY + 1, posX + skyline->baseLineWidth, posY);
 	}
 
+	RECT widthTextRect = {};
+	widthTextRect.left = screenWidth / 2 - 50;
+	widthTextRect.right = screenWidth / 2 + 50;
+	widthTextRect.top = deltaVirtualHeight / 2 - 30;
+	widthTextRect.bottom = deltaVirtualHeight / 2;
+
+	RECT heightTextRect = {};
+	heightTextRect.left = screenWidth / 2 + atlas.virtualPixelWidth / 2;
+	heightTextRect.right = heightTextRect.left + 100;
+	heightTextRect.top = screenHeight / 2 - 20;
+	heightTextRect.bottom = screenHeight/ 2 + 20;
+
+	char buffer[256];
+	sprintf_s(buffer, 256, "Width: %dpx", atlas.virtualPixelWidth);
+	DrawTextA(backbufferDC, buffer, -1, &widthTextRect, DT_CENTER);
+
+	sprintf_s(buffer, 256, "Height: %dpx", atlas.virtualPixelHeight);
+	DrawTextA(backbufferDC, buffer, -1, &heightTextRect, DT_CENTER);
+
 	pressedLastFrame = K15_FALSE;
+
+	swapBuffers(p_HWND);
 }
 
 int CALLBACK WinMain(HINSTANCE hInstance,
