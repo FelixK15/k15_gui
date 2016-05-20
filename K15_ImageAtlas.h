@@ -4,7 +4,7 @@
 //TODO:
 // Pixel Data Conversion
 
-
+typedef signed int kia_s32;
 typedef unsigned int kia_u32;
 typedef unsigned char kia_u8;
 typedef unsigned char kia_b8;
@@ -159,6 +159,58 @@ kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPixelFormat
 #endif //K15_IA_MEMSET
 
 /*********************************************************************************/
+kia_s32 K15_IARemoveObscuredSkylines(K15_IASkyline* p_Skylines, kia_u32 p_NumSkylines, K15_IASkyline* p_NewSkyline)
+{
+	K15_IASkyline* skyline = 0;
+	kia_u32 newSkylineWidth = p_NewSkyline->baseLineWidth;
+	kia_u32 newSkylinePosX = p_NewSkyline->baseLinePosX;
+	kia_u32 newSkylinePosY = p_NewSkyline->baseLinePosY;
+	kia_u32 skylineWidth = 0;
+	kia_u32 skylinePosX = 0;
+	kia_u32 skylinePosY = 0;
+	kia_s32 deltaWidth = 0;
+	kia_u32 removedSkylines = 0;
+
+	for (kia_s32 skylineIndex = 0;
+		skylineIndex < p_NumSkylines;
+		++skylineIndex)
+	{
+		skyline = p_Skylines + skylineIndex;
+
+		if (skyline != p_NewSkyline)
+		{
+			skylineWidth = skyline->baseLineWidth;
+			skylinePosX = skyline->baseLinePosX;
+			skylinePosY = skyline->baseLinePosY;
+
+			if (skylinePosY < newSkylinePosY &&
+				skylinePosX < newSkylinePosX + newSkylineWidth)
+			{
+				//trim or remove
+				deltaWidth = (skylinePosX + skylineWidth) - (newSkylinePosX + newSkylineWidth);
+
+				if (deltaWidth < 0)
+				{
+					//remove
+					memmove(p_Skylines + skylineIndex, p_Skylines + skylineIndex + 1, p_NumSkylines - (skylineIndex - 1));
+
+					--p_NumSkylines;
+					--skylineIndex;
+					++removedSkylines;
+				}
+				else
+				{
+					//trim
+					skyline->baseLinePosX += deltaWidth;
+					skyline->baseLineWidth -= deltaWidth;
+				}
+			}
+		}
+	}
+
+	return removedSkylines;
+}
+/*********************************************************************************/
 kia_result K15_IATryToInsertSkyline(K15_ImageAtlas* p_ImageAtlas, kia_u32 p_BaseLineY, kia_u32 p_BaseLineX, kia_u32 p_BaseLineWidth)
 {
 	K15_IASkyline* skylines = p_ImageAtlas->skylines;
@@ -172,7 +224,11 @@ kia_result K15_IATryToInsertSkyline(K15_ImageAtlas* p_ImageAtlas, kia_u32 p_Base
 	newSkyline->baseLinePosY = p_BaseLineY;
 	newSkyline->baseLineWidth = p_BaseLineWidth;
 
-	p_ImageAtlas->numSkylines = numSkylines;
+	kia_u32 removedSkylines = K15_IARemoveObscuredSkylines(skylines, numSkylines, newSkyline);
+
+	p_ImageAtlas->numSkylines = numSkylines - removedSkylines;
+
+	
 
 	return K15_IA_RESULT_SUCCESS;
 }
@@ -353,7 +409,7 @@ kia_u32 K15_IASplitSkyline(K15_IASkyline* p_Skyline, kia_u32 p_Width, kia_u32 p_
 		numOutSkylines++;
 	}
 
-	if (skylineBaseLineX + p_Width < p_MaxWidth)
+	if (skylineBaseLineX + p_Width < p_MaxWidth && p_Width < skylineBaseLineWidth)
 	{
 		K15_IASkyline* rightSkyline = *p_OutSkylineSplits + 1;
 		rightSkyline->baseLinePosY = skylineBaseLineY;
@@ -399,18 +455,15 @@ kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtlas, K15_IAImag
 		if (lowerPixelSpace >= nodeHeight &&
 			baseLinePosX + nodeWidth <= virtualWidth)
 		{
+			result = K15_IA_RESULT_SUCCESS;
 			skylineIndexToRemove = skylineIndex;
-					
+			
 			K15_IASkyline* splitResult = (K15_IASkyline*)K15_IA_MALLOC(sizeof(K15_IASkyline) * 2);
 			numSplits = K15_IASplitSkyline(skyline, nodeWidth, nodeHeight, virtualWidth, virtualHeight, &splitResult);
 
 			if (numSplits >= 1)
 				result = K15_IATryToInsertSkyline(p_ImageAtlas, splitResult[0].baseLinePosY, 
 					splitResult[0].baseLinePosX, splitResult[0].baseLineWidth);
-			
-			if (numSplits >= 2)
-				result = K15_IATryToInsertSkyline(p_ImageAtlas, splitResult[1].baseLinePosY,
-					splitResult[1].baseLinePosX, splitResult[1].baseLineWidth);
 
 			p_NodeToInsert->pixelPosX = skyline->baseLinePosX;
 			p_NodeToInsert->pixelPosY = skyline->baseLinePosY;

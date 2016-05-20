@@ -39,15 +39,42 @@ struct pos
 	int width;
 	int height;
 };
-K15_ImageAtlas currentAtlas = {};
+K15_ImageAtlas atlas = {};
 K15_ImageAtlas lastAtlas = {};
 K15_ImageAtlas tempAtlas = {};
 
-uint32 numNodes = 200;
+const uint32 numNodes = 200;
 uint32 insertedNodes = 0;
 pos positions[20];
-
+pos posPlace[numNodes];
 bool8 pressedLastFrame = K15_FALSE;
+bool8 lastAtlasActive = K15_TRUE;
+
+void saveAtlas()
+{
+	K15_IAImageNode* nodes = lastAtlas.imageNodes;
+	K15_IASkyline* skylines = lastAtlas.skylines;
+
+	memcpy(nodes, atlas.imageNodes, sizeof(K15_IAImageNode) * atlas.numImageNodes);
+	memcpy(skylines, atlas.skylines, sizeof(K15_IASkyline) * atlas.numSkylines);
+
+	lastAtlas = atlas;
+	lastAtlas.imageNodes = nodes;
+	lastAtlas.skylines = skylines;
+}
+
+void restoreAtlas()
+{
+	K15_IAImageNode* nodes = atlas.imageNodes;
+	K15_IASkyline* skylines = atlas.skylines;
+
+	memcpy(nodes, lastAtlas.imageNodes, sizeof(K15_IAImageNode) * lastAtlas.numImageNodes);
+	memcpy(skylines, lastAtlas.skylines, sizeof(K15_IASkyline) * lastAtlas.numSkylines);
+
+	atlas = lastAtlas;
+	atlas.imageNodes = nodes;
+	atlas.skylines = skylines;
+}
 
 void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
@@ -70,14 +97,16 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 		if (key == VK_LEFT && !lastAtlasActive && isDown)
 		{
 			lastAtlasActive = K15_TRUE;
-			insertedNodes -= ;
+			insertedNodes -= 1;
 			
 			//copy last atlas to current atlas
-		
+			restoreAtlas();
 		}
-		
-		if (isDown)
+		else if (isDown)
+		{
 			pressedLastFrame = K15_TRUE;
+			lastAtlasActive = K15_FALSE;
+		}
 	}
 }
 
@@ -194,11 +223,22 @@ void setup(HWND p_HWND)
 	if (K15_IACreateAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, numNodes) != K15_IA_RESULT_SUCCESS)
 		MessageBox(0, "Error creating atlas!", "Error", 0);
 
+	if (K15_IACreateAtlas(&lastAtlas, KIA_PIXEL_FORMAT_R8G8B8A8, numNodes) != K15_IA_RESULT_SUCCESS)
+		MessageBox(0, "Error creating atlas!", "Error", 0);
+
 	redPen = CreatePen(0, 1, RGB(255, 0, 0));
 	greenPen = CreatePen(0, 1, RGB(0, 255, 0));
 	whitePen = CreatePen(0, 1, RGB(255, 255, 255));
 	magentaPen = CreatePen(0, 4, RGB(255, 0, 255));
 	transparentBrush = CreateSolidBrush(TRANSPARENT);
+
+	for (uint32 nodeIndex = 0;
+		nodeIndex < numNodes;
+		++nodeIndex)
+	{
+		posPlace[nodeIndex].x = rand() % 45 + 5;
+		posPlace[nodeIndex].y = rand() % 45 + 5;
+	}
 }
 
 void swapBuffers(HWND p_HWND)
@@ -232,9 +272,11 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 
 	if (pressedLastFrame && insertedNodes != numNodes)
 	{
-		int width = rand() % 45 + 4;
-		int height = rand() % 45 + 5;
+		int width = posPlace[insertedNodes].x;
+		int height = posPlace[insertedNodes].y;
 		
+		saveAtlas();
+
 		positions[insertedNodes].width = width;
 		positions[insertedNodes].height = height;
 		K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, (kia_byte*)2, width, height, &positions[insertedNodes].x, &positions[insertedNodes].y);
