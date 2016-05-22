@@ -220,21 +220,20 @@ kia_internal kia_result K15_IAConvertPixelData(kia_byte* p_SourcePixelData, kia_
 	return K15_IA_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kia_internal kia_u32 K15_IARemoveSkylineByIndex(K15_IASkyline* p_Skylines, kia_u32 p_NumSkylines, 
+kia_internal kia_b8 K15_IATryToRemoveSkylineByIndex(K15_IASkyline* p_Skylines, kia_u32 p_NumSkylines, 
 	kia_u32 p_SkylineIndex)
 {
-	kia_u32 numSkylines = p_NumSkylines;
-
-	if (p_SkylineIndex + 1 < numSkylines)
+	kia_b8 removedSkyline = K15_IA_FALSE;
+	if (p_SkylineIndex + 1 < p_NumSkylines)
 	{
-		kia_u32 numSkylinesToMove = numSkylines - p_SkylineIndex;
+		kia_u32 numSkylinesToMove = p_NumSkylines - p_SkylineIndex;
 		K15_IA_MEMMOVE(p_Skylines + p_SkylineIndex, p_Skylines + p_SkylineIndex + 1, 
 			numSkylinesToMove * sizeof(K15_IASkyline));
 	
-		--numSkylines;
+		removedSkyline = K15_IA_TRUE;
 	}
 	
-	return numSkylines;
+	return removedSkyline;
 }
 /*********************************************************************************/
 kia_internal kia_u32 K15_IARemoveObscuredSkylines(K15_IASkyline* p_Skylines, kia_u32 p_NumSkylines,
@@ -245,7 +244,6 @@ kia_internal kia_u32 K15_IARemoveObscuredSkylines(K15_IASkyline* p_Skylines, kia
 	kia_u32 baseLineWidth = 0;
 	kia_u32 rightPos = p_PosX + p_Width;
 	kia_u32 baseLineRightPos = 0;
-	kia_u32 numSkylinesToMove = 0;
 	K15_IASkyline* skyline = 0;
 
 	for (kia_u32 skylineIndex = 0;
@@ -270,8 +268,11 @@ kia_internal kia_u32 K15_IARemoveObscuredSkylines(K15_IASkyline* p_Skylines, kia
 				continue;
 			}
 
-			p_NumSkylines = K15_IARemoveSkylineByIndex(p_Skylines, p_NumSkylines, skylineIndex);
-			--skylineIndex;
+			if (K15_IATryToRemoveSkylineByIndex(p_Skylines, p_NumSkylines, skylineIndex))
+			{
+				--p_NumSkylines;
+				--skylineIndex;
+			}
 		}
 	}
 
@@ -301,8 +302,11 @@ kia_internal kia_u32 K15_IAMergeSkylines(K15_IASkyline* p_Skylines, kia_u32 p_Nu
 			{
 				previousSkyline->baseLineWidth += skyline->baseLineWidth;
 
-				numSkylines = K15_IARemoveSkylineByIndex(p_Skylines, numSkylines, skylineIndex);
-				--skylineIndex;
+				if (K15_IATryToRemoveSkylineByIndex(p_Skylines, numSkylines, skylineIndex))
+				{
+					--skylineIndex;
+					--numSkylines;
+				}
 			}
 		}
 	}
@@ -336,35 +340,88 @@ kia_internal kia_result K15_IATryToInsertSkyline(K15_ImageAtlas* p_ImageAtlas, k
 	return K15_IA_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kia_internal kia_result K15_IATryToGrowVirtualAtlasSize(K15_ImageAtlas* p_ImageAtlas)
+kia_internal kia_b8 K15_IAIsPowerOfTwo(kia_u32 p_Number)
+{
+	//http://aggregate.org/MAGIC/#Is Power of 2
+	return (p_Number & (p_Number - 1)) == 0;
+}
+/*********************************************************************************/
+kia_internal kia_u32 K15_IAGetNextLargestPowerOfTwo(kia_u32 p_Number)
+{
+	//http://aggregate.org/MAGIC/#Next Largest Power of 2
+	p_Number |= (p_Number >> 1);
+	p_Number |= (p_Number >> 2);
+	p_Number |= (p_Number >> 4);
+	p_Number |= (p_Number >> 8);
+	p_Number |= (p_Number >> 16);
+	return(p_Number + 1);
+}
+/*********************************************************************************/
+kia_internal void K15_IAGrowByPowerOfTwoToFit(kia_u32* p_WidthInOut, kia_u32* p_HeightInOut,
+	kia_u32 p_MinWidth, kia_u32 p_MinHeight)
+{
+	kia_u32 newWidth = 0;
+	kia_u32 newHeight = 0;
+
+	if (!K15_IAIsPowerOfTwo(p_MinWidth))
+		newWidth = K15_IAGetNextLargestPowerOfTwo(p_MinWidth);
+	else
+		newWidth = p_MinWidth;
+
+	if (!K15_IAIsPowerOfTwo(p_MinHeight))
+		newHeight = K15_IAGetNextLargestPowerOfTwo(p_MinHeight);
+	else
+		newHeight = p_MinHeight;
+
+	*p_WidthInOut = newWidth;
+	*p_HeightInOut = newHeight;
+}
+/*********************************************************************************/
+kia_internal kia_result K15_IATryToGrowVirtualAtlasSizeToFit(K15_ImageAtlas* p_ImageAtlas,
+	kia_u32 p_MinWidth, kia_u32 p_MinHeight)
 {
 	kia_u32 virtualWidth = p_ImageAtlas->virtualPixelWidth;
 	kia_u32 virtualHeight = p_ImageAtlas->virtualPixelHeight;
+	kia_u32 oldVirtualWidth = virtualWidth;
+
 	kia_u32 maxWidth = p_ImageAtlas->maxPixelWidth;
 	kia_u32 maxHeight = p_ImageAtlas->maxPixelHeight;
 	kia_u32 numSkylines = p_ImageAtlas->numSkylines;
-	kia_u32 widthExtend = 0;
-
-	kia_u32 oldVirtualWidth = virtualWidth;
-
 	K15_IASkyline* skylines = p_ImageAtlas->skylines;
 
-	if (virtualWidth > virtualHeight)
-		virtualHeight = virtualHeight << 1;
+	if (virtualHeight >= p_MinHeight &&
+		virtualWidth >= p_MinWidth)
+	{
+		return K15_IA_RESULT_SUCCESS;
+	}
+
+	kia_u32 newWidth = 0;
+	kia_u32 newHeight = 0;
+
+	if ((p_ImageAtlas->flags & KIA_FORCE_POWER_OF_TWO_DIMENSION) > 0)
+	{
+		K15_IAGrowByPowerOfTwoToFit(&virtualWidth, &virtualHeight, maxWidth, maxHeight);
+	}
 	else
-		virtualWidth = virtualWidth << 1;
+	{
+		virtualWidth = p_MinWidth;
+		virtualHeight = p_MinHeight;
+	}
 
-	if (virtualWidth > maxWidth || virtualHeight > maxHeight)
-		return K15_IA_RESULT_ATLAS_TOO_SMALL;
+	if (maxWidth < virtualWidth ||
+		maxHeight < virtualHeight)
+	{
+		return K15_IA_RESULT_OUT_OF_MEMORY;
+	}
 
-	widthExtend = virtualWidth - p_ImageAtlas->virtualPixelWidth;
+	kia_u32 widthExtend = virtualWidth - p_ImageAtlas->virtualPixelWidth;
 
 	p_ImageAtlas->virtualPixelWidth = virtualWidth;
 	p_ImageAtlas->virtualPixelHeight = virtualHeight;
 
 	kia_b8 foundSkyline = K15_IA_FALSE;
 
-	//find skylines with pos == 0 (at the very bottom and extend their width)
+	//find skylines with pos == 0 (at the very bottom and extend their width)..
 	for (kia_u32 skylineIndex = 0;
 		skylineIndex < numSkylines;
 		++skylineIndex)
@@ -378,34 +435,9 @@ kia_internal kia_result K15_IATryToGrowVirtualAtlasSize(K15_ImageAtlas* p_ImageA
 		}
 	}
 
+	//... or add a new one for the extended area
 	if (!foundSkyline)
 		K15_IATryToInsertSkyline(p_ImageAtlas, 0, oldVirtualWidth, widthExtend);
-
-	return K15_IA_RESULT_SUCCESS;
-}
-/*********************************************************************************/
-kia_internal kia_result K15_IATryToGrowVirtualAtlasSizeToFit(K15_ImageAtlas* p_ImageAtlas,
-	kia_u32 p_MinWidth, kia_u32 p_MinHeight)
-{
-	kia_u32 virtualWidth = p_ImageAtlas->virtualPixelWidth;
-	kia_u32 virtualHeight = p_ImageAtlas->virtualPixelHeight;
-
-	if (virtualHeight >= p_MinHeight &&
-		virtualWidth >= p_MinWidth)
-	{
-		return K15_IA_RESULT_SUCCESS;
-	}
-
-	while (virtualHeight < p_MinHeight || virtualWidth < p_MinWidth)
-	{
-		kia_result result = K15_IATryToGrowVirtualAtlasSize(p_ImageAtlas);
-
-		if (result != K15_IA_RESULT_SUCCESS)
-			return result;
-
-		virtualWidth = p_ImageAtlas->virtualPixelWidth;
-		virtualHeight = p_ImageAtlas->virtualPixelHeight;
-	}
 
 	return K15_IA_RESULT_SUCCESS;
 }
@@ -490,9 +522,9 @@ kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtla
 					skyline->baseLinePosX += nodeWidth;
 					skyline->baseLineWidth -= nodeWidth;
 				}
-				else
+				else if (K15_IATryToRemoveSkylineByIndex(skylines, numSkylines, skylineIndex))
 				{
-					p_ImageAtlas->numSkylines = K15_IARemoveSkylineByIndex(skylines, numSkylines, skylineIndex);
+					--p_ImageAtlas->numSkylines;
 				}
 
 				//Add new skyline
@@ -619,6 +651,8 @@ kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPix
 
 	kia_result result = K15_IA_RESULT_ATLAS_TOO_SMALL;
 	kia_result growResult = K15_IA_RESULT_SUCCESS;
+	kia_u32 virtualWidth = p_ImageAtlas->virtualPixelWidth;
+	kia_u32 virtualHeight = p_ImageAtlas->virtualPixelHeight;
 
 	kia_u32 imageNodeIndex = p_ImageAtlas->imageNodeIndex;
 	K15_IAImageNode* imageNode = p_ImageAtlas->imageNodes + imageNodeIndex;
@@ -628,17 +662,17 @@ kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPix
 	imageNode->pixelHeight = p_PixelDataHeight;
 	imageNode->pixelWidth = p_PixelDataWidth;
 
-	while (result != K15_IA_RESULT_SUCCESS)
-	{
-		result = K15_IAAddImageToAtlasSkyline(p_ImageAtlas, imageNode, p_OutX, p_OutY);
+	result = K15_IAAddImageToAtlasSkyline(p_ImageAtlas, imageNode, p_OutX, p_OutY);
 
-		if (result == K15_IA_RESULT_ATLAS_TOO_SMALL)
-			growResult = K15_IATryToGrowVirtualAtlasSize(p_ImageAtlas);
-		else if (growResult != K15_IA_RESULT_SUCCESS)
-		{
+	if (result == K15_IA_RESULT_ATLAS_TOO_SMALL)
+	{
+		growResult = K15_IATryToGrowVirtualAtlasSizeToFit(p_ImageAtlas,
+			virtualWidth + imageNode->pixelWidth, virtualHeight + imageNode->pixelHeight);
+
+		if (growResult == K15_IA_RESULT_SUCCESS)
+			result = K15_IAAddImageToAtlasSkyline(p_ImageAtlas, imageNode, p_OutX, p_OutY);
+		else
 			result = growResult;
-			break;
-		}
 	}
 
 	if (result == K15_IA_RESULT_SUCCESS)

@@ -296,7 +296,12 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 
 		positions[insertedNodes].width = width;
 		positions[insertedNodes].height = height;
-		K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, (kia_byte*)2, width, height, &positions[insertedNodes].x, &positions[insertedNodes].y);
+		if (K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8,
+			(kia_byte*)2, width, height,
+			&positions[insertedNodes].x, &positions[insertedNodes].y) != K15_IA_RESULT_SUCCESS)
+		{
+			MessageBox(0, "ERROR!", "ERROR!", 0);
+		}
 		++insertedNodes;
 	}
 
