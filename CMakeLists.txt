@@ -8,4 +8,5 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 include_directories(./)
-add_executable(example atlas_example.c)
+add_executable(example WIN32 atlas_example.c)
+set_source_files_properties(atlas_example.c PROPERTIES LANGUAGE CXX)
