@@ -189,11 +189,12 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
 		p_Width, p_Height, 0, 0, p_Instance, 0);
 
-if (hwnd == INVALID_HANDLE_VALUE)
-MessageBox(0, "Error creating Window.\n", "Error!", 0);
-else
-ShowWindow(hwnd, SW_SHOW);
-return hwnd;
+	if (hwnd == INVALID_HANDLE_VALUE)
+		MessageBox(0, "Error creating Window.\n", "Error!", 0);
+	else
+		ShowWindow(hwnd, SW_SHOW);
+
+	return hwnd;
 }
 
 uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
@@ -206,9 +207,20 @@ uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
 	return (uint32)(appTime.QuadPart / p_PerformanceFrequency.QuadPart);
 }
 
+int sortFnc(const void* p1, const void* p2)
+{
+	pos* _p1 = (pos*)p1;
+	pos* _p2 = (pos*)p2;
+
+	int _ap1 = _p1->x * _p1->y;
+	int _ap2 = _p2->x * _p2->y;
+
+	return _ap2 - _ap1;
+}
+
 void setup(HWND p_HWND)
 {
-	srand(time(NULL));
+	srand((uint32)time(NULL));
 
 	HDC originalDC = GetDC(p_HWND);
 	textDC = CreateCompatibleDC(originalDC);
@@ -237,8 +249,13 @@ void setup(HWND p_HWND)
 		++nodeIndex)
 	{
 		posPlace[nodeIndex].x = rand() % 45 + 5;
-		posPlace[nodeIndex].y = rand() % 45 + 5;
+		//posPlace[nodeIndex].y = rand() % 45 + 5;
+		posPlace[nodeIndex].y = 25;
 	}
+
+	//qsort(posPlace, numNodes, sizeof(pos), sortFnc);
+
+	return;
 }
 
 void swapBuffers(HWND p_HWND)

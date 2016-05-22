@@ -10,5 +10,8 @@ lib
 *.sln
 Win32
 *.opendb
+*.db
+*.exe
+*.obj
 .vs/
 CMakeCache.txt
