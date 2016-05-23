@@ -296,12 +296,7 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 
 		positions[insertedNodes].width = width;
 		positions[insertedNodes].height = height;
-		if (K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8,
-			(kia_byte*)2, width, height,
-			&positions[insertedNodes].x, &positions[insertedNodes].y) != K15_IA_RESULT_SUCCESS)
-		{
-			MessageBox(0, "ERROR!", "ERROR!", 0);
-		}
+		K15_IAAddImageToAtlas(&atlas, KIA_PIXEL_FORMAT_R8G8B8A8, (kia_byte*)2, width, height, &positions[insertedNodes].x, &positions[insertedNodes].y);
 		++insertedNodes;
 	}
 
@@ -323,6 +318,22 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 		uint32 posY = deltaVirtualHeight / 2 + positions[nodeIndex].y;
 		uint32 width = positions[nodeIndex].width;
 		uint32 height = positions[nodeIndex].height;
+
+		Rectangle(backbufferDC, posX, posY, posX + width, posY + height);
+		DeleteObject(tempBrush);
+	}
+
+	SelectObject(backbufferDC, whitePen);
+	for (uint32 rectIndex = 0;
+		rectIndex < atlas.numWastedSpaceRects;
+		++rectIndex)
+	{
+		HBRUSH tempBrush = CreateSolidBrush(RGB(255, 200, (24 * rectIndex) % 255));
+		SelectObject(backbufferDC, tempBrush);
+		uint32 posX = deltaVirtualWidth / 2 + atlas.wastedSpaceRects[rectIndex].posX;
+		uint32 posY = deltaVirtualHeight / 2 + atlas.wastedSpaceRects[rectIndex].posY;
+		uint32 width = atlas.wastedSpaceRects[rectIndex].width;
+		uint32 height = atlas.wastedSpaceRects[rectIndex].height;
 
 		Rectangle(backbufferDC, posX, posY, posX + width, posY + height);
 		DeleteObject(tempBrush);
