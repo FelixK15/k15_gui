@@ -116,7 +116,7 @@ kia_def void K15_IAFreeAtlas(K15_ImageAtlas* p_ImageAtlas);
 //		the pixel format of the atlas.
 kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPixelFormat p_PixelFormat,
 	kia_byte* p_PixelData, kia_u32 p_PixelDataWidth, kia_u32 p_PixelDataHeight,
-	kia_u32* p_OutX, kia_u32* p_OutY);
+	int* p_OutX, int* p_OutY);
 
 #ifdef K15_IA_IMPLEMENTATION
 
@@ -178,6 +178,11 @@ kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPix
 # define kia_internal static
 #endif //kia_internal
 
+typedef struct _K15_IAPotentialPosition
+{
+	kia_u32 skylineIndex;
+	kia_u32 heuristic;
+} K15_IAPotentialPosition;
 
 /*********************************************************************************/
 kia_internal int K15_IASortSkylineByXPos(const void* p_SkylineA, const void* p_SkylineB)
@@ -186,6 +191,15 @@ kia_internal int K15_IASortSkylineByXPos(const void* p_SkylineA, const void* p_S
 	K15_IASkyline* skylineB = (K15_IASkyline*)p_SkylineB;
 
 	return skylineA->baseLinePosX - skylineB->baseLinePosX;
+}
+/*********************************************************************************/
+kia_internal int K15_IASortPotentialPositionsByHeuristic(const void* p_PositionA,
+	const void* p_PositionB)
+{
+	K15_IAPotentialPosition* posA = (K15_IAPotentialPosition*)p_PositionA;
+	K15_IAPotentialPosition* posB = (K15_IAPotentialPosition*)p_PositionB;
+
+	return posA->heuristic - posB->heuristic;
 }
 /*********************************************************************************/
 
@@ -440,6 +454,34 @@ kia_internal kia_b8 K15_IACheckNodeCollision(K15_IAImageNode* p_ImageNodes, kia_
 	return K15_IA_FALSE;
 }
 /*********************************************************************************/
+kia_u32 K15_IACalculatePlacementHeuristic(kia_u32 p_BaseLinePosX, kia_u32 p_BaseLinePosY, kia_u32 p_NodeWidth,
+	kia_u32 p_NodeHeight, K15_IASkyline* p_PlacementSkyline, K15_IASkyline* p_Skylines, kia_u32 p_NumSkylines)
+{
+	kia_u32 heuristic = 0;
+	K15_IASkyline* skyline = 0;
+
+	for (kia_u32 skylineIndex = 0;
+	skylineIndex < p_NumSkylines;
+		++skylineIndex)
+	{
+		skyline = p_Skylines + skylineIndex;
+
+		if (skyline->baseLinePosX >= skyline->baseLinePosX && skyline->baseLinePosX < p_BaseLinePosX + p_NodeWidth)
+		{
+			kia_u32 right = min(skyline->baseLinePosX + skyline->baseLineWidth, p_BaseLinePosX + p_NodeWidth);
+			kia_u32 left = max(skyline->baseLinePosX, p_BaseLinePosX);
+
+			kia_u32 width = right - left;
+			kia_u32 height = p_BaseLinePosY - skyline->baseLinePosY;
+
+
+			heuristic += width * height;
+		}
+	}
+
+	return heuristic;
+}
+/*********************************************************************************/
 kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtlas, K15_IAImageNode* p_NodeToInsert,
 	int* p_OutX, int* p_OutY)
 {
@@ -456,10 +498,14 @@ kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtla
 	kia_u32 baseLinePosX = 0;
 	kia_u32 baseLineWidth = 0;
 	kia_u32 elementsToShift = 0;
+	kia_u32 numPotentialPositions = 0;
 	kia_b8 collidesWithNodes = K15_IA_FALSE;
+
+	const kia_u32 maxPotentialPositions = 20;
 
 	K15_IASkyline* skylines = p_ImageAtlas->skylines;
 	K15_IAImageNode* imageNodes = p_ImageAtlas->imageNodes;
+	K15_IAPotentialPosition potentialPositions[maxPotentialPositions];
 
 	for (kia_u32 skylineIndex = 0;
 		skylineIndex < numSkylines;
@@ -477,37 +523,51 @@ kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtla
 			collidesWithNodes = K15_IACheckNodeCollision(imageNodes, numImageNodes,
 				baseLinePosX, baseLinePosY, nodeWidth, nodeHeight);
 
-			if (!collidesWithNodes)
+			if (!collidesWithNodes && 
+				numPotentialPositions != maxPotentialPositions)
 			{
-				result = K15_IA_RESULT_SUCCESS;
+				//node potentially fits. Calculate and save heuristic
+				kia_u32 heuristic = K15_IACalculatePlacementHeuristic(baseLinePosX, baseLinePosY, nodeWidth, nodeHeight, skyline, skylines, numSkylines);
+				K15_IAPotentialPosition* potentialPosition = potentialPositions + numPotentialPositions++;
 
-				p_NodeToInsert->pixelPosX = baseLinePosX;
-				p_NodeToInsert->pixelPosY = baseLinePosY;
-
-				//split if there's space left - otherwise remove the skyline
-				if (nodeWidth < baseLineWidth)
-				{
-					skyline->baseLinePosX += nodeWidth;
-					skyline->baseLineWidth -= nodeWidth;
-				}
-				else
-				{
-					p_ImageAtlas->numSkylines = K15_IARemoveSkylineByIndex(skylines, numSkylines, skylineIndex);
-				}
-
-				//Add new skyline
-				result = K15_IATryToInsertSkyline(p_ImageAtlas, baseLinePosY + nodeHeight,
-					baseLinePosX, nodeWidth);
-
-				if (p_OutX)
-					*p_OutX = baseLinePosX;
-
-				if (p_OutY)
-					*p_OutY = baseLinePosY;
-
-				break;
+				potentialPosition->skylineIndex = skylineIndex;
+				potentialPosition->heuristic = heuristic;
 			}
 		}
+	}
+
+	if (numPotentialPositions > 1)
+		K15_IA_QSORT(potentialPositions, numPotentialPositions, sizeof(K15_IAPotentialPosition), 
+			K15_IASortPotentialPositionsByHeuristic);
+
+	if (numPotentialPositions > 0)
+	{
+		K15_IAPotentialPosition* position = potentialPositions;
+		K15_IASkyline* skyline = skylines + position->skylineIndex;
+		p_NodeToInsert->pixelPosX = skyline->baseLinePosX;
+		p_NodeToInsert->pixelPosY = skyline->baseLinePosY;
+
+		if (skyline->baseLineWidth > p_NodeToInsert->pixelWidth)
+		{
+			skyline->baseLinePosX += p_NodeToInsert->pixelWidth;
+			skyline->baseLineWidth -= p_NodeToInsert->pixelWidth;
+		}
+		else
+		{
+			p_ImageAtlas->numSkylines = K15_IARemoveSkylineByIndex(skylines, numSkylines, position->skylineIndex);
+		}
+
+		result = K15_IATryToInsertSkyline(p_ImageAtlas, p_NodeToInsert->pixelPosY + p_NodeToInsert->pixelHeight, 
+			p_NodeToInsert->pixelPosX, p_NodeToInsert->pixelWidth);
+	}
+
+	if (result == K15_IA_RESULT_SUCCESS)
+	{
+		if (p_OutX)
+			*p_OutX = p_NodeToInsert->pixelPosX;
+
+		if (p_OutY)
+			*p_OutY = p_NodeToInsert->pixelPosY;
 	}
 
 	return result;
