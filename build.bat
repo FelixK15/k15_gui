@@ -41,8 +41,8 @@ IF !FOUND_PATH!==0 (
 	echo Starting build process...
 	set VCVARS_PATH="!VS_PATH!..\..\VC\vcvarsall.bat"
 	set CL_PATH="!VS_PATH!..\..\VC\bin\cl.exe"
-	set CL_OPTIONS=/nologo /Od /TP /Feexample.exe /MD /TP /W3 /WX /Od /Gm-
-	set BUILD_COMMAND=!CL_PATH! example.c !CL_OPTIONS!
+	set CL_OPTIONS=/nologo /TP /Featlas_example.exe /MD /TP /W3 /WX /O2 /Gm-
+	set BUILD_COMMAND=!CL_PATH! atlas_example.c !CL_OPTIONS!
 	call !VCVARS_PATH!
 	call !BUILD_COMMAND!
 ) 

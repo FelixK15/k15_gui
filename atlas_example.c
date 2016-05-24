@@ -276,20 +276,10 @@ void swapBuffers(HWND p_HWND)
 
 void doFrame(HWND p_HWND)
 {
-	RECT textRect = {};
-	textRect.left = 0;
-	textRect.top = 0;
-	textRect.bottom = screenHeight;
-	textRect.right = screenWidth;
-
 	uint32 deltaVirtualHeight = screenHeight - atlas.virtualPixelHeight;
 	uint32 deltaVirtualWidth = screenWidth - atlas.virtualPixelWidth;
 	uint32 deltaHeight = screenHeight - atlas.maxPixelHeight;
 	uint32 deltaWidth = screenWidth - atlas.maxPixelWidth;
-
-	char messageBuffer[255];
-	sprintf_s(messageBuffer, 255, "NumSkylines: %d", atlas.numSkylines);
-	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
 
 	if (pressedLastFrame && insertedNodes != numNodes)
 	{
@@ -374,6 +364,22 @@ void doFrame(HWND p_HWND)
 
 	sprintf_s(buffer, 256, "Height: %dpx", atlas.virtualPixelHeight);
 	DrawTextA(backbufferDC, buffer, -1, &heightTextRect, DT_CENTER);
+
+	RECT textRect = {};
+	textRect.left = 70;
+	textRect.top = 200;
+	textRect.bottom = screenHeight;
+	textRect.right = screenWidth;
+
+	char messageBuffer[255];
+	sprintf_s(messageBuffer, 255, "NumSkylines: %d", atlas.numSkylines);
+	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
+
+	textRect.top = 220;
+
+	sprintf_s(messageBuffer, 255, "NumWastedAreaRects: %d", atlas.numWastedSpaceRects);
+	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
+
 
 	pressedLastFrame = K15_FALSE;
 

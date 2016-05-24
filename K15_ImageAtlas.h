@@ -186,6 +186,14 @@ kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPix
 # define K15_IA_QSORT qsort
 #endif //K15_IA_QSORT
 
+#ifndef K15_IA_MIN
+# define K15_IA_MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif //K15_IA_MIN
+
+#ifndef K15_IA_MAX
+# define K15_IA_MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif //K15_IA_MAX
+
 #ifndef kia_internal
 # define kia_internal static
 #endif //kia_internal
@@ -266,12 +274,16 @@ kia_internal kia_u32 K15_IAAddWastedSpaceRect(K15_IARect* p_WastedSpaceRects, ki
 {
 	kia_u32 numWastedSpaceRects = p_NumWastedSpaceRects;
 
-	p_WastedSpaceRects[numWastedSpaceRects].posX = p_PosX;
-	p_WastedSpaceRects[numWastedSpaceRects].posY = p_PosY;
-	p_WastedSpaceRects[numWastedSpaceRects].width = p_Width;
-	p_WastedSpaceRects[numWastedSpaceRects].height = p_Height;
+	if (numWastedSpaceRects < K15_IA_MAX_WASTED_SPACE_RECTS)
+	{
+		p_WastedSpaceRects[numWastedSpaceRects].posX = p_PosX;
+		p_WastedSpaceRects[numWastedSpaceRects].posY = p_PosY;
+		p_WastedSpaceRects[numWastedSpaceRects].width = p_Width;
+		p_WastedSpaceRects[numWastedSpaceRects].height = p_Height;
+		++numWastedSpaceRects;
+	}
 
-	return numWastedSpaceRects + 1;
+	return numWastedSpaceRects;
 }
 /*********************************************************************************/
 kia_internal void K15_IAFindWastedSpaceAndRemoveObscuredSkylines(K15_IASkyline* p_Skylines, 
@@ -472,10 +484,10 @@ kia_internal kia_b8 K15_IACheckNodeCollision(K15_IAImageNode* p_ImageNodes, kia_
 	{
 		imageNode = p_ImageNodes + nodeIndex;
 
-		intersectionL = max(p_PosX, imageNode->rect.posX);
-		intersectionT = max(p_PosY, imageNode->rect.posY);
-		intersectionR = min(p_PosX + p_Width, imageNode->rect.posX + imageNode->rect.width);
-		intersectionB = min(p_PosY + p_Height, imageNode->rect.posY + imageNode->rect.height);
+		intersectionL = K15_IA_MAX(p_PosX, imageNode->rect.posX);
+		intersectionT = K15_IA_MAX(p_PosY, imageNode->rect.posY);
+		intersectionR = K15_IA_MIN(p_PosX + p_Width, imageNode->rect.posX + imageNode->rect.width);
+		intersectionB = K15_IA_MIN(p_PosY + p_Height, imageNode->rect.posY + imageNode->rect.height);
 
 		if (intersectionL < intersectionR &&
 			intersectionT < intersectionB)
@@ -501,8 +513,8 @@ kia_u32 K15_IACalculatePlacementHeuristic(kia_u32 p_BaseLinePosX, kia_u32 p_Base
 
 		if (skyline->baseLinePosX >= skyline->baseLinePosX && skyline->baseLinePosX < p_BaseLinePosX + p_NodeWidth)
 		{
-			kia_u32 right = min(skyline->baseLinePosX + skyline->baseLineWidth, p_BaseLinePosX + p_NodeWidth);
-			kia_u32 left = max(skyline->baseLinePosX, p_BaseLinePosX);
+			kia_u32 right = K15_IA_MIN(skyline->baseLinePosX + skyline->baseLineWidth, p_BaseLinePosX + p_NodeWidth);
+			kia_u32 left = K15_IA_MAX(skyline->baseLinePosX, p_BaseLinePosX);
 
 			kia_u32 width = right - left;
 			kia_u32 height = p_BaseLinePosY - skyline->baseLinePosY;
@@ -536,7 +548,7 @@ kia_internal kia_u32 K15_IARemoveOrTrimWastedSpaceRect(K15_IARect* p_WastedSpace
 	{
 		kia_u32 rectWidth = wastedSpaceRect->width;
 		kia_u32 rectHeight = wastedSpaceRect->height;
-
+		
 		kia_u32 restHeight = wastedSpaceRect->height - p_Height;
 		kia_u32 restWidth = wastedSpaceRect->width - p_Width;
 		
