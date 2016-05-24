@@ -323,6 +323,22 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 		DeleteObject(tempBrush);
 	}
 
+	SelectObject(backbufferDC, whitePen);
+	for (uint32 rectIndex = 0;
+		rectIndex < atlas.numWastedSpaceRects;
+		++rectIndex)
+	{
+		HBRUSH tempBrush = CreateSolidBrush(RGB(255, 200, (24 * rectIndex) % 255));
+		SelectObject(backbufferDC, tempBrush);
+		uint32 posX = deltaVirtualWidth / 2 + atlas.wastedSpaceRects[rectIndex].posX;
+		uint32 posY = deltaVirtualHeight / 2 + atlas.wastedSpaceRects[rectIndex].posY;
+		uint32 width = atlas.wastedSpaceRects[rectIndex].width;
+		uint32 height = atlas.wastedSpaceRects[rectIndex].height;
+
+		Rectangle(backbufferDC, posX, posY, posX + width, posY + height);
+		DeleteObject(tempBrush);
+	}
+
 	SelectObject(backbufferDC, magentaPen);
 	for (uint32 skylineIndex = 0;
 		skylineIndex < atlas.numSkylines;
