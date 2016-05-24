@@ -256,11 +256,9 @@ kia_internal kia_u32 K15_IARemoveSkylineByIndex(K15_IASkyline* p_Skylines, kia_u
 		kia_u32 numSkylinesToMove = numSkylines - p_SkylineIndex;
 		K15_IA_MEMMOVE(p_Skylines + p_SkylineIndex, p_Skylines + p_SkylineIndex + 1, 
 			numSkylinesToMove * sizeof(K15_IASkyline));
-	
-		--numSkylines;
 	}
-	
-	return numSkylines;
+
+	return --numSkylines;
 }
 /*********************************************************************************/
 kia_internal kia_u32 K15_IAAddWastedSpaceRect(K15_IARect* p_WastedSpaceRects, kia_u32 p_NumWastedSpaceRects,
@@ -299,7 +297,7 @@ kia_internal void K15_IAFindWastedSpaceAndRemoveObscuredSkylines(K15_IASkyline* 
 		baseLinePosY = skyline->baseLinePosY;
 		baseLineWidth = skyline->baseLineWidth;
 
-		if (p_PosX < baseLinePosX && rightPos > baseLinePosX && p_PosY > baseLinePosY)
+		if (p_PosX < baseLinePosX && rightPos > baseLinePosX && p_PosY >= baseLinePosY)
 		{
 			//Split if we 'reach' into another skyline
 			//check first if the current skyline is fully obscured
@@ -316,6 +314,9 @@ kia_internal void K15_IAFindWastedSpaceAndRemoveObscuredSkylines(K15_IASkyline* 
 			}
 
 			numSkylines = K15_IARemoveSkylineByIndex(p_Skylines, numSkylines, skylineIndex);
+			numWastedSpaceRects = K15_IAAddWastedSpaceRect(p_WastedSpaceRects, numWastedSpaceRects,
+				baseLinePosX, baseLinePosY, baseLineWidth, p_PosY - baseLinePosY);
+
 			--skylineIndex;
 		}
 	}
@@ -338,7 +339,7 @@ kia_internal kia_u32 K15_IAMergeSkylines(K15_IASkyline* p_Skylines, kia_u32 p_Nu
 	{
 		for (kia_u32 skylineIndex = 1;
 			skylineIndex < numSkylines;
-			skylineIndex += 2)
+			++skylineIndex)
 		{
 			skyline = p_Skylines + skylineIndex;
 			previousSkyline = p_Skylines + skylineIndex - 1;
@@ -365,7 +366,7 @@ kia_internal kia_result K15_IATryToInsertSkyline(K15_ImageAtlas* p_ImageAtlas, k
 	kia_u32 numSkylines = p_ImageAtlas->numSkylines;
 	kia_u32 numWastedSpaceRects = p_ImageAtlas->numWastedSpaceRects;
 
-	if (numSkylines == K15_IA_MAX_SKYLINES || numWastedSpaceRects == K15_IA_MAX_WASTED_SPACE_RECTS)
+	if (numSkylines == K15_IA_MAX_SKYLINES)
 		return K15_IA_RESULT_OUT_OF_MEMORY;
 
 	K15_IASkyline* newSkyline = skylines + numSkylines++;
@@ -378,7 +379,6 @@ kia_internal kia_result K15_IATryToInsertSkyline(K15_ImageAtlas* p_ImageAtlas, k
 
 	//try to merge neighbor skylines with the same baseline (y pos)
 	p_ImageAtlas->numSkylines = K15_IAMergeSkylines(skylines, numSkylines);
-	p_ImageAtlas->numWastedSpaceRects = numWastedSpaceRects;
 
 	return K15_IA_RESULT_SUCCESS;
 }
@@ -519,29 +519,57 @@ kia_internal kia_u32 K15_IARemoveOrTrimWastedSpaceRect(K15_IARect* p_WastedSpace
 	kia_u32 p_NumWastedSpaceRects, kia_u32 p_Index, kia_u32 p_Width, kia_u32 p_Height)
 {
 	K15_IARect* wastedSpaceRect = p_WastedSpaceRects + p_Index;
-
-	if (wastedSpaceRect->width > p_Width &&
+	
+	if (wastedSpaceRect->width == p_Width &&
 		wastedSpaceRect->height > p_Height)
 	{
-		//Trim
-		wastedSpaceRect->posX += p_Width;
 		wastedSpaceRect->posY += p_Height;
-		wastedSpaceRect->width -= p_Width;
 		wastedSpaceRect->height -= p_Height;
+	}
+	else if (wastedSpaceRect->height == p_Height &&
+			 wastedSpaceRect->width > p_Width)
+	{
+		wastedSpaceRect->posX += p_Width;
+		wastedSpaceRect->width -= p_Width;
 	}
 	else
 	{
+		kia_u32 rectWidth = wastedSpaceRect->width;
+		kia_u32 rectHeight = wastedSpaceRect->height;
+
+		kia_u32 restHeight = wastedSpaceRect->height - p_Height;
+		kia_u32 restWidth = wastedSpaceRect->width - p_Width;
+		
+		kia_u32 posLowerX = wastedSpaceRect->posX;
+		kia_u32 posLowerY = wastedSpaceRect->posY + p_Height;
+		kia_u32 posRightX = wastedSpaceRect->posX + p_Width;
+		kia_u32 posRightY = wastedSpaceRect->posY;
+
 		if (p_NumWastedSpaceRects > 1)
 		{
 			//Remove
 			kia_u32 numElementsToShift = p_NumWastedSpaceRects - p_Index;
 			K15_IA_MEMMOVE(p_WastedSpaceRects + p_Index, p_WastedSpaceRects + p_Index + 1,
 				sizeof(K15_IARect) * numElementsToShift);
+		}
 
-			--p_NumWastedSpaceRects;
+		--p_NumWastedSpaceRects;
+
+		if (restWidth != 0 && restHeight != 0)
+		{
+			if (restWidth > restHeight)
+			{
+				p_NumWastedSpaceRects = K15_IAAddWastedSpaceRect(p_WastedSpaceRects, p_NumWastedSpaceRects, posRightX, posRightY, restWidth, rectHeight);
+				p_NumWastedSpaceRects = K15_IAAddWastedSpaceRect(p_WastedSpaceRects, p_NumWastedSpaceRects, posLowerX, posLowerY, p_Width, restHeight);
+			}
+			else
+			{
+				p_NumWastedSpaceRects = K15_IAAddWastedSpaceRect(p_WastedSpaceRects, p_NumWastedSpaceRects, posLowerX, posLowerY, rectWidth, restHeight);
+				p_NumWastedSpaceRects = K15_IAAddWastedSpaceRect(p_WastedSpaceRects, p_NumWastedSpaceRects, posRightX, posRightY, restWidth, p_Height);
+			}
 		}
 	}
-
+	
 	return p_NumWastedSpaceRects;
 }
 /*********************************************************************************/
@@ -690,6 +718,8 @@ kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtla
 
 			result = K15_IATryToInsertSkyline(p_ImageAtlas, p_NodeToInsert->rect.posY + p_NodeToInsert->rect.height,
 				p_NodeToInsert->rect.posX, p_NodeToInsert->rect.width);
+
+			numSkylines = p_ImageAtlas->numSkylines;
 		}
 	}
 	else
@@ -707,11 +737,11 @@ kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtla
 
 		//remove/trim any skylines that would be obscured by the new skyline
 		K15_IAFindWastedSpaceAndRemoveObscuredSkylines(skylines, &numSkylines,
-			wastedSpaceRects, &numWastedSpaceRects,
+			wastedSpaceRects, &p_ImageAtlas->numWastedSpaceRects,
 			p_NodeToInsert->rect.posX, p_NodeToInsert->rect.posY, 
 			p_NodeToInsert->rect.width);
 
-		p_ImageAtlas->numWastedSpaceRects = numWastedSpaceRects;
+		p_ImageAtlas->numSkylines = numSkylines;
 	}
 
 	return result;

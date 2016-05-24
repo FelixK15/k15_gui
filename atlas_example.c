@@ -54,26 +54,32 @@ void saveAtlas()
 {
 	K15_IAImageNode* nodes = lastAtlas.imageNodes;
 	K15_IASkyline* skylines = lastAtlas.skylines;
+	K15_IARect* wastedSpaceRects = lastAtlas.wastedSpaceRects;
 
 	memcpy(nodes, atlas.imageNodes, sizeof(K15_IAImageNode) * atlas.numImageNodes);
 	memcpy(skylines, atlas.skylines, sizeof(K15_IASkyline) * atlas.numSkylines);
+	memcpy(wastedSpaceRects, atlas.wastedSpaceRects, sizeof(K15_IARect) * atlas.numWastedSpaceRects);
 
 	lastAtlas = atlas;
 	lastAtlas.imageNodes = nodes;
 	lastAtlas.skylines = skylines;
+	lastAtlas.wastedSpaceRects = wastedSpaceRects;
 }
 
 void restoreAtlas()
 {
 	K15_IAImageNode* nodes = atlas.imageNodes;
 	K15_IASkyline* skylines = atlas.skylines;
+	K15_IARect* wastedSpaceRects = atlas.wastedSpaceRects;
 
 	memcpy(nodes, lastAtlas.imageNodes, sizeof(K15_IAImageNode) * lastAtlas.numImageNodes);
 	memcpy(skylines, lastAtlas.skylines, sizeof(K15_IASkyline) * lastAtlas.numSkylines);
+	memcpy(wastedSpaceRects, lastAtlas.wastedSpaceRects, sizeof(K15_IARect) * lastAtlas.numWastedSpaceRects);
 
 	atlas = lastAtlas;
 	atlas.imageNodes = nodes;
 	atlas.skylines = skylines;
+	atlas.wastedSpaceRects = wastedSpaceRects;
 }
 
 void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
@@ -249,11 +255,10 @@ void setup(HWND p_HWND)
 		++nodeIndex)
 	{
 		posPlace[nodeIndex].x = rand() % 45 + 5;
-		//posPlace[nodeIndex].y = rand() % 45 + 5;
-		posPlace[nodeIndex].y = 25;
+		posPlace[nodeIndex].y = rand() % 45 + 5;
 	}
 
-	//qsort(posPlace, numNodes, sizeof(pos), sortFnc);
+	qsort(posPlace, numNodes, sizeof(pos), sortFnc);
 
 	return;
 }
@@ -269,11 +274,8 @@ void swapBuffers(HWND p_HWND)
 	BitBlt(backbufferDC, 0, 0, screenWidth, screenHeight, backbufferDC, 0, 0, BLACKNESS);
 }
 
-void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
+void doFrame(HWND p_HWND)
 {
-	char messageBuffer[256] = { 0 };
-	sprintf_s(messageBuffer, 256, "MS: %d", p_DeltaTimeInMS);
-
 	RECT textRect = {};
 	textRect.left = 0;
 	textRect.top = 0;
@@ -285,6 +287,8 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 	uint32 deltaHeight = screenHeight - atlas.maxPixelHeight;
 	uint32 deltaWidth = screenWidth - atlas.maxPixelWidth;
 
+	char messageBuffer[255];
+	sprintf_s(messageBuffer, 255, "NumSkylines: %d", atlas.numSkylines);
 	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
 
 	if (pressedLastFrame && insertedNodes != numNodes)
@@ -312,7 +316,7 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 	nodeIndex < insertedNodes;
 		++nodeIndex)
 	{
-		HBRUSH tempBrush = CreateSolidBrush(RGB((24 * nodeIndex) % 255, 200, 200));
+		HBRUSH tempBrush = CreateSolidBrush(RGB(24, 200, 200));
 		SelectObject(backbufferDC, tempBrush);
 		uint32 posX = deltaVirtualWidth / 2 + positions[nodeIndex].x;
 		uint32 posY = deltaVirtualHeight / 2 + positions[nodeIndex].y;
@@ -328,7 +332,7 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 		rectIndex < atlas.numWastedSpaceRects;
 		++rectIndex)
 	{
-		HBRUSH tempBrush = CreateSolidBrush(RGB(255, 200, (24 * rectIndex) % 255));
+		HBRUSH tempBrush = CreateSolidBrush(RGB(255, 200, 24));
 		SelectObject(backbufferDC, tempBrush);
 		uint32 posX = deltaVirtualWidth / 2 + atlas.wastedSpaceRects[rectIndex].posX;
 		uint32 posY = deltaVirtualHeight / 2 + atlas.wastedSpaceRects[rectIndex].posY;
@@ -410,10 +414,10 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 				loopRunning = K15_FALSE;
 		}
 
-		doFrame(deltaMs, hwnd);
+		doFrame(hwnd);
 
 		timeFrameEnded = getTimeInMilliseconds(performanceFrequency);
-		deltaMs = timeFrameEnded - timeFrameStarted;
+		deltaMs = timeFrameEnded - timeFrameStarted;		
 	}
 
 	return 0;
