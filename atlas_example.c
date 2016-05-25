@@ -39,9 +39,8 @@ struct pos
 	int width;
 	int height;
 };
-K15_ImageAtlas atlas = {};
-K15_ImageAtlas lastAtlas = {};
-K15_ImageAtlas tempAtlas = {};
+K15_ImageAtlas atlas;
+K15_ImageAtlas lastAtlas;
 
 const uint32 numNodes = 200;
 uint32 insertedNodes = 0;
@@ -184,7 +183,9 @@ LRESULT CALLBACK K15_WNDPROC(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARA
 
 HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 {
-	WNDCLASS wndClass = {};
+	WNDCLASS wndClass;
+	ZeroMemory(&wndClass, sizeof(wndClass));
+
 	wndClass.style = CS_HREDRAW | CS_OWNDC | CS_VREDRAW;
 	wndClass.hInstance = p_Instance;
 	wndClass.lpszClassName = "K15_Win32Template";
@@ -346,13 +347,13 @@ void doFrame(HWND p_HWND)
 		Rectangle(backbufferDC, posX, posY + 1, posX + skyline->baseLineWidth, posY);
 	}
 
-	RECT widthTextRect = {};
+	RECT widthTextRect;
 	widthTextRect.left = screenWidth / 2 - 50;
 	widthTextRect.right = screenWidth / 2 + 50;
 	widthTextRect.top = deltaVirtualHeight / 2 - 30;
 	widthTextRect.bottom = deltaVirtualHeight / 2;
 
-	RECT heightTextRect = {};
+	RECT heightTextRect;
 	heightTextRect.left = screenWidth / 2 + atlas.virtualPixelWidth / 2;
 	heightTextRect.right = heightTextRect.left + 100;
 	heightTextRect.top = screenHeight / 2 - 20;
@@ -365,7 +366,7 @@ void doFrame(HWND p_HWND)
 	sprintf_s(buffer, 256, "Height: %dpx", atlas.virtualPixelHeight);
 	DrawTextA(backbufferDC, buffer, -1, &heightTextRect, DT_CENTER);
 
-	RECT textRect = {};
+	RECT textRect;
 	textRect.left = 70;
 	textRect.top = 200;
 	textRect.bottom = screenHeight;
@@ -405,7 +406,7 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 	uint32 deltaMs = 0;
 
 	bool8 loopRunning = K15_TRUE;
-	MSG msg = {};
+	MSG msg;
 
 	while (loopRunning)
 	{
