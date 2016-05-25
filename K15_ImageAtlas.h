@@ -12,6 +12,7 @@
 
 typedef signed int kia_s32;
 typedef unsigned int kia_u32;
+typedef unsigned short kia_u16;
 typedef unsigned char kia_u8;
 typedef unsigned char kia_b8;
 typedef unsigned char kia_byte;
@@ -61,8 +62,8 @@ typedef struct _K15_IAImageNode
 
 typedef struct _K15_IASkyline
 {
-	kia_u32 baseLinePosX;
-	kia_u32 baseLinePosY;
+	kia_u16 baseLinePosX;
+	kia_u16 baseLinePosY;
 	kia_u32 baseLineWidth;
 } K15_IASkyline;
 
@@ -115,7 +116,7 @@ kia_def void K15_IAFreeAtlas(K15_ImageAtlas* p_ImageAtlas);
 //		of the atlas (specified in K15_IACreateAtlas) the function will convert the image to match up with
 //		the pixel format of the atlas.
 kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPixelFormat p_PixelFormat,
-	unsigned char* p_PixelData, int p_PixelDataWidth, int p_PixelDataHeight,
+	unsigned char* p_PixelData, unsigned int p_PixelDataWidth, unsigned int p_PixelDataHeight,
 	int* p_OutX, int* p_OutY);
 
 #ifdef K15_IA_IMPLEMENTATION
@@ -608,6 +609,34 @@ kia_u32 K15_IACollectPotentialPlacementsInWastedSpace(K15_IARect* p_WastedSpaceR
 	return numPotentialPositions;
 }
 /*********************************************************************************/
+kia_internal kia_u32 K15_IACalculateWastedSpaceForNodePlacement(K15_IASkyline* p_Skylines, kia_u32 p_NumSkylies,
+	kia_u32 p_PosX, kia_u32 p_PosY, kia_u32 p_Width, kia_u32 p_Height)
+{
+	K15_IASkyline* skyline = 0;
+	kia_u32 skylineIndex = 0;
+	kia_u32 rightPos = p_PosX + p_Width;
+	kia_u32 wastedSpaceWidth = 0;
+	kia_u32 wastedSpaceHeight = 0;
+	kia_u32 totalHeuristic = 0;
+
+	for (skylineIndex = 0;
+		skylineIndex < p_NumSkylies;
+		++skylineIndex)
+	{
+		skyline = p_Skylines + skylineIndex;
+		
+		if (rightPos > skyline->baseLinePosX)
+		{
+			wastedSpaceWidth = K15_IA_MIN(skyline->baseLineWidth, rightPos - skyline->baseLinePosX);
+			wastedSpaceHeight = p_PosY - skyline->baseLinePosY;
+		
+			totalHeuristic = wastedSpaceHeight * wastedSpaceWidth;
+		}
+	}
+
+	return totalHeuristic;
+}
+/*********************************************************************************/
 kia_internal kia_u32 K15_IACollectPotentialPlacementsInSkylines(K15_IASkyline* p_Skylines, kia_u32 p_NumSkylines,
 	K15_IAImageNode* p_ImageNodes, kia_u32 p_NumImageNodes,
 	K15_IAPotentialPosition* p_PotentialPostions, kia_u32 p_NumMaxPotentialPositions,
@@ -641,7 +670,7 @@ kia_internal kia_u32 K15_IACollectPotentialPlacementsInSkylines(K15_IASkyline* p
 				numPotentialPositions != p_NumMaxPotentialPositions)
 			{
 				//node potentially fits. Calculate and save heuristic
-				kia_u32 heuristic = K15_IACalculatePlacementHeuristic(skylinePosX, skylinePosY, p_Width, p_Height, skyline, p_Skylines, p_NumSkylines);
+				kia_u32 heuristic = K15_IACalculateWastedSpaceForNodePlacement(skyline, p_NumSkylines - skylineIndex, skylinePosX, skylinePosY, p_Width, p_Height);
 				K15_IAPotentialPosition* potentialPosition = p_PotentialPostions + numPotentialPositions++;
 
 				potentialPosition->elementIndex = skylineIndex;
@@ -770,11 +799,8 @@ kia_internal kia_result K15_IAAddImageToAtlasSkyline(K15_ImageAtlas* p_ImageAtla
 functionEnd:
 	if (result == K15_IA_RESULT_SUCCESS)
 	{
-		if (p_OutX)
-			*p_OutX = nodePosX;
-
-		if (p_OutY)
-			*p_OutY = nodePosY;
+		*p_OutX = (int)nodePosX;
+		*p_OutY = (int)nodePosY;
 
 		//remove/trim any skylines that would be obscured by the new skyline
 		K15_IAFindWastedSpaceAndRemoveObscuredSkylines(skylines, &numSkylines,
@@ -821,7 +847,7 @@ kia_def kia_result K15_IACreateAtlas(K15_ImageAtlas* p_OutTextureAtlas, K15_IAPi
 }
 /*********************************************************************************/
 kia_def kia_result K15_IACreateAtlasWithCustomMemory(K15_ImageAtlas* p_OutImageAtlas, K15_IAPixelFormat p_PixelFormat,
-	unsigned int p_NumImages, unsigned int p_MaxPixelWidth, unsigned int p_MaxPixelHeight, kia_byte* p_MemoryBuffer)
+	unsigned int p_NumImages, unsigned int p_MaxPixelWidth, unsigned int p_MaxPixelHeight, unsigned char* p_MemoryBuffer)
 {
 	if (!p_OutImageAtlas || p_NumImages == 0
 		|| p_MaxPixelHeight < K15_IA_DEFAULT_MIN_ATLAS_DIMENSION 
@@ -858,15 +884,15 @@ kia_def kia_result K15_IACreateAtlasWithCustomMemory(K15_ImageAtlas* p_OutImageA
 	atlas.flags = KIA_EXTERNAL_MEMORY_FLAG;
 
 	//Insert default skyline
-	K15_IATryToInsertSkyline(&atlas, 0, 0, K15_IA_DEFAULT_MIN_ATLAS_DIMENSION);
+	K15_IATryToInsertSkyline(atlas.skylines, &atlas.numSkylines, 0, 0, K15_IA_DEFAULT_MIN_ATLAS_DIMENSION);
 
 	*p_OutImageAtlas = atlas;
 
 	return K15_IA_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kia_def kia_u32 K15_IACalculateAtlasMemorySizeInBytes(kia_u32 p_NumImages, kia_u32 p_MaxPixelWidth,
-	kia_u32 p_MaxPixelHeight, K15_IAPixelFormat p_PixelFormat)
+kia_def kia_u32 K15_IACalculateAtlasMemorySizeInBytes(unsigned int p_NumImages, unsigned int p_MaxPixelWidth,
+	unsigned int p_MaxPixelHeight, K15_IAPixelFormat p_PixelFormat)
 {
 	kia_u32 numPixels = p_MaxPixelHeight * p_MaxPixelWidth;
 	kia_u32 pixelDataSizeInBytes = numPixels * p_PixelFormat;
@@ -887,7 +913,7 @@ kia_def void K15_IAFreeAtlas(K15_ImageAtlas* p_ImageAtlas)
 }
 /*********************************************************************************/
 kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPixelFormat p_PixelFormat,
-	kia_byte* p_PixelData, kia_u32 p_PixelDataWidth, kia_u32 p_PixelDataHeight,
+	unsigned char* p_PixelData, unsigned int p_PixelDataWidth, unsigned int p_PixelDataHeight,
 	int* p_OutX, int* p_OutY)
 {
 	if (!p_ImageAtlas || !p_PixelData || p_PixelDataWidth == 0 || p_PixelDataHeight == 0 ||
@@ -917,7 +943,7 @@ kia_def kia_result K15_IAAddImageToAtlas(K15_ImageAtlas* p_ImageAtlas, K15_IAPix
 
 	if (result == K15_IA_RESULT_ATLAS_TOO_SMALL)
 	{
-		kia_u32 newVirtualWidth = p_PixelDataWidth > p_PixelDataHeight ? p_PixelDataWidth + virtualWidth : virtualWidth;
+		kia_u32 newVirtualWidth = p_PixelDataWidth >= p_PixelDataHeight ? p_PixelDataWidth + virtualWidth : virtualWidth;
 		kia_u32 newVirtualHeight = p_PixelDataHeight > p_PixelDataWidth ? p_PixelDataHeight + virtualHeight : virtualHeight;
 
 		growResult = K15_IATryToGrowVirtualAtlasSizeToFit(p_ImageAtlas, newVirtualWidth, newVirtualHeight);
