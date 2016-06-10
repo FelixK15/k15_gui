@@ -1,6 +1,12 @@
 #ifndef _K15_GUILayer_Context_h_
 #define _K15_GUILayer_Context_h_
 
+#ifndef K15_GUI_STATIC
+# define kg_def static
+#else
+# define kg_def extern
+#endif //K15_GUI_STATIC
+
 #define K15_GUI_MAX_LAYOUTS 20
 #define K15_GUI_MAX_RESOURCE_NAME_LENGTH 64
 #define K15_GUI_MAX_ICONS_PER_ICON_SET 64
@@ -9,6 +15,7 @@
 #define K15_GUI_MAX_BUFFERED_MOUSE_INPUTS 16
 #define K15_GUI_MAX_BUFFERED_KEYBOARD_INPUTS 16
 #define K15_GUI_MAX_BUFFERED_SYSTEM_EVENTS 16
+#define K15_GUI_ELEMENT_HASH_TABLE_SIZE 4096
 
 #define K15_GUI_TRUE 1
 #define K15_GUI_FALSE 0
@@ -22,6 +29,7 @@ typedef unsigned long long kg_u64;
 typedef unsigned int kg_u32;
 typedef unsigned short kg_u16;
 typedef unsigned char kg_u8;
+typedef float kg_f32;
 
 typedef unsigned int kg_color32;
 
@@ -51,7 +59,8 @@ typedef enum _K15_GUIResults
 	K15_GUI_RESULT_FILE_FORMAT_NOT_SUPPORTED = 11,
 	K15_GUI_RESULT_TOO_MANY_ICONS = 12,
 	K15_GUI_RESULT_NO_ICONS = 13,
-	K15_GUI_RESULT_UNKNOWN_ERROR = 14
+	K15_GUI_RESULT_HASH_CONFLICT = 14,
+	K15_GUI_RESULT_UNKNOWN_ERROR = 15
 } kg_result;
 /*********************************************************************************/
 enum _K15_GUIContextInitFlags
@@ -163,18 +172,29 @@ typedef enum _K15_GUIResourceType
 	K15_GUI_ICONSET_RESOURCE_TYPE
 } K15_GUIResourceType;
 /*********************************************************************************/
+typedef enum _K15_GUILayoutType
+{
+	K15_GUI_HORIZONTAL_LAYOUT_TYPE = 0,
+	K15_GUI_VERTICAL_LAYOUT_TYPE
+} K15_GUILayoutType;
+/*********************************************************************************/
+typedef enum _K15_GUIElementType
+{
+	K15_GUI_TOOLBAR_ELEMENT_TYPE = 0
+} K15_GUIElementType;
+/*********************************************************************************/
 typedef struct _K15_GUIMouseInput
 {
 	union
 	{
 		struct
 		{
-			kg_u16 mousePosX;
-			kg_u16 mousePosY;
-		};
+			kg_u16 x;
+			kg_u16 y;
+		} mousePos;
 
 		kg_u32 mouseButton;
-	};
+	} data;
 
 	K15_GUIMouseInputType type;
 } K15_GUIMouseInput;
@@ -385,13 +405,52 @@ typedef struct _K15_GUIGlyphRange
 	kg_u32 to;
 } K15_GUIGlyphRange;
 /*********************************************************************************/
-typedef struct _K15_GUIContext
+typedef union _K15_GUIDrawCommand
+{
+	union 
+	{
+		struct
+		{
+			kg_u32 numTriangles;
+			kg_u32 attributeFlags;
+			kg_f32* vertexData;
+		} vertex;
+	} commandData;
+	
+	kg_u64 textureUserData;
+} K15_GUIDrawCommand;
+/*********************************************************************************/
+typedef struct _K15_GUILayoutData
+{
+	K15_GUILayoutType type;
+	kg_u32 numElements;
+} K15_GUILayoutData;
+/*********************************************************************************/
+typedef struct _K15_GUIElement
+{
+	K15_GUIClipRect clipRect;
+	K15_GUIElementType type;
+	kg_u32 identifierHash;
+	kg_u32 offsetNextElementInBytes;
+} K15_GUIElement;
+/*********************************************************************************/
+typedef struct _K15_GUIContextMemory
 {
 	kg_byte* memoryBuffer;
-	K15_GUIResourceDatabase* resourceDatabase;
+	kg_u32 memoryBufferSizeInBytes;
+	kg_u32 memoryBufferCapacityInBytes;
+} K15_GUIContextMemory;
+/*********************************************************************************/
+typedef struct _K15_GUIContext
+{
+	K15_GUIElement* elementHashTable[K15_GUI_ELEMENT_HASH_TABLE_SIZE];
+	K15_GUIElement* layoutTable[K15_GUI_MAX_LAYOUTS];
 	K15_GUIContextStyle style;
 	K15_GUIContextEvents events;
+	K15_GUIContextMemory memory;
 	K15_GUIClipRect clipRect;
+	K15_GUIResourceDatabase* resourceDatabase;
+	kg_result lastResult;
 	kg_u32 focusedElementIdHash;
 	kg_u32 clickedElementIdHash;
 	kg_u32 activatedElementIdHash;
@@ -414,84 +473,101 @@ typedef struct _K15_GUIContext
 // - iterate over elements (rendering)
 // - Call gui logic (next frame - retrieve results from last frame. Mainly results of the input)
 
-kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
+kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
 	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom,
 	kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS);
 
-kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
+kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
 	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
 	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes,
 	kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS);
 
 //*****************RESOURCES******************//
-kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase);
-kg_result K15_GUICreateResourceDatabaseWithCustomMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase);
+kg_def kg_result K15_GUICreateResourceDatabaseWithCustomMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_DatabaseMemory, kg_u32 p_DatabaseMemorySizeInBytes);
 
-kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, const char* p_FontFilePath, kg_u8 p_FontSize, const char* p_FontName,
 	kg_u8 p_GlyphRangeFlags = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
 
-kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, kg_byte* p_TrueTypeFontBuffer, kg_u8 p_FontSize, const char* p_FontName,
 	kg_u8 p_GlyphRangeFlags = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
 
-kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	const char* p_IconFilePath, const char* p_IconName);
 
-kg_result K15_GUICreateIconResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateIconResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_IconFileMemory, kg_u32 p_IconFileDataBufferSizeInBytes, const char* p_IconName);
 
-kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_IconPixelDataBuffer, kg_u32 p_PixelWidth, kg_u32 p_PixelHeight, 
 	kg_u8 p_ColorComponents, const char* p_IconName);
 
-kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase, 
+kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName);
 
-kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, const char* p_FontName);
 
-kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName);
 
-void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier);
-void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier, K15_GUIToolBarStyle* p_Style);
+//*****************CONTROLS******************//
+kg_def void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier);
+kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier, 
+	K15_GUIToolBarStyle* p_Style);
 
-kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY, kg_u16* p_Width, kg_u16* p_Height, const char* p_Title, const char* p_Identifier);
-kg_b8 K15_GUICustomBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY, kg_u16* p_Width, kg_u16* p_Height, const char* p_Title, const char* p_Identifier, K15_GUIWindowStyle* p_Style);
+kg_def kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY, 
+	kg_u16* p_Width, kg_u16* p_Height, const char* p_Title, const char* p_Identifier);
+kg_def kg_b8 K15_GUICustomBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY, 
+	kg_u16* p_Width, kg_u16* p_Height, const char* p_Title, const char* p_Identifier, 
+	K15_GUIWindowStyle* p_Style);
 
-kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier);
-kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier, K15_GUIMenuStyle* p_Style);
+kg_def kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier);
+kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier, 
+	K15_GUIMenuStyle* p_Style);
 
-kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier);
-kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier, K15_GUIMenuItemStyle* p_Style);
+kg_def kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier);
+kg_def kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier, 
+	K15_GUIMenuItemStyle* p_Style);
 
-kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier);
-kg_b8 K15_GUICustomButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier, K15_GUIButtonStyle* p_Style);
+kg_def kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier);
+kg_def kg_b8 K15_GUICustomButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier, 
+	K15_GUIButtonStyle* p_Style);
 
-void K15_GUILabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier);
-void K15_GUICustomLabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier, K15_GUILabelStyle* p_Style);
+kg_def void K15_GUILabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier);
+kg_def void K15_GUICustomLabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier, 
+	K15_GUILabelStyle* p_Style);
 
-void K15_GUISeparator(K15_GUIContext* p_GUIContext);
+kg_def void K15_GUISeparator(K15_GUIContext* p_GUIContext);
 
-void K15_GUIEndWindow(K15_GUIContext* p_GUIContext);
-void K15_GUIEndMenu(K15_GUIContext* p_GUIContext);
-void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext);
+kg_def void K15_GUIEndWindow(K15_GUIContext* p_GUIContext);
+kg_def void K15_GUIEndMenu(K15_GUIContext* p_GUIContext);
+kg_def void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext);
 
-void K15_GUIFinishFrame(K15_GUIContext* p_GUIContext);
+kg_def void K15_GUIFinishFrame(K15_GUIContext* p_GUIContext);
 
-void K15_GUIPopLayout(K15_GUIContext* p_GUIContext);
+kg_def void K15_GUIPopLayout(K15_GUIContext* p_GUIContext);
 
-void K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMessage, kg_u32 p_OutMessageBufferSizeInBytes);
+kg_def kg_result K15_GUIGetLastResult(K15_GUIContext* p_GUIContext);
+kg_def kg_u32 K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMessage, kg_u32 p_OutMessageBufferSizeInBytes);
 
-kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIMouseInput p_MouseInput);
-kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput);
-kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent);
+//*****************INPUT******************//
+kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIMouseInput p_MouseInput);
+kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput);
+kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent);
 
 #ifdef K15_GUI_IMPLEMENTATION
-#define internal static
-#define K15_GUI_SWAP(a, b) {a ^= b; b ^= a; a ^= b;}
+
+#ifndef kg_internal
+# define kg_internal static
+#endif //kg_internal
+
+#ifndef K15_GUI_SWAP
+# define K15_GUI_SWAP(a, b) {a ^= b; b ^= a; a ^= b;}
+#endif //K15_GUI_SWAP
 
 #ifndef K15_GUI_STRIP_STANDARD_IO
 # define _CRT_SECURE_NO_WARNINGS
@@ -508,6 +584,11 @@ kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GU
 # include <string.h>
 # define K15_GUI_MEMCPY memcpy
 #endif //K15_GUI_MEMCPY
+
+#ifndef K15_GUI_MEMSET
+# include <string.h>
+# define K15_GUI_MEMSET memset
+#endif //K15_GUI_MEMSEt
 
 #ifndef K15_GUI_MEMMOVE
 # include <string.h>
@@ -540,6 +621,7 @@ kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GU
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
+//TEMP
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
@@ -556,7 +638,7 @@ kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GU
 
 /*********************************************************************************/
 #ifndef K15_GUI_STRIP_STANDARD_IO
-static kg_result K15_GUIOpenFileForReading(const char* p_FilePath,
+kg_internal kg_result K15_GUIOpenFileForReading(const char* p_FilePath,
 	FILE** p_FileHandlePtr, kg_u32* p_FileSizePtr)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
@@ -578,7 +660,7 @@ static kg_result K15_GUIOpenFileForReading(const char* p_FilePath,
 }
 #endif //!K15_GUI_STRIP_STANDARD_IO
 /*********************************************************************************/
-static kg_u32 K15_GUIGetGlyphCountForGlyphRanges(kg_u8 p_GlyphRangeFlags)
+kg_internal kg_u32 K15_GUIGetGlyphCountForGlyphRanges(kg_u8 p_GlyphRangeFlags)
 {
 	kg_u32 numGlyphes = 0;
 	if ((p_GlyphRangeFlags & K15_GUI_FONT_INCLUDE_LATIN_GLYPHS) > 0)
@@ -593,7 +675,7 @@ static kg_u32 K15_GUIGetGlyphCountForGlyphRanges(kg_u8 p_GlyphRangeFlags)
 	return numGlyphes;
 }
 /*********************************************************************************/
-static kg_u32 K15_GUIGetGlyphRanges(kg_u8 p_GlyphRangeFlags, K15_GUIGlyphRange** p_OutGlyphRangeArray,
+kg_internal kg_u32 K15_GUIGetGlyphRanges(kg_u8 p_GlyphRangeFlags, K15_GUIGlyphRange** p_OutGlyphRangeArray,
 	kg_u32 p_GlyphRangeArraySize)
 {
 	kg_u32 glyphRangeIndex = 0;
@@ -633,7 +715,7 @@ static kg_u32 K15_GUIGetGlyphRanges(kg_u8 p_GlyphRangeFlags, K15_GUIGlyphRange**
 	return glyphRangeIndex;
 }
 /*********************************************************************************/
-static kg_result K15_GUIConvertIAResult(kia_result p_ResultIA)
+kg_internal kg_result K15_GUIConvertIAResult(kia_result p_ResultIA)
 {
 	if (p_ResultIA == K15_IA_RESULT_OUT_OF_MEMORY)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
@@ -645,7 +727,7 @@ static kg_result K15_GUIConvertIAResult(kia_result p_ResultIA)
 	return K15_GUI_RESULT_UNKNOWN_ERROR;
 }
 /*********************************************************************************/
-static kg_result K15_GUIConvertSTBIResult(const char* p_ResultSTBI)
+kg_internal kg_result K15_GUIConvertSTBIResult(const char* p_ResultSTBI)
 {
 	if (K15_GUI_STRCMP(p_ResultSTBI, "Corrupt JPEG") == 0 ||
 		K15_GUI_STRCMP(p_ResultSTBI, "Corrupt PNG") == 0 ||
@@ -670,7 +752,7 @@ static kg_result K15_GUIConvertSTBIResult(const char* p_ResultSTBI)
 	return K15_GUI_RESULT_UNKNOWN_ERROR;
 }
 /*********************************************************************************/
-static kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase)
+kg_def kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
 	if (!p_GUIResourceDatabase)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
@@ -684,7 +766,7 @@ static kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIRes
 		resourceDatabaseMemory, K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE);
 }
 /*********************************************************************************/
-static kg_result K15_GUICreateResourceDatabaseWithCustomMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateResourceDatabaseWithCustomMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_DatabaseMemory, kg_u32 p_DatabaseMemorySizeInBytes)
 {
 	if (!p_DatabaseMemory || p_DatabaseMemorySizeInBytes == 0)
@@ -697,7 +779,7 @@ static kg_result K15_GUICreateResourceDatabaseWithCustomMemory(K15_GUIResourceDa
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-static kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, const char* p_FontFilePath, kg_u8 p_FontSize, const char* p_FontName,
 	kg_u8 p_GlyphRangeFlags)
 {
@@ -735,7 +817,7 @@ static kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GU
 	return result;
 }
 /*********************************************************************************/
-static kg_b8 K15_GUIFitsIntoResourceTableMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_internal kg_b8 K15_GUIFitsIntoResourceTableMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_u32 p_SizeInBytes)
 {
 	kg_u32 capacityResourceMemoryInBytes = p_GUIResourceDatabase->resourceMemoryCapacityInBytes;
@@ -744,7 +826,7 @@ static kg_b8 K15_GUIFitsIntoResourceTableMemory(K15_GUIResourceDatabase* p_GUIRe
 	return (capacityResourceMemoryInBytes >= sizeResourceMemoryInBytes + p_SizeInBytes);
 }
 /*********************************************************************************/
-static kg_b8 K15_GUISearchResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_internal kg_b8 K15_GUISearchResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	const char* p_ResourceName, K15_GUIResourceTableEntry** p_OutResourceTableEntryPtr)
 {
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
@@ -771,7 +853,7 @@ static kg_b8 K15_GUISearchResourceTableEntry(K15_GUIResourceDatabase* p_GUIResou
 	return K15_GUI_FALSE;
 }
 /*********************************************************************************/
-static kg_result K15_GUICreateResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase, 
+kg_internal kg_result K15_GUICreateResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIResourceTableEntry** p_TableEntryPtr, const char* p_Name, K15_GUIResourceType p_ResourceType)
 {
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
@@ -797,7 +879,7 @@ static kg_result K15_GUICreateResourceTableEntry(K15_GUIResourceDatabase* p_GUIR
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-static kg_result K15_GUIGetResourceTableEntryMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_internal kg_result K15_GUIGetResourceTableEntryMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIResourceTableEntry* p_TableEntry, void** p_MemoryPtr, kg_u32 p_SizeInBytes)
 {
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
@@ -814,7 +896,7 @@ static kg_result K15_GUIGetResourceTableEntryMemory(K15_GUIResourceDatabase* p_G
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-static kg_result K15_GUIRemoveResourceTableEntryByName(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_internal kg_result K15_GUIRemoveResourceTableEntryByName(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	const char* p_ResourceName)
 {
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
@@ -846,7 +928,7 @@ static kg_result K15_GUIRemoveResourceTableEntryByName(K15_GUIResourceDatabase* 
 	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
 }
 /*********************************************************************************/
-static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, kg_byte* p_TrueTypeFontBuffer, kg_u8 p_FontSize, const char* p_FontName,
 	kg_u8 p_GlyphRangeFlags)
 {
@@ -871,9 +953,9 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
 
-	kg_u32 numComponents = 1;
 	K15_ImageAtlas textureAtlas = {};
-	kia_result taResult = K15_IACreateAtlas(&textureAtlas, numComponents);
+	kia_result taResult = K15_IACreateAtlas(&textureAtlas, KIA_PIXEL_FORMAT_R8,
+		numGlyphs);
 
 	if (taResult != K15_IA_RESULT_SUCCESS)
 	{
@@ -919,6 +1001,7 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		kg_u32 codepoint = glyphRange->from;
 		kg_u32 endCodepoint = glyphRange->to;
 		kg_u32 glyphArrayIndex = 0;
+
 		while (codepoint < endCodepoint)
 		{
 			K15_GUIRectangle glyphRect = {};
@@ -936,11 +1019,11 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				glyphBitmapHeight > 0 && 
 				glyphBitmapWidth > 0)
 			{
-				kia_u32 glyphBitmapPosX = 0;
-				kia_u32 glyphBitmapPosY = 0;
+				int glyphBitmapPosX = 0;
+				int glyphBitmapPosY = 0;
 
-				taResult = K15_IAAddImageToAtlas(&textureAtlas, glyphBitmap,
-					numComponents, glyphBitmapWidth, glyphBitmapHeight, 
+				taResult = K15_IAAddImageToAtlas(&textureAtlas, KIA_PIXEL_FORMAT_R8, 
+					glyphBitmap, glyphBitmapWidth, glyphBitmapHeight, 
 					&glyphBitmapPosX, &glyphBitmapPosY);
 
 				kg_s32 leftSideBearing = 0;
@@ -970,11 +1053,11 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		}
 	}
 
-	kia_u32 textureWidth = 0;
-	kia_u32 textureHeight = 0;
-	kia_byte* texturePixelData = K15_IAGetAtlasPixelData(&textureAtlas, &textureWidth, &textureHeight);
-	kia_u32 texturePixelDataSizeInBytes = K15_IAGetAtlasPixelDataSizeInBytes(&textureAtlas);
+	int textureWidth = 0;
+	int textureHeight = 0;
+	unsigned char* texturePixelData = 0;
 
+	kg_u32 texturePixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&textureAtlas);
 	kg_byte* copyTexturePixelDataMemory = (kia_byte*)K15_GUI_MALLOC(texturePixelDataSizeInBytes);
 
 	if (!copyTexturePixelDataMemory)
@@ -983,12 +1066,12 @@ static kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		goto functionEnd;
 	}
 
-	K15_GUI_MEMCPY(copyTexturePixelDataMemory, texturePixelData, texturePixelDataSizeInBytes);
+	K15_IABakeAndCopyImageAtlas(&textureAtlas, copyTexturePixelDataMemory, &textureWidth, &textureHeight);
 
 	guiFont->texture.pixelHeight = textureHeight;
 	guiFont->texture.pixelWidth = textureWidth;
 	guiFont->texture.pixelData = copyTexturePixelDataMemory;
-	guiFont->texture.numColorComponents = numComponents;
+	guiFont->texture.numColorComponents = 1;
 	guiFont->texture.userData = 0;
 
 functionEnd:
@@ -1014,7 +1097,7 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	const char* p_IconFilePath, const char* p_IconName)
 {
 	kg_result result = K15_GUI_RESULT_NOT_SUPPORTED;
@@ -1051,7 +1134,7 @@ kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GUIResour
 	return result;
 }
 /*********************************************************************************/
-kg_result K15_GUICreateIconResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateIconResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_IconFileDataBuffer, kg_u32 p_IconFileDataBufferSizeInBytes, const char* p_IconName)
 {
 	if (!p_GUIResourceDatabase || !p_IconFileDataBuffer || !p_IconName)
@@ -1077,7 +1160,7 @@ kg_result K15_GUICreateIconResourceFromMemory(K15_GUIResourceDatabase* p_GUIReso
 	return result;
 }
 /*********************************************************************************/
-kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_IconPixelDataBuffer, kg_u32 p_PixelWidth, kg_u32 p_PixelHeight, 
 	kg_u8 p_ColorComponents, const char* p_IconName)
 {
@@ -1115,17 +1198,44 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_internal kg_u32 K15_GUIGetNumIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
+{
+	K15_GUIResourceTableEntry* currentTableEntry = 0;
+	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
+	kg_u32 resourceMemorySize = p_GUIResourceDatabase->resourceMemorySizeInBytes;
+	kg_u32 resourceMemoryPosition = 0;
+	kg_u32 numIcons = 0;
+
+	while (resourceMemoryPosition < resourceMemorySize)
+	{
+		if (numIcons >= K15_GUI_MAX_ICONS_PER_ICON_SET)
+			break;
+
+		currentTableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
+
+		if (currentTableEntry->type == K15_GUI_ICON_RESOURCE_TYPE)
+			++numIcons;
+
+		resourceMemoryPosition += currentTableEntry->sizeInBytes;
+	}
+
+	return numIcons;
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
 {
 	if (!p_GUIResourceDatabase || !p_OutIconSet || !p_IconSetName)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	kg_result result = K15_GUI_RESULT_SUCCESS;
-	K15_ImageAtlas iconTextureAtlas = {};
+	kg_u32 numIcons = K15_GUIGetNumIconResources(p_GUIResourceDatabase);
 
-	kia_u8 numColorComponents = 4;
-	kia_result resultTA = K15_IACreateAtlas(&iconTextureAtlas, numColorComponents);
+	if (numIcons == 0)
+		return K15_GUI_RESULT_NO_ICONS;
+
+	K15_ImageAtlas iconTextureAtlas = {};
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+	kia_result resultTA = K15_IACreateAtlas(&iconTextureAtlas, KIA_PIXEL_FORMAT_R8G8B8A8, numIcons);
 
 	if (resultTA != K15_IA_RESULT_SUCCESS)
 	{
@@ -1172,11 +1282,11 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 			kg_u32 pixelWidth = icon->pixelWidth;
 			kg_u8 iconNumColorComponents = icon->numColorComponents;
 
-			kg_u32 iconAtlasPosX = 0;
-			kg_u32 iconAtlasPosY = 0;
+			int iconAtlasPosX = 0;
+			int iconAtlasPosY = 0;
 
-			resultTA = K15_IAAddImageToAtlas(&iconTextureAtlas, pixelData, iconNumColorComponents,
-				pixelWidth, pixelHeight, &iconAtlasPosX, &iconAtlasPosY);
+			resultTA = K15_IAAddImageToAtlas(&iconTextureAtlas, (K15_IAPixelFormat)iconNumColorComponents,
+				pixelData, pixelWidth, pixelHeight, &iconAtlasPosX, &iconAtlasPosY);
 
 			if (resultTA != K15_IA_RESULT_SUCCESS)
 			{
@@ -1206,19 +1316,17 @@ kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabas
 
 	iconSet->numIconMarker = iconIndex;
 	
-	kg_u32 atlasPixelHeight = 0;
-	kg_u32 atlasPixelWidth = 0;
-	kg_u32 atlasPixelDataSizeInBytes = K15_IAGetAtlasPixelDataSizeInBytes(&iconTextureAtlas);
-	kg_byte* atlasPixelData = K15_IAGetAtlasPixelData(&iconTextureAtlas, &atlasPixelWidth, &atlasPixelHeight);
-
+	int atlasPixelHeight = 0;
+	int atlasPixelWidth = 0;
+	kg_u32 atlasPixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&iconTextureAtlas);
 	kg_byte* copyAtlasPixelData = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&copyAtlasPixelData, atlasPixelDataSizeInBytes);
-	
+
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUI_MEMCPY(copyAtlasPixelData, atlasPixelData, atlasPixelDataSizeInBytes);
+	K15_IABakeAndCopyImageAtlas(&iconTextureAtlas, copyAtlasPixelData, &atlasPixelWidth, &atlasPixelHeight);
 
 	iconSet->texture.numColorComponents = 4;
 	iconSet->texture.pixelData = copyAtlasPixelData;
@@ -1238,7 +1346,7 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_internal kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
 {
 	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
@@ -1264,30 +1372,27 @@ kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDa
 	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
 }
 /*********************************************************************************/
-kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, const char* p_FontName)
 {
 	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutFont,
 		p_FontName, K15_GUI_FONT_RESOURCE_TYPE);
 }
 /*********************************************************************************/
-kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
 {
 	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutIconSet,
 		p_IconSetName, K15_GUI_ICONSET_RESOURCE_TYPE);
 }
 /*********************************************************************************/
-static K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_GUIResourceDatabase)
+kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
 	K15_GUIContextStyle defaultStyle = {};
 
 	K15_GUIFont* defaultFont = 0;
 	kg_result result = K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &defaultFont, 
-		"Cousine-Regular.ttf", 24, "default_font");
-
-	stbi_write_tga("bla.tga", defaultFont->texture.pixelWidth, defaultFont->texture.pixelHeight,
-		defaultFont->texture.numColorComponents, defaultFont->texture.pixelData);
+		"Cousine-Regular.ttf", 24, "default_font", K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
 
 	//Button Style
 	defaultStyle.buttonStyle.borderLowerColor = K15_GUI_COLOR_RGB(16, 16, 16);
@@ -1348,22 +1453,22 @@ static K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_
 	return defaultStyle;
 }
 /*********************************************************************************/
-static void K15_InternalGUIHandleMouseInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
+kg_internal void K15_GUIHandleMouseInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
 {
 	
 }
 /*********************************************************************************/
-static void K15_InternalGUIHandleKeyboardInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
+kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
 {
 	
 }
 /*********************************************************************************/
-static void K15_InternalGUIHandleSystemEvents(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
+kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
 {
 	
 }
 /*********************************************************************************/
-static void K15_InternalGUIHandleInput(K15_GUIContextEvents* p_GUIContextEvents)
+kg_internal void K15_GUIHandleInput(K15_GUIContextEvents* p_GUIContextEvents)
 {
 	
 }
@@ -1371,7 +1476,7 @@ static void K15_InternalGUIHandleInput(K15_GUIContextEvents* p_GUIContextEvents)
 
 
 /*********************************************************************************/
-static kg_result K15_GUIValidateClipRect(K15_GUIClipRect* p_ClipRect)
+kg_internal kg_result K15_GUIValidateClipRect(K15_GUIClipRect* p_ClipRect)
 {
 	if ((p_ClipRect->right - p_ClipRect->left) == 0 || (p_ClipRect->bottom - p_ClipRect->top) == 0)
 		return K15_GUI_RESULT_EMPTY_CLIP_RECT;
@@ -1385,7 +1490,7 @@ static kg_result K15_GUIValidateClipRect(K15_GUIClipRect* p_ClipRect)
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
+kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
 	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, 
 	kg_u32 p_InitFlags)
 {
@@ -1399,7 +1504,7 @@ kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceD
 		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES, p_InitFlags);
 }
 /*********************************************************************************/
-kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
+kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
 	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
 	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes, 
 	kg_u32 p_InitFlags)
@@ -1426,9 +1531,11 @@ kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
 	guiMemorySizeInBytes -= sizeof(K15_GUIContext);
 
 	//nullify the rest of the memory
-	memset(guiMemory, 0, guiMemorySizeInBytes);
+	K15_GUI_MEMSET(guiMemory, 0, guiMemorySizeInBytes);
 
-	guiContext->memoryBuffer = guiMemory;
+	guiContext->memory.memoryBuffer = guiMemory;
+	guiContext->memory.memoryBufferCapacityInBytes = p_MemorySizeInBytes;
+	guiContext->memory.memoryBufferSizeInBytes = 0;
 	guiContext->memoryBufferSizeInBytes = guiMemorySizeInBytes;
 	guiContext->memoryBufferCapacityInBytes = guiMemorySizeInBytes;
 	guiContext->focusedElementIdHash = 0;
@@ -1438,6 +1545,7 @@ kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
 	guiContext->layoutIndex = 0;
 	guiContext->numLayouts = 0;
 	guiContext->numMenus = 0;
+	guiContext->lastResult = K15_GUI_RESULT_SUCCESS;
 	guiContext->style = K15_GUICreateDefaultStyle(p_ContextResources);
 	guiContext->resourceDatabase = p_ContextResources;
 	guiContext->activatedElementIdHash = 0;
@@ -1446,25 +1554,148 @@ kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
 	guiContext->flagMask = 0;
 	guiContext->clipRect = clipRect;
 
+	K15_GUI_MEMSET(guiContext->elementHashTable, 0, sizeof(guiContext->elementHashTable));
+
 	//assign newly created gui context
 	*p_OutGUIContext = *guiContext;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier)
+kg_def void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier)
 {
 	K15_GUIContextStyle* style = &p_GUIContext->style;
 	K15_GUICustomBeginToolBar(p_GUIContext, p_Identifier, &style->toolBarStyle);
 }
 /*********************************************************************************/
-void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier, 
-	K15_GUIToolBarStyle* p_Style)
+kg_internal kg_u32 K15_GUICreateHash(const char* p_String, kg_u32 p_StringLength)
 {
+	kg_u32 hash = 0;
 
+	for (kg_u32 i = 0; i < p_StringLength; i++)
+		hash = 33 * hash + 720 + p_String[i];
+
+	return hash;
 }
 /*********************************************************************************/
-kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,
+kg_internal kg_result K15_GUIGetMemoryChunk(K15_GUIContextMemory* p_GUIContextMemory,
+	void** p_MemoryChunkPtr, kg_u32 p_MemoryChunkSizeInBytes)
+{
+	kg_u32 memorySize = p_GUIContextMemory->memoryBufferSizeInBytes;
+	kg_u32 memoryCapacity = p_GUIContextMemory->memoryBufferCapacityInBytes;
+	kg_byte* memoryBuffer = p_GUIContextMemory->memoryBuffer;
+
+	if (memorySize + p_MemoryChunkSizeInBytes > memoryCapacity)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	
+	*p_MemoryChunkPtr = (memoryBuffer + memorySize);
+	p_GUIContextMemory->memoryBufferSizeInBytes = memorySize + p_MemoryChunkSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIPerformClipping(K15_GUIClipRect* p_ClipRectToClip, K15_GUIClipRect* p_ClipRect)
+{
+	p_ClipRectToClip->left = K15_GUI_MIN(p_ClipRectToClip->left, p_ClipRect->left);
+	p_ClipRectToClip->top = K15_GUI_MIN(p_ClipRectToClip->top, p_ClipRect->top);
+	p_ClipRectToClip->right = K15_GUI_MIN(p_ClipRectToClip->right, p_ClipRect->right);
+	p_ClipRectToClip->bottom = K15_GUI_MIN(p_ClipRectToClip->bottom, p_ClipRect->bottom);
+
+	return K15_GUIValidateClipRect(p_ClipRectToClip);
+}
+/*********************************************************************************/
+kg_internal K15_GUIClipRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
+{
+	if (p_GUIContext->numLayouts == 0)
+		return p_GUIContext->clipRect;
+
+	kg_u32 layoutIndex = p_GUIContext->numLayouts - 1;
+	K15_GUIElement* layoutElement = p_GUIContext->layoutTable[layoutIndex];
+
+	return layoutElement->clipRect;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_GUIElement** p_GUIElementPtr,
+	const char* p_Identifier, kg_u32 p_PosX, kg_u32 p_PosY, kg_u32 p_Width, kg_u32 p_Height)
+{
+	K15_GUIElement** guiElementHashTable = p_GUIContext->elementHashTable;
+	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+
+	K15_GUIClipRect clipRect = {};
+	clipRect.left = p_PosX;
+	clipRect.top = p_PosY;
+	clipRect.right = p_PosX + p_Width;
+	clipRect.bottom = p_PosY + p_Height;
+
+	kg_u32 identifierLength = (kg_u32)K15_GUI_STRLEN(p_Identifier);
+	kg_u32 identiferHash = K15_GUICreateHash(p_Identifier, identifierLength);
+	identiferHash %= K15_GUI_ELEMENT_HASH_TABLE_SIZE;
+
+	if (guiElementHashTable[identiferHash])
+		return K15_GUI_RESULT_HASH_CONFLICT;
+
+	K15_GUIElement* element = 0;
+	kg_result result = K15_GUIGetMemoryChunk(guiContextMemory, (void**)&element, sizeof(K15_GUIElement));
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	element->identifierHash = identiferHash;
+	element->clipRect = clipRect;
+	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
+
+	guiElementHashTable[identiferHash] = element;
+
+	*p_GUIElementPtr = element;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddElementData(K15_GUIContextMemory* p_GUIContextMemory, 
+	K15_GUIElement* p_GUIElement, void* p_Data, kg_u32 p_DataSizeInBytes)
+{
+	void* memoryBuffer = 0;
+	kg_result result = K15_GUIGetMemoryChunk(p_GUIContextMemory, &memoryBuffer, p_DataSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	K15_GUI_MEMCPY(memoryBuffer, p_Data, p_DataSizeInBytes);
+
+	p_GUIElement->offsetNextElementInBytes += p_DataSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier,
+	K15_GUIToolBarStyle* p_Style)
+{
+	kg_u32 toolbarHeight = p_Style->pixelHeight;
+	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
+	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
+
+	kg_u32 contextClipX = p_GUIContext->clipRect.left;
+	kg_u32 contextClipY = p_GUIContext->clipRect.top;
+	kg_u32 contextClipWidth = p_GUIContext->clipRect.right - p_GUIContext->clipRect.left;
+	kg_u32 contextClipHeight = p_GUIContext->clipRect.bottom - p_GUIContext->clipRect.top;
+
+	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+	toolbarHeight = K15_GUI_MIN(contextClipHeight, toolbarHeight);
+
+	K15_GUIElement* guiElement = 0;
+	kg_result result = K15_GUIRegisterElement(p_GUIContext, &guiElement, 
+		p_Identifier, contextClipX, contextClipY, contextClipWidth, toolbarHeight);
+
+	p_GUIContext->lastResult = result;
+
+	if (!guiElement)
+		return;
+
+	K15_GUIAddElementData(guiContextMemory, guiElement, &upperBackgroundColor, sizeof(kg_color32));
+	K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
+}
+/*********************************************************************************/
+kg_def kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,
 	kg_u16* p_Width, kg_u16* p_Height, const char* p_Title, const char* p_Identifier)
 {
 	K15_GUIContextStyle* style = &p_GUIContext->style;
@@ -1472,64 +1703,64 @@ kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p
 		p_Identifier, &style->windowStyle);
 }
 /*********************************************************************************/
-kg_b8 K15_GUICustomBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY, 
+kg_def kg_b8 K15_GUICustomBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,
 	kg_u16* p_Width, kg_u16* p_Height, const char* p_Title, const char* p_Identifier, 
 	K15_GUIWindowStyle* p_Style)
 {
 	return 0;
 }
 /*********************************************************************************/
-kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier)
+kg_def kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier)
 {
 	return K15_GUICustomBeginMenu(p_GUIContext, p_MenuText, p_Identifier, &p_GUIContext->style.menuStyle);
 }
 /*********************************************************************************/
-kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier,
+kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier,
 	K15_GUIMenuStyle* p_Style)
 {
 	return 0;
 }
 /*********************************************************************************/
-kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier)
+kg_def kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier)
 {
 	return K15_GUICustomMenuItem(p_GUIContext, p_ItemText, p_Identifier, &p_GUIContext->style.menuItemStyle);
 }
 /*********************************************************************************/
-kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier,
+kg_def kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier,
 	K15_GUIMenuItemStyle* p_Style)
 {
 	return 0;
 }
 /*********************************************************************************/
-kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier)
+kg_def kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier)
 {
 	K15_GUIButtonStyle* defaultButtonStyle = &p_GUIContext->style.buttonStyle;
 	return K15_GUICustomButton(p_GUIContext, p_ButtonText, p_Identifier, defaultButtonStyle);
 }
 /*********************************************************************************/
-kg_b8 K15_GUICustomButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier,
+kg_def kg_b8 K15_GUICustomButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier,
 	K15_GUIButtonStyle* p_Style)
 {
 	return 0;
 }
 /*********************************************************************************/
-void K15_GUILabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier)
+kg_def void K15_GUILabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier)
 {
 	K15_GUICustomLabel(p_GUIContext, p_LabelText, p_Identifier, &p_GUIContext->style.labelStyle);
 }
 /*********************************************************************************/
-void K15_GUICustomLabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier,
+kg_def void K15_GUICustomLabel(K15_GUIContext* p_GUIContext, const char* p_LabelText, const char* p_Identifier,
 	K15_GUILabelStyle* p_Style)
 {
 	
 }
 /*********************************************************************************/
-void K15_GUISeparator(K15_GUIContext* p_GUIContext)
+kg_def void K15_GUISeparator(K15_GUIContext* p_GUIContext)
 {
 
 }
 /*********************************************************************************/
-void K15_GUIEndMenu(K15_GUIContext* p_GUIContext)
+kg_def void K15_GUIEndMenu(K15_GUIContext* p_GUIContext)
 {
 	p_GUIContext->numMenus -= 1;
 
@@ -1539,34 +1770,61 @@ void K15_GUIEndMenu(K15_GUIContext* p_GUIContext)
 	K15_GUIPopLayout(p_GUIContext);
 }
 /*********************************************************************************/
-void K15_GUIEndSubMenu(K15_GUIContext* p_GUIContext)
+kg_def void K15_GUIEndSubMenu(K15_GUIContext* p_GUIContext)
 {
 	K15_GUIPopLayout(p_GUIContext);
 }
 /*********************************************************************************/
-void K15_GUIEndWindow(K15_GUIContext* p_GUIContext)
+kg_def void K15_GUIEndWindow(K15_GUIContext* p_GUIContext)
 {
 	K15_GUIPopLayout(p_GUIContext);
 }
 /*********************************************************************************/
-void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext)
+kg_def void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext)
 {
 	K15_GUIPopLayout(p_GUIContext);
 }
 /*********************************************************************************/
-void K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
+kg_internal void K15_GUIClipElements(K15_GUIContextMemory* p_GUIContextMemory)
+{
+	kg_u32 memorySize = p_GUIContextMemory->memoryBufferSizeInBytes;
+	kg_byte* memory = p_GUIContextMemory->memoryBuffer;
+
+	kg_u32 memoryPosition = 0;
+	K15_GUIElement* guiElement = 0;
+
+	while (memoryPosition < memorySize)
+	{
+		guiElement = (K15_GUIElement*)(memory + memoryPosition);
+
+	}
+}
+/*********************************************************************************/
+kg_def void K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
+{
+	K15_GUIClipElements(&p_GUIContext->memory);
+
+	p_GUIContext->memory.memoryBufferSizeInBytes = 0;
+	K15_GUI_MEMSET(p_GUIContext->elementHashTable, 0, sizeof(p_GUIContext->elementHashTable));
+}
+/*********************************************************************************/
+kg_def void K15_GUIPopLayout(K15_GUIContext* p_GUIContext)
 {
 
 }
 /*********************************************************************************/
-void K15_GUIPopLayout(K15_GUIContext* p_GUIContext)
+kg_def kg_result K15_GUIGetLastResult(K15_GUIContext* p_GUIContext)
 {
+	kg_result lastResult = p_GUIContext->lastResult;
+	p_GUIContext->lastResult = K15_GUI_RESULT_SUCCESS;
 
+	return lastResult;
 }
 /*********************************************************************************/
-void K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMessage, kg_u32 p_OutMessageBufferSizeInBytes)
+kg_def kg_u32 K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMessage, kg_u32 p_OutMessageBufferSizeInBytes)
 {
 	const char* errorMsg = 0;
+	kg_u32 bytesWritten = 0;
 
 	if (p_Result == K15_GUI_RESULT_SUCCESS)
 		errorMsg = "Success";
@@ -1598,15 +1856,19 @@ void K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMessage, kg_u
 		errorMsg = "No icons";
 	else if (p_Result == K15_GUI_RESULT_UNKNOWN_ERROR)
 		errorMsg = "Unknown error";
+	else if (p_Result == K15_GUI_RESULT_HASH_CONFLICT)
+		errorMsg = "Hash conflict";
 
 	if (errorMsg)
 	{
-		kg_u32 bytesToFill = K15_GUI_MIN(K15_GUI_STRLEN(errorMsg), p_OutMessageBufferSizeInBytes);
-		K15_GUI_MEMCPY(*p_OutMessage, errorMsg, bytesToFill);
+		bytesWritten = K15_GUI_MIN(K15_GUI_STRLEN(errorMsg), p_OutMessageBufferSizeInBytes);
+		K15_GUI_MEMCPY(*p_OutMessage, errorMsg, bytesWritten);
 	}
+
+	return bytesWritten;
 }
 /*********************************************************************************/
-kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIMouseInput p_MouseInput)
+kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIMouseInput p_MouseInput)
 {
 	if (!p_GUIContextEvents)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
@@ -1620,7 +1882,7 @@ kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUI
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput)
+kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput)
 {
 	if (!p_GUIContextEvents)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
@@ -1634,7 +1896,7 @@ kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent)
+kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent)
 {
 	if (!p_GUIContextEvents)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
