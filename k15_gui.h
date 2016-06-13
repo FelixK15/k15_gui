@@ -16,6 +16,8 @@
 #define K15_GUI_MAX_BUFFERED_KEYBOARD_INPUTS 16
 #define K15_GUI_MAX_BUFFERED_SYSTEM_EVENTS 16
 #define K15_GUI_ELEMENT_HASH_TABLE_SIZE 4096
+#define K15_GUI_MAX_DRAW_COMMANDS 2048
+#define K15_GUI_MAX_LAYOUTED_ELEMENTS 256
 
 #define K15_GUI_TRUE 1
 #define K15_GUI_FALSE 0
@@ -63,13 +65,18 @@ typedef enum _K15_GUIResults
 	K15_GUI_RESULT_UNKNOWN_ERROR = 15
 } kg_result;
 /*********************************************************************************/
-enum _K15_GUIContextInitFlags
+typedef enum _K15_GUIContextInitFlags
 {
 	K15_GUI_SHAPE_BASED_DRAW_COMMANDS = 0x001,
 	K15_GUI_VERTEX_BASED_DRAW_COMMANDS = 0x002,
 
 	K15_GUI_DEFAULT_INIT_FLAGS = K15_GUI_VERTEX_BASED_DRAW_COMMANDS
 } K15_GUIContextInitFlags;
+/*********************************************************************************/
+typedef enum _K15_GUIElementFlags
+{
+	K15_GUI_ELEMENT_CLIPPED = 0x001
+} K15_GUIElementFlags;
 /*********************************************************************************/
 typedef enum _K15_GUIFontInitFlags
 {
@@ -175,12 +182,14 @@ typedef enum _K15_GUIResourceType
 typedef enum _K15_GUILayoutType
 {
 	K15_GUI_HORIZONTAL_LAYOUT_TYPE = 0,
-	K15_GUI_VERTICAL_LAYOUT_TYPE
+	K15_GUI_VERTICAL_LAYOUT_TYPE,
+	K15_GUI_STACKED_LAYOUT_TYPE
 } K15_GUILayoutType;
 /*********************************************************************************/
 typedef enum _K15_GUIElementType
 {
-	K15_GUI_TOOLBAR_ELEMENT_TYPE = 0
+	K15_GUI_TOOLBAR_ELEMENT_TYPE = 0,
+	K15_GUI_LAYOUT_ELEMENT_TYPE
 } K15_GUIElementType;
 /*********************************************************************************/
 typedef struct _K15_GUIMouseInput
@@ -420,8 +429,15 @@ typedef union _K15_GUIDrawCommand
 	kg_u64 textureUserData;
 } K15_GUIDrawCommand;
 /*********************************************************************************/
+typedef struct _K15_GUIDrawCommandBuffer
+{
+	K15_GUIDrawCommand drawCommands[K15_GUI_MAX_DRAW_COMMANDS];
+	kg_u32 numDrawCommands;
+};
+/*********************************************************************************/
 typedef struct _K15_GUILayoutData
 {
+	K15_GUIElement* layoutedElements[K15_GUI_MAX_LAYOUTED_ELEMENTS];
 	K15_GUILayoutType type;
 	kg_u32 numElements;
 } K15_GUILayoutData;
@@ -432,6 +448,8 @@ typedef struct _K15_GUIElement
 	K15_GUIElementType type;
 	kg_u32 identifierHash;
 	kg_u32 offsetNextElementInBytes;
+	kg_u32 layoutIndex;
+	kg_u8 flags;
 } K15_GUIElement;
 /*********************************************************************************/
 typedef struct _K15_GUIContextMemory
@@ -1642,6 +1660,7 @@ kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_G
 
 	element->identifierHash = identiferHash;
 	element->clipRect = clipRect;
+	element->layoutIndex = p_GUIContext->layoutIndex;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
 
 	guiElementHashTable[identiferHash] = element;
@@ -1785,24 +1804,151 @@ kg_def void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext)
 	K15_GUIPopLayout(p_GUIContext);
 }
 /*********************************************************************************/
-kg_internal void K15_GUIClipElements(K15_GUIContextMemory* p_GUIContextMemory)
+kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutData,
+	K15_GUIClipRect* p_LayoutClipRect)
 {
-	kg_u32 memorySize = p_GUIContextMemory->memoryBufferSizeInBytes;
-	kg_byte* memory = p_GUIContextMemory->memoryBuffer;
+	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
+	K15_GUIElement* guiElement = 0;
+
+	kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
+	kg_u32 numElements = p_LayoutData->numElements;
+
+	//Thinks about size hints per element
+	kg_u32 widthPerElement = layoutWidth / numElements;
+	kg_u32 posX = p_LayoutClipRect->left;
+
+	for (kg_u32 elementIndex = 0;
+		elementIndex < numElements;
+		++elementIndex)
+	{
+		guiElement = layoutedElements[elementIndex];
+
+		elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
+		elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
+
+		guiElement->clipRect.left = posX;
+		guiElement->clipRect.right = posX + widthPerElement;
+
+		posX += widthPerElement;
+	}
+}
+/*********************************************************************************/
+kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutData,
+	K15_GUIClipRect* p_LayoutClipRect)
+{
+	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
+	K15_GUIElement* guiElement = 0;
+
+	kg_u32 layoutHeight = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
+	kg_u32 numElements = p_LayoutData->numElements;
+
+	//Thinks about size hints per element
+	kg_u32 heightPerElement = layoutHeight / numElements;
+	kg_u32 posY = p_LayoutClipRect->top;
+
+	for (kg_u32 elementIndex = 0;
+		elementIndex < numElements;
+		++elementIndex)
+	{
+		guiElement = layoutedElements[elementIndex];
+
+		guiElement->clipRect.top = posY;
+		guiElement->clipRect.bottom = posY + heightPerElement;
+
+		posY += heightPerElement;
+	}
+}
+/*********************************************************************************/
+kg_internal void K15_GUIArrangeElementsStacked(K15_GUILayoutData* p_LayoutData,
+	K15_GUIClipRect* p_LayoutClipRect)
+{
+	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
+	K15_GUIElement* guiElement = 0;
+
+	kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
+	kg_u32 layoutHeight = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
+	kg_u32 numElements = p_LayoutData->numElements;
+	kg_u32 elementWidth = 0;
+	kg_u32 elementHeight = 0;
+	kg_u32 posX = p_LayoutClipRect->left;
+	kg_u32 posY = p_LayoutClipRect->top;
+
+	for (kg_u32 elementIndex = 0;
+		elementIndex < numElements;
+		++elementIndex)
+	{
+		guiElement = layoutedElements[elementIndex];
+
+		elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
+		elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
+
+		guiElement->clipRect.left = posX;
+		guiElement->clipRect.right = posX + elementWidth;
+		guiElement->clipRect.top = posY;
+		guiElement->clipRect.bottom = posY + elementHeight;
+
+		posY += elementHeight;
+	}
+}
+/*********************************************************************************/
+kg_internal void K15_GUIArrangeLayoutElements(K15_GUIElement* p_GUIElement)
+{
+	//layout data should follow right after the actual gui element
+	K15_GUILayoutData* layoutData = (K15_GUILayoutData*)(p_GUIElement + 1);
+	kg_u32 numElements = layoutData->numElements;
+
+	if (numElements == 0)
+		return;
+
+	if (layoutData->type == K15_GUI_HORIZONTAL_LAYOUT_TYPE)
+		K15_GUIArrangeElementsHorizontally(layoutData, &p_GUIElement->clipRect);
+	else if (layoutData->type == K15_GUI_VERTICAL_LAYOUT_TYPE)
+		K15_GUIArrangeElementsVertically(layoutData, &p_GUIElement->clipRect);
+	else if (layoutData->type == K15_GUI_STACKED_LAYOUT_TYPE)
+		K15_GUIArrangeElementsStacked(layoutData, &p_GUIElement->clipRect);
+}
+/*********************************************************************************/
+kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
+{
+	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
+	kg_u32 memorySize = contextMemory->memoryBufferSizeInBytes;
+	kg_byte* memory = contextMemory->memoryBuffer;
 
 	kg_u32 memoryPosition = 0;
 	K15_GUIElement* guiElement = 0;
-
+	K15_GUIElement* layoutElement = 0;
+	K15_GUIElement** layoutElements = p_GUIContext->layoutTable;
+	K15_GUIElement** elementHashTable = p_GUIContext->elementHashTable;
+	K15_GUIClipRect* guiElementClipRect = 0;
+	K15_GUIClipRect* contextClipRect = &p_GUIContext->clipRect;
+	K15_GUIClipRect* clipRectUsedForClipping = contextClipRect;
+	K15_GUIContextEvents* contextEvents = &p_GUIContext->events;
+	
 	while (memoryPosition < memorySize)
 	{
 		guiElement = (K15_GUIElement*)(memory + memoryPosition);
+		guiElementClipRect = &guiElement->clipRect;
+		
+		if (guiElement->layoutIndex != 0)
+			clipRectUsedForClipping = &layoutElements[guiElement->layoutIndex - 1]->clipRect;
+		else
+			clipRectUsedForClipping = contextClipRect;
 
+		if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) == K15_GUI_RESULT_EMPTY_CLIP_RECT)
+			continue;
+
+		if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
+			K15_GUIArrangeLayoutElements(guiElement);
+
+		//TODO:
+		K15_GUIHandleInput(guiElement, contextEvents);
+		K15_GUICreateDrawCalls(guiElement, )
 	}
 }
 /*********************************************************************************/
 kg_def void K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
 {
-	K15_GUIClipElements(&p_GUIContext->memory);
+	K15_GUIClipElements(p_GUIContext);
 
 	p_GUIContext->memory.memoryBufferSizeInBytes = 0;
 	K15_GUI_MEMSET(p_GUIContext->elementHashTable, 0, sizeof(p_GUIContext->elementHashTable));
