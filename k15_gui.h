@@ -18,13 +18,15 @@
 #define K15_GUI_ELEMENT_HASH_TABLE_SIZE 4096
 #define K15_GUI_MAX_DRAW_COMMANDS 2048
 #define K15_GUI_MAX_LAYOUTED_ELEMENTS 256
+#define K15_GUI_MAX_GLYPH_RANGES 10
 
 #define K15_GUI_TRUE 1
 #define K15_GUI_FALSE 0
 
 #define kg_size_kilo_bytes(n) (n*1024)
 #define kg_size_mega_bytes(n) (n*1024*1024)
-#define K15_GUI_MIN_MEMORY_SIZE_IN_BYTES sizeof(K15_GUIContext) + kg_size_kilo_bytes(10)
+#define K15_GUI_DRAW_COMMAND_BUFFER_SIZE kg_size_kilo_bytes(5)
+#define K15_GUI_MIN_MEMORY_SIZE_IN_BYTES sizeof(K15_GUIContext) + K15_GUI_DRAW_COMMAND_BUFFER_SIZE + kg_size_kilo_bytes(10)
 #define K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE kg_size_mega_bytes(5)
 
 typedef unsigned long long kg_u64;
@@ -43,9 +45,8 @@ typedef char kg_s8;
 typedef unsigned char kg_byte;
 typedef unsigned char kg_b8;
 
-struct _K15_GUIContext;
 /*********************************************************************************/
-typedef enum _K15_GUIResults
+typedef enum 
 {
 	K15_GUI_RESULT_SUCCESS = 0,
 	K15_GUI_RESULT_OUT_OF_MEMORY = 1,
@@ -65,20 +66,12 @@ typedef enum _K15_GUIResults
 	K15_GUI_RESULT_UNKNOWN_ERROR = 15
 } kg_result;
 /*********************************************************************************/
-typedef enum _K15_GUIContextInitFlags
-{
-	K15_GUI_SHAPE_BASED_DRAW_COMMANDS = 0x001,
-	K15_GUI_VERTEX_BASED_DRAW_COMMANDS = 0x002,
-
-	K15_GUI_DEFAULT_INIT_FLAGS = K15_GUI_VERTEX_BASED_DRAW_COMMANDS
-} K15_GUIContextInitFlags;
-/*********************************************************************************/
-typedef enum _K15_GUIElementFlags
+typedef enum 
 {
 	K15_GUI_ELEMENT_CLIPPED = 0x001
 } K15_GUIElementFlags;
 /*********************************************************************************/
-typedef enum _K15_GUIFontInitFlags
+typedef enum 
 {
 	K15_GUI_FONT_INCLUDE_LATIN_GLYPHS = 0x01,
 	K15_GUI_FONT_INCLUDE_CHINESE_GLYPHS = 0x02,
@@ -88,17 +81,17 @@ typedef enum _K15_GUIFontInitFlags
 	K15_GUI_FONT_INCLUDE_ALL_GPYPS = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS | K15_GUI_FONT_INCLUDE_CHINESE_GLYPHS | K15_GUI_FONT_INCLUDE_CYRILLIC_GLYPHS | K15_GUI_FONT_INCLUDE_KOREAN_GLYPHS
 } K15_GUIFontInitFlags;
 /*********************************************************************************/
-typedef enum _K15_GUIDrawCommandCreationFlags
+typedef enum 
 {
 	K15_GUI_CONVERT_TO_NDC = 0x01
 } K15_GUIDrawCommandCreationFlags;
 /*********************************************************************************/
-typedef enum _K15_GUIContextFlags
+typedef enum 
 {
 	K15_GUI_CONTEXT_INSIDE_MENU_FLAG = 0x01
 } K15_GUIContextFlags;
 /*********************************************************************************/
-typedef enum _K15_GUIMouseInputType
+typedef enum 
 {
 	K15_GUI_MOUSE_BUTTON_PRESSED = 0,
 	K15_GUI_MOUSE_BUTTON_RELEASED,
@@ -107,7 +100,7 @@ typedef enum _K15_GUIMouseInputType
 	K15_GUI_MOUSE_MOVED
 } K15_GUIMouseInputType;
 /*********************************************************************************/
-typedef enum _K15_GUIMouseButtonType
+typedef enum 
 {
 	K15_GUI_MOUSE_BUTTON_LEFT = 0,
 	K15_GUI_MOUSE_BUTTON_RIGHT,
@@ -116,7 +109,7 @@ typedef enum _K15_GUIMouseButtonType
 	K15_GUI_MOUSE_BUTTON_SPECIAL2
 } K15_GUIMouseButtonType;
 /*********************************************************************************/
-typedef enum _K15_GUIKeyboardModifierType
+typedef enum 
 {
 	K15_GUI_CTRL_MODIFIER = 0x01,
 	K15_GUI_L_ALT_MODIFIER = 0x02,
@@ -124,14 +117,14 @@ typedef enum _K15_GUIKeyboardModifierType
 	K15_GUI_SHIFT_MODIFIER = 0x08
 } K15_GUIKeyboardModifierType;
 /*********************************************************************************/
-typedef enum _K15_GUIKeyboardInputType
+typedef enum 
 {
 	K15_GUI_KEY_PRESSED = 0,
 	K15_GUI_KEY_RELEASED,
 	K15_GUI_TEXT_INPUT
 } K15_GUIKeyboardInputType;
 /*********************************************************************************/
-typedef enum _K15_GUIKeyboardKeyType
+typedef enum 
 {
 	K15_GUI_KEY_RETURN = 0,
 	K15_GUI_KEY_BACK,
@@ -166,33 +159,33 @@ typedef enum _K15_GUIKeyboardKeyType
 	K15_GUI_KEY_NORMAL
 } K15_GUIKeyboardKeyType;
 /*********************************************************************************/
-typedef enum _K15_GUISystemEventType
+typedef enum 
 {
 	K15_GUI_WINDOW_RESIZED = 0,
 	K15_GUI_SYSTEM_EVENT_COUNT
 } K15_GUISystemEventType;
 /*********************************************************************************/
-typedef enum _K15_GUIResourceType
+typedef enum 
 {
 	K15_GUI_FONT_RESOURCE_TYPE = 0,
 	K15_GUI_ICON_RESOURCE_TYPE,
 	K15_GUI_ICONSET_RESOURCE_TYPE
 } K15_GUIResourceType;
 /*********************************************************************************/
-typedef enum _K15_GUILayoutType
+typedef enum 
 {
 	K15_GUI_HORIZONTAL_LAYOUT_TYPE = 0,
 	K15_GUI_VERTICAL_LAYOUT_TYPE,
 	K15_GUI_STACKED_LAYOUT_TYPE
 } K15_GUILayoutType;
 /*********************************************************************************/
-typedef enum _K15_GUIElementType
+typedef enum 
 {
 	K15_GUI_TOOLBAR_ELEMENT_TYPE = 0,
 	K15_GUI_LAYOUT_ELEMENT_TYPE
 } K15_GUIElementType;
 /*********************************************************************************/
-typedef struct _K15_GUIMouseInput
+typedef struct 
 {
 	union
 	{
@@ -208,7 +201,7 @@ typedef struct _K15_GUIMouseInput
 	K15_GUIMouseInputType type;
 } K15_GUIMouseInput;
 /*********************************************************************************/
-typedef struct _K15_GUIKeyboardInput
+typedef struct 
 {
 	struct
 	{
@@ -221,7 +214,7 @@ typedef struct _K15_GUIKeyboardInput
 	K15_GUIKeyboardModifierType modifier;
 } K15_GUIKeyboardInput;
 /*********************************************************************************/
-typedef struct _K15_GUISystemEvent
+typedef struct 
 {
 	K15_GUISystemEventType type;
 
@@ -235,7 +228,7 @@ typedef struct _K15_GUISystemEvent
 	} params;
 } K15_GUISystemEvent;
 /*********************************************************************************/
-typedef struct _K15_GUIContextEvents
+typedef struct 
 {
 	K15_GUISystemEvent bufferedSystemEvents[K15_GUI_MAX_BUFFERED_SYSTEM_EVENTS];
 	K15_GUIMouseInput bufferedMouseInput[K15_GUI_MAX_BUFFERED_MOUSE_INPUTS];
@@ -249,7 +242,7 @@ typedef struct _K15_GUIContextEvents
 	kg_u16 numBufferedKeyboardInputs;
 } K15_GUIContextEvents;
 /*********************************************************************************/
-typedef struct _K15_GUIRectangle
+typedef struct 
 {
 	kg_s32 pixelPosLeft;
 	kg_s32 pixelPosTop;
@@ -257,7 +250,7 @@ typedef struct _K15_GUIRectangle
 	kg_s32 pixelPosBottom;
 } K15_GUIRectangle;
 /*********************************************************************************/
-typedef struct _K15_GUITexture
+typedef struct 
 {
 	kg_u16 numColorComponents;
 	kg_u16 pixelWidth;
@@ -266,7 +259,7 @@ typedef struct _K15_GUITexture
 	kg_u64 userData;
 } K15_GUITexture;
 /*********************************************************************************/
-typedef struct _K15_GUIFont
+typedef struct 
 {
 	float scaleFactor;
 	kg_u32 glyphRangeMask;
@@ -278,7 +271,7 @@ typedef struct _K15_GUIFont
 	K15_GUITexture texture;
 } K15_GUIFont;
 /*********************************************************************************/
-typedef struct _K15_GUIFontGlyph
+typedef struct 
 {
 	K15_GUIRectangle glyphRect;
 	kg_u32 codepoint;
@@ -286,7 +279,7 @@ typedef struct _K15_GUIFontGlyph
 	kg_s32 advancewidth;
 } K15_GUIFontGlyph;
 /*********************************************************************************/
-typedef struct _K15_GUIIcon
+typedef struct 
 {
 	kg_byte* pixelData;
 	kg_u32 pixelHeight;
@@ -294,20 +287,20 @@ typedef struct _K15_GUIIcon
 	kg_u32 numColorComponents;
 } K15_GUIIcon;
 /*********************************************************************************/
-typedef struct _K15_GUIIconMarker
+typedef struct 
 {
 	K15_GUIRectangle atlasClipRect;
 	char name[K15_GUI_MAX_RESOURCE_NAME_LENGTH];
 } K15_GUIIconMarker;
 /*********************************************************************************/
-typedef struct _K15_GUIIconSet
+typedef struct 
 {
 	K15_GUIIconMarker iconMarker[K15_GUI_MAX_ICONS_PER_ICON_SET];
 	K15_GUITexture texture;
 	kg_u32 numIconMarker;
 } K15_GUIIconSet;
 /*********************************************************************************/
-typedef struct _K15_GUIButtonStyle
+typedef struct 
 {
 	kg_color32 borderUpperColor;
 	kg_color32 borderLowerColor;
@@ -320,7 +313,7 @@ typedef struct _K15_GUIButtonStyle
 	K15_GUIFont* font;
 } K15_GUIButtonStyle;
 /*********************************************************************************/
-typedef struct _K15_GUIWindowStyle
+typedef struct 
 {
 	kg_color32 borderLowerColor;
 	kg_color32 borderUpperColor;
@@ -334,13 +327,13 @@ typedef struct _K15_GUIWindowStyle
 	K15_GUIFont* font;
 } K15_GUIWindowStyle;
 /*********************************************************************************/
-typedef struct _K15_GUILabelStyle
+typedef struct 
 {
 	kg_color32 textColor;
 	K15_GUIFont* font;
 } K15_GUILabelStyle;
 /*********************************************************************************/
-typedef struct _K15_GUIMenuStyle
+typedef struct 
 {
 	kg_color32 textColor;
 	kg_color32 upperBackgroundColor;
@@ -354,14 +347,14 @@ typedef struct _K15_GUIMenuStyle
 	K15_GUIFont* font;
 } K15_GUIMenuStyle;
 /*********************************************************************************/
-typedef struct _K15_GUIToolBarStyle
+typedef struct 
 {
 	kg_color32 lowerBackgroundColor;
 	kg_color32 upperBackgroundColor;
 	kg_u32 pixelHeight;
 } K15_GUIToolBarStyle;
 /*********************************************************************************/
-typedef struct _K15_GUIMenuItemStyle
+typedef struct 
 {
 	kg_color32 lowerBackgroundColor;
 	kg_color32 upperBackgroundColor;
@@ -375,7 +368,7 @@ typedef struct _K15_GUIMenuItemStyle
 	K15_GUIFont* font;
 } K15_GUIMenuItemStyle;
 /*********************************************************************************/
-typedef struct _K15_GUIContextStyle
+typedef struct 
 {
 	K15_GUIWindowStyle windowStyle;
 	K15_GUIButtonStyle buttonStyle;
@@ -385,14 +378,14 @@ typedef struct _K15_GUIContextStyle
 	K15_GUIMenuItemStyle menuItemStyle;
 } K15_GUIContextStyle;
 /*********************************************************************************/
-typedef struct _K15_GUIResourceTableEntry
+typedef struct 
 {
 	char name[K15_GUI_MAX_RESOURCE_NAME_LENGTH];
 	kg_u32 sizeInBytes;
 	K15_GUIResourceType type;
 } K15_GUIResourceTableEntry;
 /*********************************************************************************/
-typedef struct _K15_GUIResourceDatabase
+typedef struct 
 {	
 	K15_GUIResourceTableEntry* resourceTable;
 	kg_byte* resourceMemory;
@@ -400,7 +393,7 @@ typedef struct _K15_GUIResourceDatabase
 	kg_u32 resourceMemorySizeInBytes;
 } K15_GUIResourceDatabase;
 /*********************************************************************************/
-typedef struct _K15_GUIClipRect
+typedef struct 
 {
 	kg_s16 left;
 	kg_s16 top;
@@ -408,41 +401,45 @@ typedef struct _K15_GUIClipRect
 	kg_s16 bottom;
 } K15_GUIClipRect;
 /*********************************************************************************/
-typedef struct _K15_GUIGlyphRange
+typedef struct 
 {
 	kg_u32 from;
 	kg_u32 to;
 } K15_GUIGlyphRange;
 /*********************************************************************************/
-typedef union _K15_GUIDrawCommand
+typedef enum
 {
-	union 
-	{
-		struct
-		{
-			kg_u32 numTriangles;
-			kg_u32 attributeFlags;
-			kg_f32* vertexData;
-		} vertex;
-	} commandData;
-	
-	kg_u64 textureUserData;
+	K15_GUI_SOLID_COLOR = 0,
+	K15_GUI_LERP_GRADIENT
+} K15_GUIGradientType;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_DRAW_RECT_COMMAND = 0,
+	K15_GUI_DRAW_CIRCLE_COMMAND
+} K15_GUIDrawCommandType;
+/*********************************************************************************/
+typedef struct
+{
+	K15_GUIGradientType type;
+	kg_color32 from;
+	kg_color32 to;
+} K15_GUIColorGradient;
+/*********************************************************************************/
+typedef struct 
+{
+	K15_GUIDrawCommandType type;
+	kg_u32 sizeInBytes;
 } K15_GUIDrawCommand;
 /*********************************************************************************/
-typedef struct _K15_GUIDrawCommandBuffer
+typedef struct 
 {
-	K15_GUIDrawCommand drawCommands[K15_GUI_MAX_DRAW_COMMANDS];
-	kg_u32 numDrawCommands;
-};
+	kg_byte* drawCommandBuffer;
+	kg_u32 bufferCapacityInBytes;
+	kg_u32 bufferSizeInBytes;
+} K15_GUIDrawCommandBuffer;
 /*********************************************************************************/
-typedef struct _K15_GUILayoutData
-{
-	K15_GUIElement* layoutedElements[K15_GUI_MAX_LAYOUTED_ELEMENTS];
-	K15_GUILayoutType type;
-	kg_u32 numElements;
-} K15_GUILayoutData;
-/*********************************************************************************/
-typedef struct _K15_GUIElement
+typedef struct 
 {
 	K15_GUIClipRect clipRect;
 	K15_GUIElementType type;
@@ -452,20 +449,28 @@ typedef struct _K15_GUIElement
 	kg_u8 flags;
 } K15_GUIElement;
 /*********************************************************************************/
-typedef struct _K15_GUIContextMemory
+typedef struct 
+{
+	K15_GUIElement* layoutedElements[K15_GUI_MAX_LAYOUTED_ELEMENTS];
+	K15_GUILayoutType type;
+	kg_u32 numElements;
+} K15_GUILayoutData;
+/*********************************************************************************/
+typedef struct 
 {
 	kg_byte* memoryBuffer;
 	kg_u32 memoryBufferSizeInBytes;
 	kg_u32 memoryBufferCapacityInBytes;
 } K15_GUIContextMemory;
 /*********************************************************************************/
-typedef struct _K15_GUIContext
+typedef struct 
 {
 	K15_GUIElement* elementHashTable[K15_GUI_ELEMENT_HASH_TABLE_SIZE];
 	K15_GUIElement* layoutTable[K15_GUI_MAX_LAYOUTS];
 	K15_GUIContextStyle style;
 	K15_GUIContextEvents events;
 	K15_GUIContextMemory memory;
+	K15_GUIDrawCommandBuffer drawCmdBuffer;
 	K15_GUIClipRect clipRect;
 	K15_GUIResourceDatabase* resourceDatabase;
 	kg_result lastResult;
@@ -492,13 +497,11 @@ typedef struct _K15_GUIContext
 // - Call gui logic (next frame - retrieve results from last frame. Mainly results of the input)
 
 kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
-	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom,
-	kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS);
+	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom);
 
 kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext,
 	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
-	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes,
-	kg_u32 p_InitFlags = K15_GUI_DEFAULT_INIT_FLAGS);
+	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes);
 
 //*****************RESOURCES******************//
 kg_def kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase);
@@ -507,11 +510,11 @@ kg_def kg_result K15_GUICreateResourceDatabaseWithCustomMemory(K15_GUIResourceDa
 
 kg_def kg_result K15_GUICreateFontResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, const char* p_FontFilePath, kg_u8 p_FontSize, const char* p_FontName,
-	kg_u8 p_GlyphRangeFlags = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
+	kg_u8 p_GlyphRangeFlags);
 
 kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, kg_byte* p_TrueTypeFontBuffer, kg_u8 p_FontSize, const char* p_FontName,
-	kg_u8 p_GlyphRangeFlags = K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
+	kg_u8 p_GlyphRangeFlags);
 
 kg_def kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	const char* p_IconFilePath, const char* p_IconName);
@@ -933,7 +936,7 @@ kg_internal kg_result K15_GUIRemoveResourceTableEntryByName(K15_GUIResourceDatab
 
 			if (bytesToMove > 0)
 			{
-				K15_GUI_MEMMOVE(resourceMemory + resourceMemoryPosition,
+				K15_GUI_MEMCPY(resourceMemory + resourceMemoryPosition,
 					resourceMemory + resourceMemoryPosition + resourceSizeInBytes,
 					resourceSizeInBytes);
 			}
@@ -959,7 +962,7 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	if (K15_GUISearchResourceTableEntry(p_GUIResourceDatabase, p_FontName, 0))
 		return K15_GUI_RESULT_NAME_ALREADY_IN_USE;
 
-	stbtt_fontinfo fontInfo = {};
+	stbtt_fontinfo fontInfo = {0};
 	int resultSTBTT = stbtt_InitFont(&fontInfo, p_TrueTypeFontBuffer, 0);
 
 	if (resultSTBTT == 0)
@@ -971,9 +974,8 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
 
-	K15_ImageAtlas textureAtlas = {};
-	kia_result taResult = K15_IACreateAtlas(&textureAtlas, KIA_PIXEL_FORMAT_R8,
-		numGlyphs);
+	K15_ImageAtlas textureAtlas = {0};
+	kia_result taResult = K15_IACreateAtlas(&textureAtlas, numGlyphs);
 
 	if (taResult != K15_IA_RESULT_SUCCESS)
 	{
@@ -1001,12 +1003,11 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-
-	const kg_u32 glyphRangeArrayCapacity= 10;
-	K15_GUIGlyphRange glyphRanges[glyphRangeArrayCapacity] = { 0 };
+	K15_GUIGlyphRange glyphRanges[K15_GUI_MAX_GLYPH_RANGES] = { 0 };
 	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
 
-	kg_u32 glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRangesPtr, glyphRangeArrayCapacity);
+	kg_u32 glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRangesPtr, 
+		K15_GUI_MAX_GLYPH_RANGES);
 
 	kg_u32 glyphIndex = 0;
 
@@ -1022,7 +1023,7 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 		while (codepoint < endCodepoint)
 		{
-			K15_GUIRectangle glyphRect = {};
+			K15_GUIRectangle glyphRect = {0};
 			
 			kg_s32 glyphIndex = stbtt_FindGlyphIndex(&fontInfo, codepoint);
 			codepoint += 1;
@@ -1075,20 +1076,23 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	int textureHeight = 0;
 	unsigned char* texturePixelData = 0;
 
-	kg_u32 texturePixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&textureAtlas);
-	kg_byte* copyTexturePixelDataMemory = (kia_byte*)K15_GUI_MALLOC(texturePixelDataSizeInBytes);
+	kg_u32 texturePixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&textureAtlas, 
+		KIA_PIXEL_FORMAT_R8);
 
-	if (!copyTexturePixelDataMemory)
-	{
-		result = K15_GUI_RESULT_OUT_OF_MEMORY;
+	void* copyTexturePixelDataMemory = 0;
+
+	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry, &copyTexturePixelDataMemory,
+		texturePixelDataSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
-	}
 
-	K15_IABakeAndCopyImageAtlas(&textureAtlas, copyTexturePixelDataMemory, &textureWidth, &textureHeight);
+	K15_IABakeImageAtlasIntoPixelBuffer(&textureAtlas, KIA_PIXEL_FORMAT_R8, copyTexturePixelDataMemory,
+		&textureWidth, &textureHeight);
 
 	guiFont->texture.pixelHeight = textureHeight;
 	guiFont->texture.pixelWidth = textureWidth;
-	guiFont->texture.pixelData = copyTexturePixelDataMemory;
+	guiFont->texture.pixelData = (kg_byte*)copyTexturePixelDataMemory;
 	guiFont->texture.numColorComponents = 1;
 	guiFont->texture.userData = 0;
 
@@ -1251,9 +1255,9 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 	if (numIcons == 0)
 		return K15_GUI_RESULT_NO_ICONS;
 
-	K15_ImageAtlas iconTextureAtlas = {};
+	K15_ImageAtlas iconTextureAtlas = {0};
 	kg_result result = K15_GUI_RESULT_SUCCESS;
-	kia_result resultTA = K15_IACreateAtlas(&iconTextureAtlas, KIA_PIXEL_FORMAT_R8G8B8A8, numIcons);
+	kia_result resultTA = K15_IACreateAtlas(&iconTextureAtlas, numIcons);
 
 	if (resultTA != K15_IA_RESULT_SUCCESS)
 	{
@@ -1336,7 +1340,9 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 	
 	int atlasPixelHeight = 0;
 	int atlasPixelWidth = 0;
-	kg_u32 atlasPixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&iconTextureAtlas);
+	kg_u32 atlasPixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&iconTextureAtlas, 
+		KIA_PIXEL_FORMAT_R8G8B8A8);
+	
 	kg_byte* copyAtlasPixelData = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&copyAtlasPixelData, atlasPixelDataSizeInBytes);
@@ -1344,7 +1350,8 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_IABakeAndCopyImageAtlas(&iconTextureAtlas, copyAtlasPixelData, &atlasPixelWidth, &atlasPixelHeight);
+	K15_IABakeImageAtlasIntoPixelBuffer(&iconTextureAtlas, KIA_PIXEL_FORMAT_R8G8B8A8, copyAtlasPixelData,
+		&atlasPixelHeight, &atlasPixelWidth);
 
 	iconSet->texture.numColorComponents = 4;
 	iconSet->texture.pixelData = copyAtlasPixelData;
@@ -1406,7 +1413,7 @@ kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourc
 /*********************************************************************************/
 kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
-	K15_GUIContextStyle defaultStyle = {};
+	K15_GUIContextStyle defaultStyle = {0};
 
 	K15_GUIFont* defaultFont = 0;
 	kg_result result = K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &defaultFont, 
@@ -1509,8 +1516,7 @@ kg_internal kg_result K15_GUIValidateClipRect(K15_GUIClipRect* p_ClipRect)
 }
 /*********************************************************************************/
 kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
-	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, 
-	kg_u32 p_InitFlags)
+	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom)
 {
 	kg_byte* guiMemory = (kg_byte*)malloc(K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
 
@@ -1519,18 +1525,17 @@ kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIRe
 
 	return K15_CreateGUIContextWithCustomMemory(p_OutGUIContext, p_ContextResources, 
 		p_ClipPosLeft, p_ClipPosTop, p_ClipPosRight, p_ClipPosBottom, 
-		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES, p_InitFlags);
+		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
 }
 /*********************************************************************************/
 kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
 	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
-	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes, 
-	kg_u32 p_InitFlags)
+	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes)
 {
 	if (!p_Memory || p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	K15_GUIClipRect clipRect = {};
+	K15_GUIClipRect clipRect = {0};
 	clipRect.left = p_ClipPosLeft;
 	clipRect.top = p_ClipPosTop;
 	clipRect.right = p_ClipPosRight;
@@ -1556,6 +1561,9 @@ kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUICo
 	guiContext->memory.memoryBufferSizeInBytes = 0;
 	guiContext->memoryBufferSizeInBytes = guiMemorySizeInBytes;
 	guiContext->memoryBufferCapacityInBytes = guiMemorySizeInBytes;
+	guiContext->drawCmdBuffer.bufferCapacityInBytes = K15_GUI_DRAW_COMMAND_BUFFER_SIZE;
+	guiContext->drawCmdBuffer.bufferSizeInBytes = 0;
+	guiContext->drawCmdBuffer.drawCommandBuffer = guiMemory + p_MemorySizeInBytes;
 	guiContext->focusedElementIdHash = 0;
 	guiContext->hoveredElementIdHash = 0;
 	guiContext->clickedElementIdHash = 0;
@@ -1639,7 +1647,7 @@ kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_G
 	K15_GUIElement** guiElementHashTable = p_GUIContext->elementHashTable;
 	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
 
-	K15_GUIClipRect clipRect = {};
+	K15_GUIClipRect clipRect = {0};
 	clipRect.left = p_PosX;
 	clipRect.top = p_PosY;
 	clipRect.right = p_PosX + p_Width;
@@ -1686,9 +1694,76 @@ kg_internal kg_result K15_GUIAddElementData(K15_GUIContextMemory* p_GUIContextMe
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
+typedef struct  
+{
+	kg_u16 posX;
+	kg_u16 posY;
+	kg_u16 width;
+	kg_u16 height;
+	K15_GUIColorGradient colorGradient;
+} K15_GUIShapeData;
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIDrawCommandType p_DrawCommandType, void* p_DrawCommandParams, kg_u32 p_ParamSizeInBytes)
+{
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	kg_u32 drawCmdBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
+	kg_u32 drawCmdBufferCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
+	kg_u32 drawCmdBufferNewSizeInBytes = drawCmdBufferSizeInBytes + p_ParamSizeInBytes;
+	kg_byte* drawCmdBuffer = p_DrawCommandBuffer->drawCommandBuffer;
+
+	if (drawCmdBufferNewSizeInBytes > drawCmdBufferCapacityInBytes)
+	{
+		result = K15_GUI_RESULT_OUT_OF_MEMORY;
+		goto functionEnd;
+	}
+
+	if (p_ParamSizeInBytes == 0)
+		goto functionEnd;
+
+	p_DrawCommandBuffer->bufferSizeInBytes = drawCmdBufferNewSizeInBytes;
+	K15_GUI_MEMCPY(drawCmdBuffer + drawCmdBufferSizeInBytes, p_DrawCommandParams, p_ParamSizeInBytes);
+
+functionEnd:
+	return result;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	kg_u16 p_PosX, kg_u16 p_PosY, kg_u16 p_Width, kg_u16 p_Height, K15_GUIColorGradient p_Gradient)
+{
+	K15_GUIShapeData shapeData = { 0 };
+	shapeData.posX = p_PosX;
+	shapeData.posY = p_PosY;
+	shapeData.width = p_Width;
+	shapeData.height = p_Height;
+	shapeData.colorGradient = p_Gradient;
+
+	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, K15_GUI_DRAW_RECT_COMMAND, &shapeData, 
+		sizeof(K15_GUIShapeData));
+}
+/*********************************************************************************/
+kg_internal K15_GUIColorGradient K15_GUICreateLerpGradiant(kg_color32 p_From, kg_color32 p_To)
+{
+	K15_GUIColorGradient lerpGradient;
+	lerpGradient.type = K15_GUI_LERP_GRADIENT;
+	lerpGradient.from = p_From;
+	lerpGradient.to = p_To;
+
+	return lerpGradient;
+}
+/*********************************************************************************/
+kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result)
+{
+	if (*p_ResultOut == K15_GUI_RESULT_SUCCESS)
+		*p_ResultOut = p_Result;
+}
+/*********************************************************************************/
 kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier,
 	K15_GUIToolBarStyle* p_Style)
 {
+	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
+
 	kg_u32 toolbarHeight = p_Style->pixelHeight;
 	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
 	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
@@ -1704,14 +1779,21 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	K15_GUIElement* guiElement = 0;
 	kg_result result = K15_GUIRegisterElement(p_GUIContext, &guiElement, 
 		p_Identifier, contextClipX, contextClipY, contextClipWidth, toolbarHeight);
-
-	p_GUIContext->lastResult = result;
-
+	
 	if (!guiElement)
-		return;
+		goto functionEnd;
 
-	K15_GUIAddElementData(guiContextMemory, guiElement, &upperBackgroundColor, sizeof(kg_color32));
-	K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
+	result = K15_GUIAddRectShapeDrawCommand(drawCmdBuffer, contextClipX, contextClipY, contextClipWidth,
+		toolbarHeight, K15_GUICreateLerpGradiant(upperBackgroundColor, lowerBackgroundColor));
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		goto functionEnd;
+
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &upperBackgroundColor, sizeof(kg_color32));
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
+
+functionEnd:
+	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,
@@ -1822,9 +1904,6 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 		++elementIndex)
 	{
 		guiElement = layoutedElements[elementIndex];
-
-		elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
-		elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
 
 		guiElement->clipRect.left = posX;
 		guiElement->clipRect.right = posX + widthPerElement;
@@ -1940,9 +2019,10 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 		if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
 			K15_GUIArrangeLayoutElements(guiElement);
 
+		memoryPosition += guiElement->offsetNextElementInBytes;
 		//TODO:
-		K15_GUIHandleInput(guiElement, contextEvents);
-		K15_GUICreateDrawCalls(guiElement, )
+// 		K15_GUIHandleInput(guiElement, contextEvents);
+// 		K15_GUICreateDrawCalls(guiElement, )
 	}
 }
 /*********************************************************************************/

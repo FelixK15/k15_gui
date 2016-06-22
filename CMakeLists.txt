@@ -9,4 +9,4 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 include_directories(./)
 add_executable(example example.c)
-set_source_files_properties(example.c PROPERTIES LANGUAGE CXX)
+set_source_files_properties(example.c PROPERTIES LANGUAGE C)

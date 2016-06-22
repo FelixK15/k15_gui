@@ -10,9 +10,6 @@ void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 	K15_GUIIconSet* icons = 0;
 	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
 	
-	K15_GUIFont* arial12 = 0;
-	K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &arial12, "arial.ttf", 12, "arial");
-
 // 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
 // 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
 // 
@@ -36,61 +33,59 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 	static float sliderValue = 0.f;
 	char* message = (char*)alloca(512);
 
-	for (;;)
+	K15_GUIBeginToolBar(p_GUIContext, "toolbar_1");
+
+	if (K15_GUIBeginMenu(p_GUIContext, "File", "file_1"))
 	{
-		K15_GUIBeginToolBar(p_GUIContext, "toolbar_1");
-
-		if (K15_GUIBeginMenu(p_GUIContext, "File", "file_1"))
+		if (K15_GUIMenuItem(p_GUIContext, "Open...", "open_1"))
 		{
-			if (K15_GUIMenuItem(p_GUIContext, "Open...", "open_1"))
-			{
-				printf("Open pressed...\n");
-			}
-
-			if (K15_GUIMenuItem(p_GUIContext, "Close", "close_1"))
-			{
-				exit(0);
-			}
-
-			K15_GUISeparator(p_GUIContext);
-
-			if (K15_GUIBeginMenu(p_GUIContext, "Even More", "more_1"))
-			{
-				if (K15_GUIMenuItem(p_GUIContext, "Open Window", "open_window_1"))
-				{
-					showWindow = !showWindow;
-				}
-			}
-			K15_GUIEndMenu(p_GUIContext);
+			printf("Open pressed...\n");
 		}
 
-		K15_GUIEndToolBar(p_GUIContext);
-
-		if (showWindow)
+		if (K15_GUIMenuItem(p_GUIContext, "Close", "close_1"))
 		{
-			if (K15_GUIBeginWindow(p_GUIContext, &windowPosY, &windowPosY, &windowHeight, &windowHeight, "Test Window", "test_window_1"))
+			exit(0);
+		}
+
+		K15_GUISeparator(p_GUIContext);
+
+		if (K15_GUIBeginMenu(p_GUIContext, "Even More", "more_1"))
+		{
+			if (K15_GUIMenuItem(p_GUIContext, "Open Window", "open_window_1"))
 			{
-				K15_GUILabel(p_GUIContext, "Print float:", "label_1");
+				showWindow = !showWindow;
+			}
+		}
+		K15_GUIEndMenu(p_GUIContext);
+	}
+
+	K15_GUIEndToolBar(p_GUIContext);
+
+	if (showWindow)
+	{
+		if (K15_GUIBeginWindow(p_GUIContext, &windowPosY, &windowPosY, &windowHeight, &windowHeight, 
+			"Test Window", "test_window_1"))
+		{
+			K15_GUILabel(p_GUIContext, "Print float:", "label_1");
 //				K15_GUINextLine(p_GUIContext);
 //				K15_GUIFloatSlider(p_GUIContext, &sliderValue, 0.f, 10.f, "slider_1");
-				if (K15_GUIButton(p_GUIContext, "Print float", "print_1"))
-				{
-					printf("Float: %.3f\n", sliderValue);
-				}
-				K15_GUIEndWindow(p_GUIContext);
+			if (K15_GUIButton(p_GUIContext, "Print float", "print_1"))
+			{
+				printf("Float: %.3f\n", sliderValue);
 			}
+			K15_GUIEndWindow(p_GUIContext);
 		}
-
-		kg_result lastResult = K15_GUIGetLastResult(p_GUIContext);
-		if (lastResult != K15_GUI_RESULT_SUCCESS)
-		{
-			kg_u32 bytesWritten = K15_GUIConvertResultToMessage(lastResult, &message, 512);
-			message[bytesWritten] = 0;
-			printf("Error: %s\n", message);
-		}
-
-		K15_GUIFinishFrame(p_GUIContext);
 	}
+
+	kg_result lastResult = K15_GUIGetLastResult(p_GUIContext);
+	if (lastResult != K15_GUI_RESULT_SUCCESS)
+	{
+		kg_u32 bytesWritten = K15_GUIConvertResultToMessage(lastResult, &message, 512);
+		message[bytesWritten] = 0;
+		printf("Error: %s\n", message);
+	}
+
+	K15_GUIFinishFrame(p_GUIContext);
 }
 
 void drawGUI(K15_GUIContext* p_GUIContext)
@@ -156,9 +151,12 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 // 	}
 }
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 int main(int argc, char** argv)
 {
-	K15_GUIResourceDatabase guiResourceDatabase = {};
+	K15_GUIResourceDatabase guiResourceDatabase = {0};
 	kg_result result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -169,7 +167,7 @@ int main(int argc, char** argv)
 		printf("Error during resource database creation: '%s'\n", errorMsg);
 	}
 
-	K15_GUIContext guiContext = {};
+	K15_GUIContext guiContext = {0};
 	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, 800, 600);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -181,8 +179,13 @@ int main(int argc, char** argv)
 	}
 
 	setupResources(&guiResourceDatabase);
-	updateGUI(&guiContext);
-	drawGUI(&guiContext);
+
+	for (;;)
+	{
+		updateGUI(&guiContext);
+		drawGUI(&guiContext);
+		Sleep(20);
+	}
 	
 	return 0;
 }
