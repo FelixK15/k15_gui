@@ -326,7 +326,7 @@ typedef struct
 	kg_u8 titlePixelPadding;
 	K15_GUIFont* font;
 } K15_GUIWindowStyle;
-/*********************************************************************************/
+/*******************a**************************************************************/
 typedef struct 
 {
 	kg_color32 textColor;
@@ -435,6 +435,7 @@ typedef struct
 typedef struct 
 {
 	kg_byte* drawCommandBuffer;
+	kg_u32 bufferPosition;
 	kg_u32 bufferCapacityInBytes;
 	kg_u32 bufferSizeInBytes;
 } K15_GUIDrawCommandBuffer;
@@ -455,6 +456,15 @@ typedef struct
 	K15_GUILayoutType type;
 	kg_u32 numElements;
 } K15_GUILayoutData;
+/*********************************************************************************/
+typedef struct
+{
+	kg_u16 posX;
+	kg_u16 posY;
+	kg_u16 width;
+	kg_u16 height;
+	K15_GUIColorGradient colorGradient;
+} K15_GUIRectShapeData;
 /*********************************************************************************/
 typedef struct 
 {
@@ -579,6 +589,14 @@ kg_def kg_u32 K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMess
 kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIMouseInput p_MouseInput);
 kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput);
 kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent);
+
+//*****************RENDERING******************//
+kg_def kg_u32 K15_GUICalculateDrawCommandBufferSizeInBtes(K15_GUIContext* p_GUIContext);
+kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer);
+kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext,
+	K15_GUIDrawCommandBuffer* p_GUIDrawCommandBuffer);
+kg_def kg_result K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, void* p_Data, 
+	kg_u32 p_DataSize);
 
 #ifdef K15_GUI_IMPLEMENTATION
 
@@ -1694,15 +1712,6 @@ kg_internal kg_result K15_GUIAddElementData(K15_GUIContextMemory* p_GUIContextMe
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-typedef struct  
-{
-	kg_u16 posX;
-	kg_u16 posY;
-	kg_u16 width;
-	kg_u16 height;
-	K15_GUIColorGradient colorGradient;
-} K15_GUIShapeData;
-/*********************************************************************************/
 kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
 	K15_GUIDrawCommandType p_DrawCommandType, void* p_DrawCommandParams, kg_u32 p_ParamSizeInBytes)
 {
@@ -1732,7 +1741,7 @@ functionEnd:
 kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
 	kg_u16 p_PosX, kg_u16 p_PosY, kg_u16 p_Width, kg_u16 p_Height, K15_GUIColorGradient p_Gradient)
 {
-	K15_GUIShapeData shapeData = { 0 };
+	K15_GUIRectShapeData shapeData = { 0 };
 	shapeData.posX = p_PosX;
 	shapeData.posY = p_PosY;
 	shapeData.width = p_Width;
@@ -1740,7 +1749,7 @@ kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p
 	shapeData.colorGradient = p_Gradient;
 
 	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, K15_GUI_DRAW_RECT_COMMAND, &shapeData, 
-		sizeof(K15_GUIShapeData));
+		sizeof(K15_GUIRectShapeData));
 }
 /*********************************************************************************/
 kg_internal K15_GUIColorGradient K15_GUICreateLerpGradiant(kg_color32 p_From, kg_color32 p_To)
@@ -2134,6 +2143,30 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 	p_GUIContextEvents->bufferedSystemEvents[systemEventIndex] = p_SystemEvent;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+
+/*********************************************************************************/
+kg_def kg_u32 K15_GUICalculateDrawCommandBufferSizeInBtes(K15_GUIContext* p_GUIContext)
+{
+	if (!p_GUIContext)
+		return 0;
+
+	return p_GUIContext->drawCmdBuffer.bufferSizeInBytes;
+}
+/*********************************************************************************/
+kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext, K15_GUIDrawCommandBuffer* p_GUIDrawCommandBuffer)
+{
+	if (!p_GUIContext || !p_GUIDrawCommandBuffer)
+		return;
+
+	K15_IA_MEMCPY(p_GUIDrawCommandBuffer, p_GUIContext->drawCmdBuffer.drawCommandBuffer,
+		p_GUIContext->drawCmdBuffer.bufferSizeInBytes);
+}
+
+/*********************************************************************************/
+kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
+{
+	return p_DrawCommandBuffer->bufferPosition < p_DrawCommandBuffer->bufferSizeInBytes;
 }
 /*********************************************************************************/
 

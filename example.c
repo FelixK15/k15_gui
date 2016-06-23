@@ -90,65 +90,29 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
-// 	K15_GUIDrawCommandBuffer guiDrawCommandBuffer = {};
-// 
-// 	kg_result result = K15_GUICreateDrawCommandBuffer(p_GUIContext, &guiDrawCommandBuffer);
-// 
-// 	if (result != K15_GUI_RESULT_SUCCESS)
-// 	{
-// 		char errorMsg[256];
-// 		K15_GUIConvertResultToMessage(result, errorMsg, 256);
-// 
-// 		printf("Error during command buffer creation: '%s'\n", errorMsg);
-// 	}
-// 
-// 	K15_GUIDrawCommand drawCmd = {};
-// 
-// 	for (kg_u32 cmdIndex = 0;
-// 		cmdIndex < guiDrawCommandBuffer.numCommands;
-// 		++cmdIndex)
-// 	{
-// 		kg_result result = K15_GUIGetNextDrawCommand(&guiDrawCommandBuffer, &drawCmd);
-// 
-// 		if (result == K15_GUI_RESULT_NO_MORE_DRAW_COMMANDS)
-// 		{
-// 			break;
-// 		}
-// 
-// 		if (drawCmd.type == K15_GUI_DRAW_VERTICES_COMMAND)
-// 		{
-// 			K15_GUIDrawVerticesCommand cmd = {};
-// 			kg_result result = K15_GUIGetDrawVerticesCommand(&guiDrawCommandBuffer, &drawCmd, &cmd);
-// 
-// 			if (result != K15_GUI_RESULT_SUCCESS)
-// 			{
-// 				char errorMsg[256];
-// 				K15_GUIConvertResultToString(result, errorMsg, 256);
-// 				printf("Error during 'DrawVerticesCommand' retrieval: '%s'\n", errorMsg);
-// 				break;
-// 			}
-// 
-// 			
-// 		}
-// 
-// 		kg_u32 triCount = drawCmd->numTriangles;
-// 		kg_u32 indexCount = primCount * 3;
-// 
-// 		float* vertexData = drawCmd->vertexData;
-// 
-// 		//upload to vertex buffer
-// 
-// 		if ((drawCmd->attributeFlags & K15_GUI_UV_ATTRIBUTE_FLAG) > 0)
-// 		{
-// 			kg_u64 textureUserData = drawCmd->textureUserData;
-// 
-// 		}
-// 
-// 		if ((drawCmd->attributeFlags & K15_GUI_COLOR_ATTRIBUTE_FLAG) > 0)
-// 		{
-// 
-// 		}
-// 	}
+	kg_u32 sizeDrawCommandBuffer = K15_GUICalculateDrawCommandBufferSizeInBytes(p_GUIContext);
+	K15_GUIDrawCommandBuffer* drawCommandBuffer = (K15_GUIDrawCommandBuffer*)malloc(sizeDrawCommandBuffer);
+
+	K15_GUICopyDrawCommandBuffer(p_GUIContext, drawCommandBuffer);
+
+	while (K15_GUIHasDrawCommand(drawCommandBuffer))
+	{
+		K15_GUIDrawCommandType type = K15_GUIGetDrawCommandType(drawCommandBuffer);
+
+		switch (type)
+		{
+		case K15_GUI_DRAW_RECT_COMMAND:
+			K15_GUIRectShapeData rectShapeData = { 0 };
+			K15_GUIGetDrawCommandData(drawCommandBuffer, &rectShapeData, sizeof(rectShapeData));
+			drawRect(&rectShapeData);
+			break;
+
+		default:
+			break;
+		}
+
+		K15_GUINextDrawCommand(drawCommandBuffer);
+	}
 }
 
 #define WIN32_LEAN_AND_MEAN
