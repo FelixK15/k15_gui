@@ -1,5 +1,28 @@
+#include <windows.h>
+#include <stdio.h>
+
 #define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
+
+#pragma comment(lib, "kernel32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
+
+#define K15_FALSE 0
+#define K15_TRUE 1
+
+typedef unsigned char bool8;
+typedef unsigned char byte;
+typedef unsigned int uint32;
+typedef unsigned short uint16;
+typedef unsigned char uint8;
+
+typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
+
+HDC backbufferDC = 0;
+HBITMAP backbufferBitmap = 0;
+uint32 screenWidth = 1024;
+uint32 screenHeight = 768;
 
 void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
@@ -9,18 +32,18 @@ void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 
 	K15_GUIIconSet* icons = 0;
 	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
-	
-// 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
-// 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
-// 
-// 	K15_GUIGetFontTextureData(arial12, &fontTextureData, fontTextureDataSizeInBytes);
-// 	arial12->texture.userData = 1;
-// 
-// 	kg_u32 iconTextureDataSizeInBytes = K15_GUIGetIconSetTextureSizeInBytes(icons);
-// 	kg_byte* iconsTextureData = (kg_byte*)malloc(iconTextureDataSizeInBytes);
-// 
-// 	K15_GUIGetIconSetTextureData(icons, &iconsTextureData, iconTextureDataSizeInBytes);
-// 	icons->texture.userData = 2;
+
+	// 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
+	// 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
+	// 
+	// 	K15_GUIGetFontTextureData(arial12, &fontTextureData, fontTextureDataSizeInBytes);
+	// 	arial12->texture.userData = 1;
+	// 
+	// 	kg_u32 iconTextureDataSizeInBytes = K15_GUIGetIconSetTextureSizeInBytes(icons);
+	// 	kg_byte* iconsTextureData = (kg_byte*)malloc(iconTextureDataSizeInBytes);
+	// 
+	// 	K15_GUIGetIconSetTextureData(icons, &iconsTextureData, iconTextureDataSizeInBytes);
+	// 	icons->texture.userData = 2;
 }
 
 void updateGUI(K15_GUIContext* p_GUIContext)
@@ -64,12 +87,12 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 	if (showWindow)
 	{
-		if (K15_GUIBeginWindow(p_GUIContext, &windowPosY, &windowPosY, &windowHeight, &windowHeight, 
+		if (K15_GUIBeginWindow(p_GUIContext, &windowPosY, &windowPosY, &windowHeight, &windowHeight,
 			"Test Window", "test_window_1"))
 		{
 			K15_GUILabel(p_GUIContext, "Print float:", "label_1");
-//				K15_GUINextLine(p_GUIContext);
-//				K15_GUIFloatSlider(p_GUIContext, &sliderValue, 0.f, 10.f, "slider_1");
+			//				K15_GUINextLine(p_GUIContext);
+			//				K15_GUIFloatSlider(p_GUIContext, &sliderValue, 0.f, 10.f, "slider_1");
 			if (K15_GUIButton(p_GUIContext, "Print float", "print_1"))
 			{
 				printf("Float: %.3f\n", sliderValue);
@@ -89,6 +112,19 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 	K15_GUIFinishFrame(p_GUIContext);
 }
 
+void drawRect(K15_GUIRectShapeData* p_RectShapeData)
+{
+	HBRUSH brush = CreateSolidBrush(p_RectShapeData->colorGradient.to);
+
+	HPEN pen = CreatePen(PS_SOLID, 1, p_RectShapeData->colorGradient.to);
+	Rectangle(backbufferDC, p_RectShapeData->posX, p_RectShapeData->posY,
+		p_RectShapeData->posX + p_RectShapeData->width,
+		p_RectShapeData->posY + p_RectShapeData->height);
+
+	DeleteObject(brush);
+	DeleteObject(pen);
+}
+
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
 	kg_u32 sizeDrawCommandBuffer = K15_GUICalculateDrawCommandBufferSizeInBytes(p_GUIContext);
@@ -105,7 +141,7 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 		case K15_GUI_DRAW_RECT_COMMAND:
 			K15_GUIRectShapeData rectShapeData = { 0 };
 			K15_GUIGetDrawCommandData(&drawCommandBuffer, &rectShapeData, sizeof(rectShapeData));
-			//drawRect(&rectShapeData);
+			drawRect(&rectShapeData);
 			break;
 
 		default:
@@ -116,12 +152,179 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 	}
 }
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
-int main(int argc, char** argv)
+void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
-	K15_GUIResourceDatabase guiResourceDatabase = {0};
+	
+}
+
+void K15_WindowClosed(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+
+}
+
+void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+
+}
+
+void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+
+}
+
+void K15_MouseMove(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+
+}
+
+void K15_MouseWheel(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+
+}
+
+LRESULT CALLBACK K15_WNDPROC(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+	bool8 messageHandled = K15_FALSE;
+
+	switch (p_Message)
+	{
+	case WM_CREATE:
+		K15_WindowCreated(p_HWND, p_Message, p_wParam, p_lParam);
+		break;
+
+	case WM_CLOSE:
+		K15_WindowClosed(p_HWND, p_Message, p_wParam, p_lParam);
+		PostQuitMessage(0);
+		messageHandled = K15_TRUE;
+		break;
+
+	case WM_KEYDOWN:
+	case WM_KEYUP:
+	case WM_SYSKEYDOWN:
+	case WM_SYSKEYUP:
+		K15_KeyInput(p_HWND, p_Message, p_wParam, p_lParam);
+		break;
+
+	case WM_LBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_XBUTTONUP:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_XBUTTONDOWN:
+		K15_MouseButtonInput(p_HWND, p_Message, p_wParam, p_lParam);
+		break;
+
+	case WM_MOUSEMOVE:
+		K15_MouseMove(p_HWND, p_Message, p_wParam, p_lParam);
+		break;
+
+	case WM_MOUSEWHEEL:
+		K15_MouseWheel(p_HWND, p_Message, p_wParam, p_lParam);
+		break;
+	}
+
+	if (messageHandled == K15_FALSE)
+	{
+		return DefWindowProc(p_HWND, p_Message, p_wParam, p_lParam);
+	}
+
+	return 0;
+}
+
+HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
+{
+	WNDCLASS wndClass = {0};
+	wndClass.style = CS_HREDRAW | CS_OWNDC | CS_VREDRAW;
+	wndClass.hInstance = p_Instance;
+	wndClass.lpszClassName = "K15_Win32Template";
+	wndClass.lpfnWndProc = K15_WNDPROC;
+	RegisterClass(&wndClass);
+
+	HWND hwnd = CreateWindowA("K15_Win32Template", "Win32 Template",
+		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+		p_Width, p_Height, 0, 0, p_Instance, 0);
+
+	if (hwnd == INVALID_HANDLE_VALUE)
+		MessageBox(0, "Error creating Window.\n", "Error!", 0);
+	else
+		ShowWindow(hwnd, SW_SHOW);
+	return hwnd;
+}
+
+uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
+{
+	LARGE_INTEGER appTime = {0};
+	QueryPerformanceCounter(&appTime);
+
+	appTime.QuadPart *= 1000; //to milliseconds
+
+	return (uint32)(appTime.QuadPart / p_PerformanceFrequency.QuadPart);
+}
+
+void setup(HWND p_HWND)
+{
+	HDC originalDC = GetDC(p_HWND);
+	backbufferDC = CreateCompatibleDC(originalDC);
+	backbufferBitmap = CreateCompatibleBitmap(originalDC, screenWidth, screenHeight);
+
+	SelectObject(backbufferDC, backbufferBitmap);
+}
+
+void swapBuffers(HWND p_HWND)
+{
+	HDC originalDC = GetDC(p_HWND);
+
+	//blit to front buffer
+	BitBlt(originalDC, 0, 0, screenWidth, screenHeight, backbufferDC, 0, 0, SRCCOPY);
+
+	//clear backbuffer
+	BitBlt(backbufferDC, 0, 0, screenWidth, screenHeight, backbufferDC, 0, 0, BLACKNESS);
+}
+
+void drawDeltaTime(uint32 p_DeltaTimeInMS)
+{
+	RECT textRect;
+	textRect.left = 70;
+	textRect.top = 70;
+	textRect.bottom = screenHeight;
+	textRect.right = screenWidth;
+
+	char messageBuffer[64];
+	SetTextColor(backbufferDC, RGB(255, 255, 255));
+	SetBkColor(backbufferDC, RGB(0, 0, 0));
+
+	sprintf_s(messageBuffer, 64, "MS: %d", p_DeltaTimeInMS);
+	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
+}
+
+void doFrame(K15_GUIContext* p_GUIContext, uint32 p_DeltaTimeInMS, HWND p_HWND)
+{
+	drawDeltaTime(p_DeltaTimeInMS);
+	updateGUI(p_GUIContext);
+	drawGUI(p_GUIContext);
+
+	swapBuffers(p_HWND);
+}
+
+int CALLBACK WinMain(HINSTANCE hInstance,
+	HINSTANCE hPrevInstance,
+	LPSTR lpCmdLine, int nShowCmd)
+{
+	const int msPerFrame = 16;
+
+	LARGE_INTEGER performanceFrequency;
+	QueryPerformanceFrequency(&performanceFrequency);
+
+	HWND hwnd = setupWindow(hInstance, screenWidth, screenHeight);
+
+	if (hwnd == INVALID_HANDLE_VALUE)
+		return -1;
+
+	setup(hwnd);
+
+	K15_GUIResourceDatabase guiResourceDatabase = { 0 };
 	kg_result result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -132,8 +335,8 @@ int main(int argc, char** argv)
 		printf("Error during resource database creation: '%s'\n", errorMsg);
 	}
 
-	K15_GUIContext guiContext = {0};
-	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, 800, 600);
+	K15_GUIContext guiContext = { 0 };
+	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, screenWidth, screenHeight);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -145,12 +348,35 @@ int main(int argc, char** argv)
 
 	setupResources(&guiResourceDatabase);
 
-	for (;;)
+	uint32 timeFrameStarted = 0;
+	uint32 timeFrameEnded = 0;
+	uint32 deltaMs = 0;
+
+	bool8 loopRunning = K15_TRUE;
+	MSG msg = {0};
+
+	while (loopRunning)
 	{
-		updateGUI(&guiContext);
-		drawGUI(&guiContext);
-		Sleep(20);
+		timeFrameStarted = getTimeInMilliseconds(performanceFrequency);
+
+		while (PeekMessage(&msg, hwnd, 0, 0, PM_REMOVE) > 0)
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+
+			if (msg.message == WM_QUIT)
+				loopRunning = K15_FALSE;
+		}
+
+		doFrame(&guiContext, deltaMs, hwnd);
+
+		timeFrameEnded = getTimeInMilliseconds(performanceFrequency);
+		deltaMs = timeFrameEnded - timeFrameStarted;
+
+		//60FPS
+		if (deltaMs < msPerFrame)
+			Sleep(msPerFrame - deltaMs);
 	}
-	
+
 	return 0;
 }
