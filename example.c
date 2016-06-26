@@ -33,6 +33,7 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 	static float sliderValue = 0.f;
 	char* message = (char*)alloca(512);
 
+	K15_GUIBeginFrame(p_GUIContext);
 	K15_GUIBeginToolBar(p_GUIContext, "toolbar_1");
 
 	if (K15_GUIBeginMenu(p_GUIContext, "File", "file_1"))
@@ -91,27 +92,27 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
 	kg_u32 sizeDrawCommandBuffer = K15_GUICalculateDrawCommandBufferSizeInBytes(p_GUIContext);
-	K15_GUIDrawCommandBuffer* drawCommandBuffer = (K15_GUIDrawCommandBuffer*)malloc(sizeDrawCommandBuffer);
+	K15_GUIDrawCommandBuffer drawCommandBuffer = { 0 };
 
-	K15_GUICopyDrawCommandBuffer(p_GUIContext, drawCommandBuffer);
+	K15_GUICopyDrawCommandBuffer(p_GUIContext, &drawCommandBuffer);
 
-	while (K15_GUIHasDrawCommand(drawCommandBuffer))
+	while (K15_GUIHasDrawCommand(&drawCommandBuffer))
 	{
-		K15_GUIDrawCommandType type = K15_GUIGetDrawCommandType(drawCommandBuffer);
+		K15_GUIDrawCommandType type = K15_GUIGetDrawCommandType(&drawCommandBuffer);
 
 		switch (type)
 		{
 		case K15_GUI_DRAW_RECT_COMMAND:
 			K15_GUIRectShapeData rectShapeData = { 0 };
-			K15_GUIGetDrawCommandData(drawCommandBuffer, &rectShapeData, sizeof(rectShapeData));
-			drawRect(&rectShapeData);
+			K15_GUIGetDrawCommandData(&drawCommandBuffer, &rectShapeData, sizeof(rectShapeData));
+			//drawRect(&rectShapeData);
 			break;
 
 		default:
 			break;
 		}
 
-		K15_GUINextDrawCommand(drawCommandBuffer);
+		K15_GUINextDrawCommand(&drawCommandBuffer);
 	}
 }
 
