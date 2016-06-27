@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <windows.h>
 #include <stdio.h>
 
@@ -23,6 +25,28 @@ HDC backbufferDC = 0;
 HBITMAP backbufferBitmap = 0;
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
+
+uint32 convertColor(kg_color32 p_Color)
+{
+	int r = (uint8)(p_Color >> 0);
+	int g = (uint8)(p_Color >> 8);
+	int b = (uint8)(p_Color >> 16);
+	int a = (uint8)(p_Color >> 24);
+
+	float fR = (float)r / 255.f;
+	float fG = (float)g / 255.f;
+	float fB = (float)b / 255.f;
+
+	fR = powf(fR, 1.f / 2.2f);
+	fG = powf(fG, 1.f / 2.2f);
+	fB = powf(fB, 1.f / 2.2f);
+
+	r = (int)(fR * 255.f);
+	g = (int)(fG * 255.f);
+	b = (int)(fB * 255.f);
+
+	return RGB(r, g, b);
+}
 
 void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
@@ -114,15 +138,27 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 void drawRect(K15_GUIRectShapeData* p_RectShapeData)
 {
-	HBRUSH brush = CreateSolidBrush(p_RectShapeData->colorGradient.to);
+	for (uint32 y = 0;
+		y < p_RectShapeData->height;
+		++y)
+	{
+		float p = (float)y / (float)p_RectShapeData->height;
+		kg_color32 color = K15_GUISampleColorGradient(&p_RectShapeData->colorGradient, p);
+		COLORREF c = convertColor(color);
+		HPEN pen = CreatePen(PS_SOLID, 1, c);
+		HBRUSH brush = CreateSolidBrush(c);
 
-	HPEN pen = CreatePen(PS_SOLID, 1, p_RectShapeData->colorGradient.to);
-	Rectangle(backbufferDC, p_RectShapeData->posX, p_RectShapeData->posY,
-		p_RectShapeData->posX + p_RectShapeData->width,
-		p_RectShapeData->posY + p_RectShapeData->height);
+		SelectObject(backbufferDC, pen);
+		SelectObject(backbufferDC, brush);
 
-	DeleteObject(brush);
-	DeleteObject(pen);
+		Rectangle(backbufferDC, p_RectShapeData->posX,
+			y + p_RectShapeData->posY,
+			p_RectShapeData->posX + p_RectShapeData->width,
+			y + p_RectShapeData->posY + 1);
+
+		DeleteObject(pen);
+		DeleteObject(brush);
+	}
 }
 
 void drawGUI(K15_GUIContext* p_GUIContext)
@@ -312,7 +348,7 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 	HINSTANCE hPrevInstance,
 	LPSTR lpCmdLine, int nShowCmd)
 {
-	const int msPerFrame = 16;
+	const uint32 msPerFrame = 16;
 
 	LARGE_INTEGER performanceFrequency;
 	QueryPerformanceFrequency(&performanceFrequency);

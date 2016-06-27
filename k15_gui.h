@@ -64,7 +64,9 @@ typedef enum
 	K15_GUI_RESULT_HASH_CONFLICT = 14,
 	K15_GUI_RESULT_FRAME_NOT_FINISHED = 15,
 	K15_GUI_RESULT_FRAME_NOT_STARTED = 16,
-	K15_GUI_RESULT_UNKNOWN_ERROR = 17
+	K15_GUI_RESULT_ELEMENT_NOT_STARTED = 17,
+	K15_GUI_RESULT_ELEMENT_NOT_FINISHED = 18,
+	K15_GUI_RESULT_UNKNOWN_ERROR = 19
 } kg_result;
 /*********************************************************************************/
 typedef enum 
@@ -90,7 +92,8 @@ typedef enum
 typedef enum 
 {
 	K15_GUI_CONTEXT_INSIDE_FRAME_FLAG = 0x01,
-	K15_GUI_CONTEXT_INSIDE_MENU_FLAG = 0x02
+	K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG = 0x02,
+	K15_GUI_CONTEXT_INSIDE_MENU_FLAG = 0x04
 } K15_GUIContextFlags;
 /*********************************************************************************/
 typedef enum 
@@ -1829,6 +1832,16 @@ kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result
 kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier,
 	K15_GUIToolBarStyle* p_Style)
 {
+	kg_result result;
+
+	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG) == 1)
+	{
+		result = K15_GUI_RESULT_ELEMENT_NOT_FINISHED;
+		goto functionEnd;
+	}
+
+	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
+
 	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
 
 	kg_u32 toolbarHeight = p_Style->pixelHeight;
@@ -1844,7 +1857,7 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	toolbarHeight = K15_GUI_MIN(contextClipHeight, toolbarHeight);
 
 	K15_GUIElement* guiElement = 0;
-	kg_result result = K15_GUIRegisterElement(p_GUIContext, &guiElement, 
+	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, 
 		p_Identifier, contextClipX, contextClipY, contextClipWidth, toolbarHeight);
 	
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
@@ -1944,6 +1957,13 @@ kg_def void K15_GUIEndWindow(K15_GUIContext* p_GUIContext)
 /*********************************************************************************/
 kg_def void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext)
 {
+	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG) == 0)
+	{
+		K15_GUISetLastResult(&p_GUIContext->lastResult, K15_GUI_RESULT_ELEMENT_NOT_STARTED);
+		return;
+	}
+
+	p_GUIContext->flagMask &= ~K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
 	K15_GUIPopLayout(p_GUIContext);
 }
 /*********************************************************************************/
@@ -2057,15 +2077,15 @@ kg_internal kg_color32 K15_GUISampleColorGradient(K15_GUIColorGradient* p_ColorG
 	kg_color32 fromColor = p_ColorGradient->from;
 	kg_color32 toColor = p_ColorGradient->to;
 
-	float fR = (float)((kg_u8)(fromColor << 0) / 255);
-	float fG = (float)((kg_u8)(fromColor << 8) / 255);
-	float fB = (float)((kg_u8)(fromColor << 16) / 255);
-	float fA = (float)((kg_u8)(fromColor << 24) / 255);
+	float fR = (float)((kg_u8)(fromColor >> 0) / 255);
+	float fG = (float)((kg_u8)(fromColor >> 8) / 255);
+	float fB = (float)((kg_u8)(fromColor >> 16) / 255);
+	float fA = (float)((kg_u8)(fromColor >> 24) / 255);
 
-	float tR = (float)((kg_u8)(toColor << 0) / 255);
-	float tG = (float)((kg_u8)(toColor << 8) / 255);
-	float tB = (float)((kg_u8)(toColor << 16) / 255);
-	float tA = (float)((kg_u8)(toColor << 24) / 255);
+	float tR = (float)((kg_u8)(toColor >> 0) / 255);
+	float tG = (float)((kg_u8)(toColor >> 8) / 255);
+	float tB = (float)((kg_u8)(toColor >> 16) / 255);
+	float tA = (float)((kg_u8)(toColor >> 24) / 255);
 
 	float oR = 0.f;
 	float oG = 0.f;
@@ -2274,6 +2294,10 @@ kg_def kg_u32 K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMess
 		errorMsg = "Frame not finished";
 	else if (p_Result == K15_GUI_RESULT_FRAME_NOT_STARTED)
 		errorMsg = "Frame not started";
+	else if (p_Result == K15_GUI_RESULT_ELEMENT_NOT_STARTED)
+		errorMsg = "Element not started";
+	else if (p_Result == K15_GUI_RESULT_ELEMENT_NOT_FINISHED)
+		errorMsg = "Element not finished";
 
 	if (errorMsg)
 	{
