@@ -175,10 +175,12 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 		switch (type)
 		{
 		case K15_GUI_DRAW_RECT_COMMAND:
+		{
 			K15_GUIRectShapeData rectShapeData = { 0 };
 			K15_GUIGetDrawCommandData(&drawCommandBuffer, &rectShapeData, sizeof(rectShapeData));
 			drawRect(&rectShapeData);
 			break;
+		}
 
 		default:
 			break;

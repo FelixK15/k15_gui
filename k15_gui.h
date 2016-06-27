@@ -247,13 +247,13 @@ typedef struct
 	kg_u16 numBufferedKeyboardInputs;
 } K15_GUIContextEvents;
 /*********************************************************************************/
-typedef struct 
+typedef struct
 {
-	kg_s32 pixelPosLeft;
-	kg_s32 pixelPosTop;
-	kg_s32 pixelPosRight;
-	kg_s32 pixelPosBottom;
-} K15_GUIRectangle;
+	kg_s16 left;
+	kg_s16 top;
+	kg_s16 right;
+	kg_s16 bottom;
+} K15_GUIRect;
 /*********************************************************************************/
 typedef struct 
 {
@@ -264,8 +264,18 @@ typedef struct
 	kg_u64 userData;
 } K15_GUITexture;
 /*********************************************************************************/
+typedef struct
+{
+	K15_GUIRect glyphRect;
+	kg_u32 codepoint;
+	kg_s32 leftSideBearing;
+	kg_s32 advancewidth;
+} K15_GUIFontGlyph;
+/*********************************************************************************/
 typedef struct 
 {
+	K15_GUITexture texture;
+	K15_GUIFontGlyph* glyphs;
 	float scaleFactor;
 	kg_u32 glyphRangeMask;
 	kg_s32 fontSize;
@@ -273,16 +283,7 @@ typedef struct
 	kg_s32 ascent;
 	kg_s32 descent;
 	kg_u32 numGlyphs;
-	K15_GUITexture texture;
 } K15_GUIFont;
-/*********************************************************************************/
-typedef struct 
-{
-	K15_GUIRectangle glyphRect;
-	kg_u32 codepoint;
-	kg_s32 leftSideBearing;
-	kg_s32 advancewidth;
-} K15_GUIFontGlyph;
 /*********************************************************************************/
 typedef struct 
 {
@@ -294,7 +295,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	K15_GUIRectangle atlasClipRect;
+	K15_GUIRect atlasClipRect;
 	char name[K15_GUI_MAX_RESOURCE_NAME_LENGTH];
 } K15_GUIIconMarker;
 /*********************************************************************************/
@@ -400,14 +401,6 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	kg_s16 left;
-	kg_s16 top;
-	kg_s16 right;
-	kg_s16 bottom;
-} K15_GUIClipRect;
-/*********************************************************************************/
-typedef struct 
-{
 	kg_u32 from;
 	kg_u32 to;
 } K15_GUIGlyphRange;
@@ -447,7 +440,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	K15_GUIClipRect clipRect;
+	K15_GUIRect clipRect;
 	K15_GUIElementType type;
 	kg_u32 identifierHash;
 	kg_u32 offsetNextElementInBytes;
@@ -486,7 +479,7 @@ typedef struct
 	K15_GUIContextEvents events;
 	K15_GUIContextMemory memory;
 	K15_GUIDrawCommandBuffer drawCmdBuffer;
-	K15_GUIClipRect clipRect;
+	K15_GUIRect clipRect;
 	K15_GUIResourceDatabase* resourceDatabase;
 	kg_result lastResult;
 	kg_u32 focusedElementIdHash;
@@ -1047,16 +1040,16 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	{
 		K15_GUIGlyphRange* glyphRange = glyphRanges + glyphRangeIndex;
 
+		kg_u32 startCodePoint = glyphRange->from;
 		kg_u32 codepoint = glyphRange->from;
 		kg_u32 endCodepoint = glyphRange->to;
 		kg_u32 glyphArrayIndex = 0;
 
 		while (codepoint < endCodepoint)
 		{
-			K15_GUIRectangle glyphRect = {0};
+			K15_GUIRect glyphRect = {0};
 			
 			kg_s32 glyphIndex = stbtt_FindGlyphIndex(&fontInfo, codepoint);
-			codepoint += 1;
 
 			kg_s32 glyphBitmapWidth = 0;
 			kg_s32 glyphBitmapHeight = 0;
@@ -1080,10 +1073,10 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 				stbtt_GetGlyphHMetrics(&fontInfo, glyphIndex, &advanceWidth, &leftSideBearing);
 
-				glyphRect.pixelPosLeft = glyphBitmapPosX;
-				glyphRect.pixelPosTop = glyphBitmapPosY;
-				glyphRect.pixelPosRight = glyphBitmapPosX + glyphBitmapWidth;
-				glyphRect.pixelPosBottom = glyphBitmapPosY + glyphBitmapHeight;
+				glyphRect.left = glyphBitmapPosX;
+				glyphRect.top = glyphBitmapPosY;
+				glyphRect.right = glyphBitmapPosX + glyphBitmapWidth;
+				glyphRect.bottom = glyphBitmapPosY + glyphBitmapHeight;
 
 				if (taResult != K15_IA_RESULT_SUCCESS)
 				{
@@ -1091,7 +1084,7 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 					goto functionEnd;
 				}
 
-				K15_GUIFontGlyph* fontGlyph = guiFontGlyphs + glyphArrayIndex;
+				K15_GUIFontGlyph* fontGlyph = guiFontGlyphs + (codepoint - startCodePoint);
 				fontGlyph->codepoint = codepoint;
 				fontGlyph->glyphRect = glyphRect;
 				fontGlyph->leftSideBearing = leftSideBearing;
@@ -1099,6 +1092,8 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				
 				glyphArrayIndex += 1;
 			}
+
+			codepoint += 1;
 		}
 	}
 
@@ -1136,6 +1131,7 @@ functionEnd:
 		guiFont->descent = descent;
 		guiFont->scaleFactor = scaleFac;
 		guiFont->numGlyphs = numGlyphs;
+		guiFont->glyphs = guiFontGlyphs;
 
 		*p_OutFont = guiFont;
 	}
@@ -1347,10 +1343,10 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 			}
 
 			K15_GUIIconMarker* iconMarker = iconSet->iconMarker + iconIndex;
-			iconMarker->atlasClipRect.pixelPosLeft = iconAtlasPosX;
-			iconMarker->atlasClipRect.pixelPosTop = iconAtlasPosY;
-			iconMarker->atlasClipRect.pixelPosRight = iconAtlasPosX + pixelWidth;
-			iconMarker->atlasClipRect.pixelPosBottom = iconAtlasPosY + pixelHeight;
+			iconMarker->atlasClipRect.left = iconAtlasPosX;
+			iconMarker->atlasClipRect.top = iconAtlasPosY;
+			iconMarker->atlasClipRect.right = iconAtlasPosX + pixelWidth;
+			iconMarker->atlasClipRect.bottom = iconAtlasPosY + pixelHeight;
 			
 			K15_GUI_MEMCPY(iconMarker->name, currentTableEntry->name, K15_GUI_MAX_RESOURCE_NAME_LENGTH);
 
@@ -1555,7 +1551,7 @@ kg_internal void K15_GUIHandleInput(K15_GUIContext* p_GUIContext, K15_GUIContext
 
 
 /*********************************************************************************/
-kg_internal kg_result K15_GUIValidateClipRect(K15_GUIClipRect* p_ClipRect)
+kg_internal kg_result K15_GUIValidateClipRect(K15_GUIRect* p_ClipRect)
 {
 	if ((p_ClipRect->right - p_ClipRect->left) == 0 || (p_ClipRect->bottom - p_ClipRect->top) == 0)
 		return K15_GUI_RESULT_EMPTY_CLIP_RECT;
@@ -1589,7 +1585,7 @@ kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUICo
 	if (!p_Memory || p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	K15_GUIClipRect clipRect = {0};
+	K15_GUIRect clipRect = {0};
 	clipRect.left = p_ClipPosLeft;
 	clipRect.top = p_ClipPosTop;
 	clipRect.right = p_ClipPosRight;
@@ -1673,7 +1669,7 @@ kg_internal kg_result K15_GUIReserveMemoryChunk(K15_GUIContextMemory* p_GUIConte
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIPerformClipping(K15_GUIClipRect* p_ClipRectToClip, K15_GUIClipRect* p_ClipRect)
+kg_internal kg_result K15_GUIPerformClipping(K15_GUIRect* p_ClipRectToClip, K15_GUIRect* p_ClipRect)
 {
 	p_ClipRectToClip->left = K15_GUI_MIN(p_ClipRectToClip->left, p_ClipRect->left);
 	p_ClipRectToClip->top = K15_GUI_MIN(p_ClipRectToClip->top, p_ClipRect->top);
@@ -1683,7 +1679,7 @@ kg_internal kg_result K15_GUIPerformClipping(K15_GUIClipRect* p_ClipRectToClip, 
 	return K15_GUIValidateClipRect(p_ClipRectToClip);
 }
 /*********************************************************************************/
-kg_internal K15_GUIClipRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
+kg_internal K15_GUIRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
 {
 	if (p_GUIContext->numLayouts == 0)
 		return p_GUIContext->clipRect;
@@ -1703,7 +1699,7 @@ kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_G
 	K15_GUIElement** guiElementHashTable = p_GUIContext->elementHashTable;
 	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
 
-	K15_GUIClipRect clipRect = {0};
+	K15_GUIRect clipRect = {0};
 	clipRect.left = p_PosX;
 	clipRect.top = p_PosY;
 	clipRect.right = p_PosX + p_Width;
@@ -1767,7 +1763,7 @@ kg_internal kg_result K15_GUIRetrieveElementData(K15_GUIContextMemory* p_GUICont
 kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
 	K15_GUIDrawCommandType p_DrawCommandType, void* p_DrawCommandParams, kg_u32 p_ParamSizeInBytes)
 {
-	K15_GUIDrawCommand drawCmd = { 0 };
+	K15_GUIDrawCommand drawCmd;
 	drawCmd.type = K15_GUI_DRAW_RECT_COMMAND;
 	drawCmd.sizeInBytes = p_ParamSizeInBytes;
 
@@ -1800,7 +1796,7 @@ functionEnd:
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIClipRect* p_ClipRect, K15_GUIColorGradient p_Gradient)
+	K15_GUIRect* p_ClipRect, K15_GUIColorGradient p_Gradient)
 {
 	K15_GUIRectShapeData shapeData = { 0 };
 	shapeData.posX = p_ClipRect->left;
@@ -1859,7 +1855,7 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	K15_GUIElement* guiElement = 0;
 	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, 
 		p_Identifier, contextClipX, contextClipY, contextClipWidth, toolbarHeight);
-	
+
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
@@ -1890,9 +1886,103 @@ kg_def kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuTe
 	return K15_GUICustomBeginMenu(p_GUIContext, p_MenuText, p_Identifier, &p_GUIContext->style.menuStyle);
 }
 /*********************************************************************************/
+kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
+{
+	if (!p_Text || !p_Font || !p_OutRect)
+		return;
+
+	kg_s32 ascent = p_Font->ascent;
+	kg_s32 descent = p_Font->descent;
+	kg_s32 lineGap = p_Font->lineGap;
+	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
+	K15_GUIFontGlyph* glyph = 0;
+
+	K15_GUIGlyphRange glyphRanges[10];
+	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+
+	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
+	K15_GUIGlyphRange* glyphRange = 0;
+
+	while (1)
+	{
+		if (*p_Text == 0)
+			break;
+
+		kg_u32 codePoint = (int)(*p_Text++);
+		kg_u32 glyphIndex = -1;
+
+		for (kg_u32 glyphRangeIndex = 0;
+			glyphRangeIndex < numGlyphRanges;
+			++glyphRangeIndex)
+		{
+			glyphRange = glyphRanges + glyphRangeIndex;
+			
+			if (codePoint >= glyphRange->from ||
+				codePoint <= glyphRange->to)
+			{
+				glyphIndex = codePoint - glyphRange->from;
+				break;
+			}
+		}
+
+		if (glyphIndex > glyphRange->to)
+			continue;
+
+		glyph = glyphs + glyphIndex;
+
+		if (glyph)
+		{
+			p_OutRect->right += glyph->glyphRect.right - glyph->glyphRect.left;
+			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, glyph->glyphRect.bottom - glyph->glyphRect.top);
+		}
+	}
+}
+/*********************************************************************************/
 kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier,
 	K15_GUIMenuStyle* p_Style)
 {
+	kg_result result;
+
+	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_MENU_FLAG) == 1)
+	{
+		result = K15_GUI_RESULT_ELEMENT_NOT_FINISHED;
+		goto functionEnd;
+	}
+
+	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_MENU_FLAG;
+
+	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
+
+	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
+	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
+
+	K15_GUIFont* font = p_Style->font;
+	K15_GUIRect textRect = { 0 };
+
+	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
+
+	kg_u32 contextClipX = textRect.left;
+	kg_u32 contextClipY = textRect.top;
+	kg_u32 contextClipWidth = textRect.right - textRect.left;
+	kg_u32 contextClipHeight = textRect.bottom - textRect.top;
+	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
+
+	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+
+	K15_GUIElement* guiElement = 0;
+	result = K15_GUIRegisterElement(p_GUIContext, &guiElement,
+		p_Identifier, contextClipX, contextClipY, contextClipWidth, contextClipHeight);
+
+	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
+		goto functionEnd;
+
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &upperBackgroundColor, sizeof(kg_color32));
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &textLength, sizeof(kg_u32));
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, (void*)p_MenuText, textLength);
+
+functionEnd:
+	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
 	return 0;
 }
 /*********************************************************************************/
@@ -1968,7 +2058,7 @@ kg_def void K15_GUIEndToolBar(K15_GUIContext* p_GUIContext)
 }
 /*********************************************************************************/
 kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutData,
-	K15_GUIClipRect* p_LayoutClipRect)
+	K15_GUIRect* p_LayoutClipRect)
 {
 	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
 	K15_GUIElement* guiElement = 0;
@@ -1994,7 +2084,7 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 }
 /*********************************************************************************/
 kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutData,
-	K15_GUIClipRect* p_LayoutClipRect)
+	K15_GUIRect* p_LayoutClipRect)
 {
 	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
 	K15_GUIElement* guiElement = 0;
@@ -2020,7 +2110,7 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 }
 /*********************************************************************************/
 kg_internal void K15_GUIArrangeElementsStacked(K15_GUILayoutData* p_LayoutData,
-	K15_GUIClipRect* p_LayoutClipRect)
+	K15_GUIRect* p_LayoutClipRect)
 {
 	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
 	K15_GUIElement* guiElement = 0;
@@ -2177,9 +2267,9 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 	K15_GUIElement* layoutElement = 0;
 	K15_GUIElement** layoutElements = p_GUIContext->layoutTable;
 	K15_GUIElement** elementHashTable = p_GUIContext->elementHashTable;
-	K15_GUIClipRect* guiElementClipRect = 0;
-	K15_GUIClipRect* contextClipRect = &p_GUIContext->clipRect;
-	K15_GUIClipRect* clipRectUsedForClipping = contextClipRect;
+	K15_GUIRect* guiElementClipRect = 0;
+	K15_GUIRect* contextClipRect = &p_GUIContext->clipRect;
+	K15_GUIRect* clipRectUsedForClipping = contextClipRect;
 	
 	while (memoryPosition < memorySize)
 	{
