@@ -66,7 +66,8 @@ typedef enum
 	K15_GUI_RESULT_FRAME_NOT_STARTED = 16,
 	K15_GUI_RESULT_ELEMENT_NOT_STARTED = 17,
 	K15_GUI_RESULT_ELEMENT_NOT_FINISHED = 18,
-	K15_GUI_RESULT_UNKNOWN_ERROR = 19
+	K15_GUI_RESULT_DRAW_COMMAND_FINISHED = 19,
+	K15_GUI_RESULT_UNKNOWN_ERROR = 20
 } kg_result;
 /*********************************************************************************/
 typedef enum 
@@ -1729,10 +1730,11 @@ kg_internal kg_result K15_GUIRetrieveElementData(K15_GUIContextMemory* p_GUICont
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommandType p_DrawCommandType, void* p_DrawCommandParams, kg_u32 p_ParamSizeInBytes)
+	K15_GUIDrawCommand** p_OutDrawCommand, K15_GUIDrawCommandType p_DrawCommandType, 
+	void* p_DrawCommandParams, kg_u32 p_ParamSizeInBytes)
 {
 	K15_GUIDrawCommand drawCmd;
-	drawCmd.type = K15_GUI_DRAW_RECT_COMMAND;
+	drawCmd.type = p_DrawCommandType;
 	drawCmd.sizeInBytes = p_ParamSizeInBytes;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
@@ -1753,6 +1755,9 @@ kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawComm
 	
 	K15_GUI_MEMCPY(drawCmdBuffer + drawCmdBufferSizeInBytes, &drawCmd, sizeof(drawCmd));
 	
+	if (p_OutDrawCommand)
+		*p_OutDrawCommand = (K15_GUIDrawCommand*)(drawCmdBuffer + drawCmdBufferSizeInBytes);
+
 	if (p_ParamSizeInBytes == 0)
 		goto functionEnd;
 
@@ -1763,14 +1768,46 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
+kg_internal kg_result K15_GUIAddDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSizeInBytes)
+{
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	if (p_DrawCommandBuffer->bufferSizeInBytes < p_DataSizeInBytes)
+	{
+		result = K15_GUI_RESULT_OUT_OF_MEMORY;
+		goto functionEnd;
+	}
+
+	kg_u32 drawCommandSizeInBytes = sizeof(K15_GUIDrawCommand) + p_DrawCommand->sizeInBytes;
+	kg_u64 drawCommandAddress = (kg_u64)p_DrawCommand;
+	kg_u64 drawCommandBufferEndAddress = (kg_u64)p_DrawCommandBuffer->drawCommandBuffer + p_DrawCommandBuffer->bufferSizeInBytes;
+
+	if (drawCommandBufferEndAddress - drawCommandAddress > drawCommandSizeInBytes)
+	{
+		result = K15_GUI_RESULT_DRAW_COMMAND_FINISHED;
+		goto functionEnd;
+	}
+
+	kg_byte* bufferPosition = p_DrawCommandBuffer->drawCommandBuffer + p_DrawCommandBuffer->bufferSizeInBytes;
+
+	K15_GUI_MEMCPY(bufferPosition, p_Data, p_DataSizeInBytes);
+
+	p_DrawCommandBuffer->bufferSizeInBytes += p_DataSizeInBytes;
+	p_DrawCommand->sizeInBytes += p_DataSizeInBytes;
+
+functionEnd:
+	return result;
+}
+/*********************************************************************************/
 kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
 	K15_GUIRect* p_ClipRect, K15_GUIColorGradient p_Gradient)
 {
 	K15_GUIRectShapeData shapeData = { 0 };
-	shapeData.rect = p_ClipRect;
+	shapeData.rect = *p_ClipRect;
 	shapeData.colorGradient = p_Gradient;
 
-	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, K15_GUI_DRAW_RECT_COMMAND, &shapeData, 
+	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, 0, K15_GUI_DRAW_RECT_COMMAND, &shapeData, 
 		sizeof(K15_GUIRectShapeData));
 }
 /*********************************************************************************/
@@ -2224,16 +2261,32 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIAddTextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIRect* p_ClipRect, K15_GUIFont* p_GUIFont, const char* p_Text)
+typedef struct 
 {
-	K15_GUITexturedRectShapeData shapeData = { 0 };
-	shapeData.rect = p_ClipRect;
-	shapeData.textureClipRect = *p_TextureClipRect;
-	shapeData.texture = p_Texture;
+	K15_GUIFont* font;
+	K15_GUIRect rect;
+	kg_u32 textLength;
+	kg_color32 textColor;
+} K15_GUITextShapeData;
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddTextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIRect* p_ClipRect, K15_GUIFont* p_Font, const char* p_Text, kg_u32 p_TextLength, kg_color32 p_TextColor)
+{
+	K15_GUITextShapeData shapeData = { 0 };
+	shapeData.textLength = p_TextLength;
+	shapeData.textColor = p_TextColor;
+	shapeData.rect = *p_ClipRect;
+	shapeData.font = p_Font;
 
-	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, K15_GUI_DRAW_RECT_COMMAND, &shapeData,
-		sizeof(K15_GUIRectShapeData));
+	K15_GUIDrawCommand* drawCmd = 0;
+
+	kg_result result = K15_GUIAddDrawCommand(p_DrawCommandBuffer, &drawCmd, K15_GUI_DRAW_TEXT_COMMAND, &shapeData,
+		sizeof(K15_GUITextShapeData));
+
+	if (result == K15_GUI_RESULT_SUCCESS)
+		result = K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCmd, (void*)p_Text, p_TextLength);
+
+	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
@@ -2262,15 +2315,13 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	kg_color32 upperBackgroundColor = buttonStyle->upperBackgroundColor;
 	kg_color32 lowerBackgroundColor = buttonStyle->lowerBackgroundColor;
 	kg_color32 textColor = buttonStyle->textColor;
+	K15_GUIFont* font = buttonStyle->font;
 
 	K15_GUIColorGradient linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor, 
 		lowerBackgroundColor);
 
-	K15_GUIRect textureClipRect;
-
 	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);
-	result = K15_GUIAddTexturedRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, 
-		&buttonStyle->font->texture, &textureClipRect);
+	result = K15_GUIAddTextDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, font, text, buttonData.textLength, textColor);
 functionEnd:
 	return result;
 }
@@ -2438,6 +2489,8 @@ kg_def kg_u32 K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMess
 		errorMsg = "Element not started";
 	else if (p_Result == K15_GUI_RESULT_ELEMENT_NOT_FINISHED)
 		errorMsg = "Element not finished";
+	else if (p_Result == K15_GUI_RESULT_DRAW_COMMAND_FINISHED)
+		errorMsg = "Draw command already finished";
 
 	if (errorMsg)
 	{
