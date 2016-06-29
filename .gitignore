@@ -3,6 +3,9 @@
 bin
 CMakeFiles
 *.cmake
+*.suo
+*.ilk
+*.pdb
 Debug
 *.dir
 lib
