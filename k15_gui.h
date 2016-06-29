@@ -187,6 +187,9 @@ typedef enum
 typedef enum 
 {
 	K15_GUI_TOOLBAR_ELEMENT_TYPE = 0,
+	K15_GUI_MENU_ELEMENT_TYPE,
+	K15_GUI_MENU_ITEM_ELEMENT_TYPE,
+	K15_GUI_BUTTON_ELEMENT_TYPE,
 	K15_GUI_LAYOUT_ELEMENT_TYPE
 } K15_GUIElementType;
 /*********************************************************************************/
@@ -269,7 +272,7 @@ typedef struct
 	K15_GUIRect glyphRect;
 	kg_u32 codepoint;
 	kg_s32 leftSideBearing;
-	kg_s32 advancewidth;
+	kg_s32 advanceWidth;
 } K15_GUIFontGlyph;
 /*********************************************************************************/
 typedef struct 
@@ -341,20 +344,6 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	kg_color32 textColor;
-	kg_color32 upperBackgroundColor;
-	kg_color32 lowerBackgroundColor;
-	kg_color32 upperHoveredBackgroundColor;
-	kg_color32 lowerHoveredBackgroundColor;
-	kg_color32 upperFocusedBackgroundColor;
-	kg_color32 lowerFocusedBackgroundColor;
-	kg_u32 verticalPixelPadding;
-	kg_u32 horizontalPixelPadding;
-	K15_GUIFont* font;
-} K15_GUIMenuStyle;
-/*********************************************************************************/
-typedef struct 
-{
 	kg_color32 lowerBackgroundColor;
 	kg_color32 upperBackgroundColor;
 	kg_u32 pixelHeight;
@@ -362,26 +351,12 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	kg_color32 lowerBackgroundColor;
-	kg_color32 upperBackgroundColor;
-	kg_color32 lowerHoveredBackgroundColor;
-	kg_color32 upperHoveredBackgroundColor;
-	kg_color32 lowerMouseDownBackgroundColor;
-	kg_color32 upperMouseDownBackgroundColor;
-	kg_color32 textColor;
-	kg_u32 verticalPixelPadding;
-	kg_u32 horizontalPixelPadding;
-	K15_GUIFont* font;
-} K15_GUIMenuItemStyle;
-/*********************************************************************************/
-typedef struct 
-{
 	K15_GUIWindowStyle windowStyle;
 	K15_GUIButtonStyle buttonStyle;
+	K15_GUIButtonStyle menuStyle;
+	K15_GUIButtonStyle menuItemStyle;
 	K15_GUILabelStyle labelStyle;
-	K15_GUIMenuStyle menuStyle;
 	K15_GUIToolBarStyle toolBarStyle;
-	K15_GUIMenuItemStyle menuItemStyle;
 } K15_GUIContextStyle;
 /*********************************************************************************/
 typedef struct 
@@ -414,7 +389,8 @@ typedef enum
 typedef enum
 {
 	K15_GUI_DRAW_RECT_COMMAND = 0,
-	K15_GUI_DRAW_CIRCLE_COMMAND
+	K15_GUI_DRAW_CIRCLE_COMMAND,
+	K15_GUI_DRAW_TEXT_COMMAND
 } K15_GUIDrawCommandType;
 /*********************************************************************************/
 typedef struct
@@ -457,10 +433,13 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_u16 posX;
-	kg_u16 posY;
-	kg_u16 width;
-	kg_u16 height;
+	K15_GUIButtonStyle* buttonStyle;
+	kg_u32 textLength;
+} K15_GUIButtonData;
+/*********************************************************************************/
+typedef struct
+{
+	K15_GUIRect rect;
 	K15_GUIColorGradient colorGradient;
 } K15_GUIRectShapeData;
 /*********************************************************************************/
@@ -556,11 +535,11 @@ kg_def kg_b8 K15_GUICustomBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_Po
 
 kg_def kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier);
 kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier, 
-	K15_GUIMenuStyle* p_Style);
+	K15_GUIButtonStyle* p_Style);
 
 kg_def kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier);
 kg_def kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier, 
-	K15_GUIMenuItemStyle* p_Style);
+	K15_GUIButtonStyle* p_Style);
 
 kg_def kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier);
 kg_def kg_b8 K15_GUICustomButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier, 
@@ -600,6 +579,8 @@ kg_def void K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuf
 	kg_u32 p_DataSize);
 
 #ifdef K15_GUI_IMPLEMENTATION
+
+void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect);
 
 #ifndef kg_internal
 # define kg_internal static
@@ -1087,8 +1068,8 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				K15_GUIFontGlyph* fontGlyph = guiFontGlyphs + (codepoint - startCodePoint);
 				fontGlyph->codepoint = codepoint;
 				fontGlyph->glyphRect = glyphRect;
-				fontGlyph->leftSideBearing = leftSideBearing;
-				fontGlyph->advancewidth = advanceWidth;
+				fontGlyph->leftSideBearing = (kg_s32)((float)leftSideBearing * scaleFac);
+				fontGlyph->advanceWidth = (kg_s32)((float)advanceWidth * scaleFac);
 				
 				glyphArrayIndex += 1;
 			}
@@ -1481,10 +1462,6 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	defaultStyle.menuStyle.font = defaultFont;
 	defaultStyle.menuStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
 	defaultStyle.menuStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
-	defaultStyle.menuStyle.lowerFocusedBackgroundColor = K15_GUI_COLOR_RGB(48, 48, 48);
-	defaultStyle.menuStyle.upperFocusedBackgroundColor = K15_GUI_COLOR_RGB(96, 96, 96);
-	defaultStyle.menuStyle.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
-	defaultStyle.menuStyle.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
 	defaultStyle.menuStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuStyle.verticalPixelPadding = 2;
 	defaultStyle.menuStyle.horizontalPixelPadding = 8;
@@ -1493,10 +1470,6 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	defaultStyle.menuItemStyle.font = defaultFont;
 	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
 	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-	defaultStyle.menuItemStyle.lowerHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
-	defaultStyle.menuItemStyle.upperHoveredBackgroundColor = K15_GUI_COLOR_RGB(101, 101, 101);
-	defaultStyle.menuItemStyle.lowerMouseDownBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
-	defaultStyle.menuItemStyle.upperMouseDownBackgroundColor = K15_GUI_COLOR_RGB(64, 64, 64);
 	defaultStyle.menuItemStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuItemStyle.verticalPixelPadding = 2;
 	defaultStyle.menuItemStyle.horizontalPixelPadding = 8;
@@ -1691,19 +1664,13 @@ kg_internal K15_GUIRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_GUIElement** p_GUIElementPtr,
-	const char* p_Identifier, kg_u32 p_PosX, kg_u32 p_PosY, kg_u32 p_Width, kg_u32 p_Height)
+	K15_GUIElementType p_ElementType, const char* p_Identifier, K15_GUIRect* p_ClipRect)
 {
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
 		return K15_GUI_RESULT_FRAME_NOT_STARTED;
 
 	K15_GUIElement** guiElementHashTable = p_GUIContext->elementHashTable;
 	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
-
-	K15_GUIRect clipRect = {0};
-	clipRect.left = p_PosX;
-	clipRect.top = p_PosY;
-	clipRect.right = p_PosX + p_Width;
-	clipRect.bottom = p_PosY + p_Height;
 
 	kg_u32 identifierLength = (kg_u32)K15_GUI_STRLEN(p_Identifier);
 	kg_u32 identiferHash = K15_GUICreateHash(p_Identifier, identifierLength);
@@ -1718,8 +1685,9 @@ kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_G
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
 
+	element->type = p_ElementType;
 	element->identifierHash = identiferHash;
-	element->clipRect = clipRect;
+	element->clipRect = *p_ClipRect;
 	element->layoutIndex = p_GUIContext->layoutIndex;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
 
@@ -1799,10 +1767,7 @@ kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p
 	K15_GUIRect* p_ClipRect, K15_GUIColorGradient p_Gradient)
 {
 	K15_GUIRectShapeData shapeData = { 0 };
-	shapeData.posX = p_ClipRect->left;
-	shapeData.posY = p_ClipRect->top;
-	shapeData.width = p_ClipRect->right - p_ClipRect->left;
-	shapeData.height = p_ClipRect->bottom - p_ClipRect->top;
+	shapeData.rect = p_ClipRect;
 	shapeData.colorGradient = p_Gradient;
 
 	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, K15_GUI_DRAW_RECT_COMMAND, &shapeData, 
@@ -1840,21 +1805,22 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 
 	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
 
-	kg_u32 toolbarHeight = p_Style->pixelHeight;
+	kg_s16 toolbarHeight = p_Style->pixelHeight;
 	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
 	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
 
-	kg_u32 contextClipX = p_GUIContext->clipRect.left;
-	kg_u32 contextClipY = p_GUIContext->clipRect.top;
-	kg_u32 contextClipWidth = p_GUIContext->clipRect.right - p_GUIContext->clipRect.left;
-	kg_u32 contextClipHeight = p_GUIContext->clipRect.bottom - p_GUIContext->clipRect.top;
-
 	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
-	toolbarHeight = K15_GUI_MIN(contextClipHeight, toolbarHeight);
+	toolbarHeight = K15_GUI_MIN(p_GUIContext->clipRect.bottom, toolbarHeight);
+
+	K15_GUIRect clipRect;
+	clipRect.left = p_GUIContext->clipRect.left;
+	clipRect.top = p_GUIContext->clipRect.top;
+	clipRect.right = p_GUIContext->clipRect.right;
+	clipRect.bottom = toolbarHeight;
 
 	K15_GUIElement* guiElement = 0;
-	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, 
-		p_Identifier, contextClipX, contextClipY, contextClipWidth, toolbarHeight);
+	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, K15_GUI_TOOLBAR_ELEMENT_TYPE, 
+		p_Identifier, &clipRect);
 
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
@@ -1886,60 +1852,43 @@ kg_def kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuTe
 	return K15_GUICustomBeginMenu(p_GUIContext, p_MenuText, p_Identifier, &p_GUIContext->style.menuStyle);
 }
 /*********************************************************************************/
-kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
+kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext, const char* p_MenuText,
+	const char* p_Identifier, K15_GUIButtonStyle* p_Style)
 {
-	if (!p_Text || !p_Font || !p_OutRect)
-		return;
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
 
-	kg_s32 ascent = p_Font->ascent;
-	kg_s32 descent = p_Font->descent;
-	kg_s32 lineGap = p_Font->lineGap;
-	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
-	K15_GUIFontGlyph* glyph = 0;
+	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
+	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
 
-	K15_GUIGlyphRange glyphRanges[10];
-	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+	K15_GUIFont* font = p_Style->font;
+	K15_GUIRect textRect = { 0 };
 
-	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
-	K15_GUIGlyphRange* glyphRange = 0;
+	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
 
-	while (1)
-	{
-		if (*p_Text == 0)
-			break;
+	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
+	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
 
-		kg_u32 codePoint = (int)(*p_Text++);
-		kg_u32 glyphIndex = -1;
+	K15_GUIElement* guiElement = 0;
+	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE, 
+		p_Identifier, &textRect);
 
-		for (kg_u32 glyphRangeIndex = 0;
-			glyphRangeIndex < numGlyphRanges;
-			++glyphRangeIndex)
-		{
-			glyphRange = glyphRanges + glyphRangeIndex;
-			
-			if (codePoint >= glyphRange->from ||
-				codePoint <= glyphRange->to)
-			{
-				glyphIndex = codePoint - glyphRange->from;
-				break;
-			}
-		}
+	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
+		goto functionEnd;
 
-		if (glyphIndex > glyphRange->to)
-			continue;
+	K15_GUIButtonData buttonData = { 0 };
+	buttonData.textLength = textLength;
+	buttonData.buttonStyle = p_Style;
 
-		glyph = glyphs + glyphIndex;
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &buttonData, sizeof(buttonData));
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, (void*)p_MenuText, textLength);
 
-		if (glyph)
-		{
-			p_OutRect->right += glyph->glyphRect.right - glyph->glyphRect.left;
-			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, glyph->glyphRect.bottom - glyph->glyphRect.top);
-		}
-	}
+functionEnd:
+	return result;
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier,
-	K15_GUIMenuStyle* p_Style)
+	K15_GUIButtonStyle* p_Style)
 {
 	kg_result result;
 
@@ -1951,35 +1900,7 @@ kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_
 
 	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_MENU_FLAG;
 
-	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
-
-	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
-	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
-
-	K15_GUIFont* font = p_Style->font;
-	K15_GUIRect textRect = { 0 };
-
-	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
-
-	kg_u32 contextClipX = textRect.left;
-	kg_u32 contextClipY = textRect.top;
-	kg_u32 contextClipWidth = textRect.right - textRect.left;
-	kg_u32 contextClipHeight = textRect.bottom - textRect.top;
-	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
-
-	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
-
-	K15_GUIElement* guiElement = 0;
-	result = K15_GUIRegisterElement(p_GUIContext, &guiElement,
-		p_Identifier, contextClipX, contextClipY, contextClipWidth, contextClipHeight);
-
-	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
-		goto functionEnd;
-
-	result = K15_GUIAddElementData(guiContextMemory, guiElement, &upperBackgroundColor, sizeof(kg_color32));
-	result = K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
-	result = K15_GUIAddElementData(guiContextMemory, guiElement, &textLength, sizeof(kg_u32));
-	result = K15_GUIAddElementData(guiContextMemory, guiElement, (void*)p_MenuText, textLength);
+	result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_MenuText, p_Identifier, p_Style);
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
@@ -1992,7 +1913,7 @@ kg_def kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemTex
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier,
-	K15_GUIMenuItemStyle* p_Style)
+	K15_GUIButtonStyle* p_Style)
 {
 	return 0;
 }
@@ -2203,6 +2124,75 @@ kg_internal kg_color32 K15_GUISampleColorGradient(K15_GUIColorGradient* p_ColorG
 	return output;
 }
 /*********************************************************************************/
+kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
+{
+	if (!p_Text || !p_Font || !p_OutRect)
+		return;
+
+	kg_s32 ascent = p_Font->ascent;
+	kg_s32 descent = p_Font->descent;
+	kg_s32 lineGap = p_Font->lineGap;
+	kg_u32 verticalOffset = (kg_u32)(ascent - descent + lineGap);
+
+	kg_s16 posX = 0;
+	kg_s16 posY = 0;
+	kg_s32 leftSideBearing = 0;
+	kg_s32 advanceWidth = 0;
+	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
+	K15_GUIFontGlyph* glyph = 0;
+
+	K15_GUIGlyphRange glyphRanges[10];
+	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+
+	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
+	K15_GUIGlyphRange* glyphRange = 0;
+
+	while (1)
+	{
+		if (*p_Text == 0)
+			break;
+
+		kg_u32 codePoint = (int)(*p_Text++);
+		kg_u32 glyphIndex = -1;
+
+		if (codePoint == '\n')
+		{
+			posY += verticalOffset;
+			posX = 0;
+		}
+
+		for (kg_u32 glyphRangeIndex = 0;
+		glyphRangeIndex < numGlyphRanges;
+			++glyphRangeIndex)
+		{
+			glyphRange = glyphRanges + glyphRangeIndex;
+
+			if (codePoint >= glyphRange->from ||
+				codePoint <= glyphRange->to)
+			{
+				glyphIndex = codePoint - glyphRange->from;
+				break;
+			}
+		}
+
+		if (glyphIndex > glyphRange->to)
+			continue;
+
+		glyph = glyphs + glyphIndex;
+		advanceWidth = glyph->advanceWidth;
+
+		if (glyph)
+		{
+			kg_s16 height = glyph->glyphRect.bottom - glyph->glyphRect.top;
+			posX += advanceWidth;
+			posY = K15_GUI_MAX(posY, height);
+
+			p_OutRect->right = K15_GUI_MAX(p_OutRect->right, posX);
+			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, posY);
+		}
+	}
+}
+/*********************************************************************************/
 kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
 	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
 {
@@ -2234,6 +2224,57 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
+kg_internal kg_result K15_GUIAddTextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIRect* p_ClipRect, K15_GUIFont* p_GUIFont, const char* p_Text)
+{
+	K15_GUITexturedRectShapeData shapeData = { 0 };
+	shapeData.rect = p_ClipRect;
+	shapeData.textureClipRect = *p_TextureClipRect;
+	shapeData.texture = p_Texture;
+
+	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, K15_GUI_DRAW_RECT_COMMAND, &shapeData,
+		sizeof(K15_GUIRectShapeData));
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
+	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
+{
+	K15_GUIButtonData buttonData = { 0 };
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+	kg_u32 offset = 0;
+
+	result = K15_GUIRetrieveElementData(p_GUIContextMemory, p_Element, &buttonData,
+		sizeof(buttonData), offset);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		goto functionEnd;
+
+	offset += sizeof(buttonData);
+
+	char* text = (char*)alloca(buttonData.textLength);
+	result = K15_GUIRetrieveElementData(p_GUIContextMemory, p_Element, text,
+		buttonData.textLength, offset);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		goto functionEnd;
+
+	K15_GUIButtonStyle* buttonStyle = buttonData.buttonStyle;
+	kg_color32 upperBackgroundColor = buttonStyle->upperBackgroundColor;
+	kg_color32 lowerBackgroundColor = buttonStyle->lowerBackgroundColor;
+	kg_color32 textColor = buttonStyle->textColor;
+
+	K15_GUIColorGradient linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor, 
+		lowerBackgroundColor);
+
+	K15_GUIRect textureClipRect;
+
+	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);
+	result = K15_GUIAddTexturedRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, 
+		&buttonStyle->font->texture, &textureClipRect);
+functionEnd:
+	return result;
+}
+/*********************************************************************************/
 kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextMemory, 
 	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
 {
@@ -2242,9 +2283,18 @@ kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextM
 	switch (p_Element->type)
 	{
 	case K15_GUI_TOOLBAR_ELEMENT_TYPE:
+	{
 		result = K15_GUICreateToolBarDrawCommands(p_ContextMemory, p_Element, p_DrawCmdBuffer);
 		break;
+	}
 
+	case K15_GUI_MENU_ELEMENT_TYPE:
+	case K15_GUI_MENU_ITEM_ELEMENT_TYPE:
+	case K15_GUI_BUTTON_ELEMENT_TYPE:
+	{
+		result = K15_GUICreateButtonDrawCommands(p_ContextMemory, p_Element, p_DrawCmdBuffer);
+		break;
+	}
 	default:
 		break;
 	}
