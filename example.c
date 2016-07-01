@@ -138,11 +138,13 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 void drawRect(K15_GUIRectShapeData* p_RectShapeData)
 {
+	uint32 height = p_RectShapeData->rect.bottom - p_RectShapeData->rect.top;
+
 	for (uint32 y = 0;
-		y < p_RectShapeData->height;
+		y < height;
 		++y)
 	{
-		float p = (float)y / (float)p_RectShapeData->height;
+		float p = (float)y / (float)height;
 		kg_color32 color = K15_GUISampleColorGradient(&p_RectShapeData->colorGradient, p);
 		COLORREF c = convertColor(color);
 		HPEN pen = CreatePen(PS_SOLID, 1, c);
@@ -151,10 +153,10 @@ void drawRect(K15_GUIRectShapeData* p_RectShapeData)
 		SelectObject(backbufferDC, pen);
 		SelectObject(backbufferDC, brush);
 
-		Rectangle(backbufferDC, p_RectShapeData->posX,
-			y + p_RectShapeData->posY,
-			p_RectShapeData->posX + p_RectShapeData->width,
-			y + p_RectShapeData->posY + 1);
+		Rectangle(backbufferDC, p_RectShapeData->rect.left,
+			y + p_RectShapeData->rect.top,
+			p_RectShapeData->rect.right ,
+			y + p_RectShapeData->rect.top + 1);
 
 		DeleteObject(pen);
 		DeleteObject(brush);
@@ -170,15 +172,28 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 
 	while (K15_GUIHasDrawCommand(&drawCommandBuffer))
 	{
-		K15_GUIDrawCommandType type = K15_GUIGetDrawCommandType(&drawCommandBuffer);
+		K15_GUIDrawCommand* drawCommand = 0;
+		K15_GUIGetDrawCommand(&drawCommandBuffer, &drawCommand);
 
-		switch (type)
+		switch (drawCommand->type)
 		{
 		case K15_GUI_DRAW_RECT_COMMAND:
 		{
 			K15_GUIRectShapeData rectShapeData = { 0 };
-			K15_GUIGetDrawCommandData(&drawCommandBuffer, &rectShapeData, sizeof(rectShapeData));
+			K15_GUIGetDrawCommandData(&drawCommandBuffer, drawCommand, &rectShapeData, sizeof(rectShapeData), 0);
 			drawRect(&rectShapeData);
+			break;
+		}
+
+		case K15_GUI_DRAW_TEXT_COMMAND:
+		{
+			K15_GUITextShapeData textShapeData = { 0 };
+			K15_GUIGetDrawCommandData(&drawCommandBuffer, drawCommand, &textShapeData, sizeof(textShapeData), 0);
+			char* text = 0;
+			K15_GUIGetDrawCommandDataRaw(&drawCommandBuffer, drawCommand, &text, sizeof(textShapeData));
+			int bla = 0;
+			bla = bla;
+			//drawText(&textShapeData);
 			break;
 		}
 

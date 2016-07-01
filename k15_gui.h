@@ -572,12 +572,13 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 //*****************RENDERING******************//
 kg_def kg_u32 K15_GUICalculateDrawCommandBufferSizeInBytes(K15_GUIContext* p_GUIContext);
 kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer);
-kg_def K15_GUIDrawCommandType K15_GUIGetDrawCommandType(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer);
 kg_def void K15_GUINextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer);
 kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext,
 	K15_GUIDrawCommandBuffer* p_GUIDrawCommandBuffer);
-kg_def void K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, void* p_Data, 
-	kg_u32 p_DataSize);
+kg_def kg_result K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, 
+	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSize, kg_u32 p_OffsetInBytes);
+kg_def kg_result K15_GUIGetDrawCommandDataRaw(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIDrawCommand* p_DrawCommand, void** p_DataPtr, kg_u32 p_OffsetInBytes);
 
 #ifdef K15_GUI_IMPLEMENTATION
 
@@ -1730,15 +1731,14 @@ kg_internal kg_result K15_GUIRetrieveElementData(K15_GUIContextMemory* p_GUICont
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommand** p_OutDrawCommand, K15_GUIDrawCommandType p_DrawCommandType, 
-	void* p_DrawCommandParams, kg_u32 p_ParamSizeInBytes)
+	K15_GUIDrawCommand** p_OutDrawCommand, K15_GUIDrawCommandType p_DrawCommandType)
 {
 	K15_GUIDrawCommand drawCmd;
 	drawCmd.type = p_DrawCommandType;
-	drawCmd.sizeInBytes = p_ParamSizeInBytes;
+	drawCmd.sizeInBytes = 0;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
-	kg_u32 drawCmdSizeInBytes = sizeof(drawCmd) + p_ParamSizeInBytes;
+	kg_u32 drawCmdSizeInBytes = sizeof(drawCmd);
 
 	kg_u32 drawCmdBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
 	kg_u32 drawCmdBufferCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
@@ -1758,12 +1758,6 @@ kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawComm
 	if (p_OutDrawCommand)
 		*p_OutDrawCommand = (K15_GUIDrawCommand*)(drawCmdBuffer + drawCmdBufferSizeInBytes);
 
-	if (p_ParamSizeInBytes == 0)
-		goto functionEnd;
-
-	K15_GUI_MEMCPY(drawCmdBuffer + drawCmdBufferSizeInBytes + sizeof(drawCmd), 
-		p_DrawCommandParams, p_ParamSizeInBytes);
-
 functionEnd:
 	return result;
 }
@@ -1771,9 +1765,12 @@ functionEnd:
 kg_internal kg_result K15_GUIAddDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
 	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSizeInBytes)
 {
+	if (!p_DrawCommandBuffer || !p_DrawCommand || !p_Data || p_DataSizeInBytes == 0)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
-	if (p_DrawCommandBuffer->bufferSizeInBytes < p_DataSizeInBytes)
+	if ((p_DrawCommandBuffer->bufferCapacityInBytes - p_DrawCommandBuffer->bufferSizeInBytes) < p_DataSizeInBytes)
 	{
 		result = K15_GUI_RESULT_OUT_OF_MEMORY;
 		goto functionEnd;
@@ -1807,8 +1804,13 @@ kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p
 	shapeData.rect = *p_ClipRect;
 	shapeData.colorGradient = p_Gradient;
 
-	return K15_GUIAddDrawCommand(p_DrawCommandBuffer, 0, K15_GUI_DRAW_RECT_COMMAND, &shapeData, 
-		sizeof(K15_GUIRectShapeData));
+	K15_GUIDrawCommand* drawCommand = 0;
+	kg_result result = K15_GUIAddDrawCommand(p_DrawCommandBuffer, &drawCommand, K15_GUI_DRAW_RECT_COMMAND);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	return K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCommand, &shapeData, sizeof(shapeData));
 }
 /*********************************************************************************/
 kg_internal K15_GUIColorGradient K15_GUICreateLinearColorGradiant(kg_color32 p_From, kg_color32 p_To)
@@ -2280,8 +2282,10 @@ kg_internal kg_result K15_GUIAddTextDrawCommand(K15_GUIDrawCommandBuffer* p_Draw
 
 	K15_GUIDrawCommand* drawCmd = 0;
 
-	kg_result result = K15_GUIAddDrawCommand(p_DrawCommandBuffer, &drawCmd, K15_GUI_DRAW_TEXT_COMMAND, &shapeData,
-		sizeof(K15_GUITextShapeData));
+	kg_result result = K15_GUIAddDrawCommand(p_DrawCommandBuffer, &drawCmd, K15_GUI_DRAW_TEXT_COMMAND);
+
+	if (result == K15_GUI_RESULT_SUCCESS)
+		K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCmd, &shapeData, sizeof(shapeData));
 
 	if (result == K15_GUI_RESULT_SUCCESS)
 		result = K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCmd, (void*)p_Text, p_TextLength);
@@ -2552,20 +2556,13 @@ kg_def kg_u32 K15_GUICalculateDrawCommandBufferSizeInBytes(K15_GUIContext* p_GUI
 	return p_GUIContext->drawCmdBuffer.bufferSizeInBytes + sizeof(K15_GUIDrawCommandBuffer);
 }
 /*********************************************************************************/
-kg_def K15_GUIDrawCommandType K15_GUIGetDrawCommandType(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
+kg_def void K15_GUIGetDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, K15_GUIDrawCommand**
+	p_DrawCommandOut)
 {
 	K15_GUIDrawCommand* drawCommand = (K15_GUIDrawCommand*)(p_DrawCommandBuffer->drawCommandBuffer +
 		p_DrawCommandBuffer->bufferPosition);
 
-	return drawCommand->type;
-}
-/*********************************************************************************/
-kg_def void K15_GUINextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
-{
-	K15_GUIDrawCommand* drawCommand = (K15_GUIDrawCommand*)(p_DrawCommandBuffer->drawCommandBuffer +
-		p_DrawCommandBuffer->bufferPosition);
-
-	p_DrawCommandBuffer->bufferPosition += sizeof(K15_GUIDrawCommand) + drawCommand->sizeInBytes;
+	*p_DrawCommandOut = drawCommand;
 } 
 /*********************************************************************************/
 kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext, 
@@ -2585,17 +2582,60 @@ kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext,
 	}
 }
 /*********************************************************************************/
-kg_def void K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, void* p_DataPtr, 
-	kg_u32 p_SizeInBytes)
+kg_def kg_result K15_GUIGetDrawCommandDataRaw(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIDrawCommand* p_DrawCommand, void** p_DataPtr, kg_u32 p_OffsetInBytes)
 {
-	K15_GUIDrawCommand* drawCommand = (K15_GUIDrawCommand*)(p_DrawCommandBuffer->drawCommandBuffer +
-		p_DrawCommandBuffer->bufferPosition);
+	if (!p_DrawCommandBuffer || !p_DrawCommand)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	if (drawCommand->sizeInBytes == 0)
-		return;
+	size_t addressDrawCommand = (size_t)p_DrawCommand;
+	size_t addressDrawCommandBuffer = (size_t)p_DrawCommandBuffer->drawCommandBuffer;
+	size_t addressOffsetDrawCommand = addressDrawCommand - addressDrawCommandBuffer + sizeof(K15_GUIDrawCommand);
 
-	K15_IA_MEMCPY(p_DataPtr, p_DrawCommandBuffer->drawCommandBuffer + p_DrawCommandBuffer->bufferPosition +
-		sizeof(K15_GUIDrawCommand), drawCommand->sizeInBytes);
+	kg_u32 drawCommandBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
+	kg_u32 drawCommandCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
+	kg_byte* drawCommandMemoryBuffer = p_DrawCommandBuffer->drawCommandBuffer;
+
+	if (addressDrawCommand < addressDrawCommandBuffer ||
+		addressDrawCommand > addressDrawCommandBuffer + drawCommandCapacityInBytes)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	*p_DataPtr = drawCommandMemoryBuffer + addressOffsetDrawCommand + p_OffsetInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSizeInBytes, kg_u32 p_OffsetInBytes)
+{
+	if (!p_DrawCommandBuffer || !p_Data || p_DataSizeInBytes == 0)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	size_t addressDrawCommand = (size_t)p_DrawCommand;
+	size_t addressDrawCommandBuffer = (size_t)p_DrawCommandBuffer->drawCommandBuffer;
+	size_t addressOffsetDrawCommand = addressDrawCommand - addressDrawCommandBuffer + sizeof(K15_GUIDrawCommand);
+
+	kg_u32 drawCommandParamSizeInBytes = p_DrawCommand->sizeInBytes;
+	kg_u32 drawCommandBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
+	kg_u32 drawCommandCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
+	kg_byte* drawCommandMemoryBuffer = p_DrawCommandBuffer->drawCommandBuffer;
+
+	if (drawCommandParamSizeInBytes < p_OffsetInBytes + p_DataSizeInBytes)
+		return K15_GUI_RESULT_OUT_OF_RANGE;
+
+	if (drawCommandBufferSizeInBytes + p_DataSizeInBytes > drawCommandCapacityInBytes)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	void* drawCommandData = 0;
+	kg_result result = K15_GUIGetDrawCommandDataRaw(p_DrawCommandBuffer, p_DrawCommand, &drawCommandData,
+		p_OffsetInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	K15_IA_MEMCPY(p_Data, drawCommandData, p_DataSizeInBytes);
+
+	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
@@ -2603,6 +2643,15 @@ kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer
 	return p_DrawCommandBuffer->bufferPosition < p_DrawCommandBuffer->bufferSizeInBytes;
 }
 /*********************************************************************************/
+kg_def void K15_GUINextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
+{
+	K15_GUIDrawCommand* drawCommand = (K15_GUIDrawCommand*)(p_DrawCommandBuffer->drawCommandBuffer +
+		p_DrawCommandBuffer->bufferPosition);
+
+	p_DrawCommandBuffer->bufferPosition += drawCommand->sizeInBytes + sizeof(K15_GUIDrawCommand);
+}
+/*********************************************************************************/
+
 
 #endif //K15_GUI_IMPLEMENTATION
 #endif //_K15_GUILayer_Context_h_
