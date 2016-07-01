@@ -1665,14 +1665,37 @@ kg_internal K15_GUIRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
 	return layoutElement->clipRect;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_GUIElement** p_GUIElementPtr,
-	K15_GUIElementType p_ElementType, const char* p_Identifier, K15_GUIRect* p_ClipRect)
+kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUIContext,
+	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, K15_GUIRect* p_ClipRect)
+{
+	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
+		return K15_GUI_RESULT_FRAME_NOT_STARTED;
+
+	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+
+	K15_GUIElement* element = 0;
+	kg_result result = K15_GUIReserveMemoryChunk(guiContextMemory, (void**)&element, sizeof(K15_GUIElement));
+
+	element->type = p_ElementType;
+	element->identifierHash = (~0);
+	element->clipRect = *p_ClipRect;
+	element->layoutIndex = p_GUIContext->layoutIndex;
+	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
+
+	if (p_GUIElementPtr)
+		*p_GUIElementPtr = element;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUIContext, 
+	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, const char* p_Identifier, 
+	K15_GUIRect* p_ClipRect)
 {
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
 		return K15_GUI_RESULT_FRAME_NOT_STARTED;
 
 	K15_GUIElement** guiElementHashTable = p_GUIContext->elementHashTable;
-	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
 
 	kg_u32 identifierLength = (kg_u32)K15_GUI_STRLEN(p_Identifier);
 	kg_u32 identiferHash = K15_GUICreateHash(p_Identifier, identifierLength);
@@ -1682,7 +1705,7 @@ kg_internal kg_result K15_GUIRegisterElement(K15_GUIContext* p_GUIContext, K15_G
 		return K15_GUI_RESULT_HASH_CONFLICT;
 
 	K15_GUIElement* element = 0;
-	kg_result result = K15_GUIReserveMemoryChunk(guiContextMemory, (void**)&element, sizeof(K15_GUIElement));
+	kg_result result = K15_GUIRegisterUnidentifiedElement(p_GUIContext, &element, p_ElementType, p_ClipRect);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
@@ -1858,7 +1881,7 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	clipRect.bottom = toolbarHeight;
 
 	K15_GUIElement* guiElement = 0;
-	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, K15_GUI_TOOLBAR_ELEMENT_TYPE, 
+	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_TOOLBAR_ELEMENT_TYPE, 
 		p_Identifier, &clipRect);
 
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
@@ -1867,8 +1890,17 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	result = K15_GUIAddElementData(guiContextMemory, guiElement, &upperBackgroundColor, sizeof(kg_color32));
 	result = K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
 
+	if (result == K15_GUI_RESULT_SUCCESS)
+		K15_GUIPushLayout(p_GUIContext, K15_GUI_HORIZONTAL_LAYOUT_TYPE, &clipRect);
+
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILayoutType p_LayoutType,
+	K15_GUIRect* p_ClipRect)
+{
+	//implement!
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,
@@ -1909,7 +1941,7 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
 
 	K15_GUIElement* guiElement = 0;
-	result = K15_GUIRegisterElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE, 
+	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE, 
 		p_Identifier, &textRect);
 
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
@@ -2371,11 +2403,10 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 	K15_GUIElement* guiElement = 0;
 	K15_GUIElement* layoutElement = 0;
 	K15_GUIElement** layoutElements = p_GUIContext->layoutTable;
-	K15_GUIElement** elementHashTable = p_GUIContext->elementHashTable;
 	K15_GUIRect* guiElementClipRect = 0;
 	K15_GUIRect* contextClipRect = &p_GUIContext->clipRect;
 	K15_GUIRect* clipRectUsedForClipping = contextClipRect;
-	
+		
 	while (memoryPosition < memorySize)
 	{
 		guiElement = (K15_GUIElement*)(memory + memoryPosition);
