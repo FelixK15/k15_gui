@@ -1540,6 +1540,66 @@ kg_internal kg_result K15_GUIValidateClipRect(K15_GUIRect* p_ClipRect)
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
+kg_internal kg_result K15_GUIReserveMemoryChunk(K15_GUIContextMemory* p_GUIContextMemory,
+	void** p_MemoryChunkPtr, kg_u32 p_MemoryChunkSizeInBytes)
+{
+	kg_u32 memorySize = p_GUIContextMemory->memoryBufferSizeInBytes;
+	kg_u32 memoryCapacity = p_GUIContextMemory->memoryBufferCapacityInBytes;
+	kg_byte* memoryBuffer = p_GUIContextMemory->memoryBuffer;
+
+	if (memorySize + p_MemoryChunkSizeInBytes > memoryCapacity)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	*p_MemoryChunkPtr = (memoryBuffer + memorySize);
+	p_GUIContextMemory->memoryBufferSizeInBytes = memorySize + p_MemoryChunkSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddElementData(K15_GUIContextMemory* p_GUIContextMemory,
+	K15_GUIElement* p_GUIElement, void* p_Data, kg_u32 p_DataSizeInBytes)
+{
+	void* memoryBuffer = 0;
+	kg_result result = K15_GUIReserveMemoryChunk(p_GUIContextMemory, &memoryBuffer, p_DataSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	K15_GUI_MEMCPY(memoryBuffer, p_Data, p_DataSizeInBytes);
+
+	p_GUIElement->offsetNextElementInBytes += p_DataSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIGetElementDataRaw(K15_GUIContextMemory* p_GUIContextMemory,
+	K15_GUIElement* p_GUIElement, void** p_OutData, kg_u32 p_OffsetInBytes)
+{
+	kg_u32 ptrDiff = (kg_u32)((kg_u64)p_GUIElement - (kg_u64)p_GUIContextMemory->memoryBuffer);
+	kg_u32 totalOffsetInBytes = p_OffsetInBytes + ptrDiff + sizeof(K15_GUIElement);
+
+	if (p_GUIContextMemory->memoryBufferSizeInBytes < totalOffsetInBytes)
+		return K15_GUI_RESULT_OUT_OF_RANGE;
+
+	*p_OutData = p_GUIContextMemory->memoryBuffer + totalOffsetInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIGetElementData(K15_GUIContextMemory* p_GUIContextMemory,
+	K15_GUIElement* p_GUIElement, void* p_OutData, kg_u32 p_DataSizeInBytes, kg_u32 p_OffsetInBytes)
+{
+	kg_u32 ptrDiff = (kg_u32)((kg_u64)p_GUIElement - (kg_u64)p_GUIContextMemory->memoryBuffer);
+	kg_u32 totalOffsetInBytes = p_OffsetInBytes + ptrDiff + sizeof(K15_GUIElement);
+
+	if (p_GUIContextMemory->memoryBufferSizeInBytes < totalOffsetInBytes + p_DataSizeInBytes)
+		return K15_GUI_RESULT_OUT_OF_RANGE;
+
+	K15_GUI_MEMCPY(p_OutData, p_GUIContextMemory->memoryBuffer + totalOffsetInBytes, p_DataSizeInBytes);
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
 kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
 	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom)
 {
@@ -1628,22 +1688,6 @@ kg_internal kg_u32 K15_GUICreateHash(const char* p_String, kg_u32 p_StringLength
 	return hash;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIReserveMemoryChunk(K15_GUIContextMemory* p_GUIContextMemory,
-	void** p_MemoryChunkPtr, kg_u32 p_MemoryChunkSizeInBytes)
-{
-	kg_u32 memorySize = p_GUIContextMemory->memoryBufferSizeInBytes;
-	kg_u32 memoryCapacity = p_GUIContextMemory->memoryBufferCapacityInBytes;
-	kg_byte* memoryBuffer = p_GUIContextMemory->memoryBuffer;
-
-	if (memorySize + p_MemoryChunkSizeInBytes > memoryCapacity)
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	
-	*p_MemoryChunkPtr = (memoryBuffer + memorySize);
-	p_GUIContextMemory->memoryBufferSizeInBytes = memorySize + p_MemoryChunkSizeInBytes;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
 kg_internal kg_result K15_GUIPerformClipping(K15_GUIRect* p_ClipRectToClip, K15_GUIRect* p_ClipRect)
 {
 	p_ClipRectToClip->left = K15_GUI_MIN(p_ClipRectToClip->left, p_ClipRect->left);
@@ -1665,6 +1709,19 @@ kg_internal K15_GUIRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
 	return layoutElement->clipRect;
 }
 /*********************************************************************************/
+kg_internal K15_GUIElement* K15_GUIGetTopLayoutElement(K15_GUIContext* p_GUIContext)
+{
+	if (!p_GUIContext)
+		return 0;
+
+	kg_u32 layoutIndex = p_GUIContext->numLayouts;
+
+	if (layoutIndex == 0)
+		return 0;
+
+	return p_GUIContext->layoutTable[layoutIndex - 1];
+}
+/*********************************************************************************/
 kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUIContext,
 	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, K15_GUIRect* p_ClipRect)
 {
@@ -1681,6 +1738,23 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 	element->clipRect = *p_ClipRect;
 	element->layoutIndex = p_GUIContext->layoutIndex;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
+
+	K15_GUIElement* topLayout = K15_GUIGetTopLayoutElement(p_GUIContext);
+
+	if (topLayout)
+	{
+		K15_GUILayoutData* layoutData = 0;
+		result = K15_GUIGetElementDataRaw(guiContextMemory, topLayout, &layoutData, 0);
+	
+		if (result != K15_GUI_RESULT_SUCCESS)
+			return result;
+
+		if (layoutData->numElements == K15_GUI_MAX_ELEMENT_PTR_PER_LAYOUT)
+			return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+		kg_u32 elementIndex = layoutData->numElements++;
+		layoutData->layoutedElements[elementIndex] = element;
+	}
 
 	if (p_GUIElementPtr)
 		*p_GUIElementPtr = element;
@@ -1719,36 +1793,6 @@ kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUICont
 	guiElementHashTable[identiferHash] = element;
 
 	*p_GUIElementPtr = element;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
-kg_internal kg_result K15_GUIAddElementData(K15_GUIContextMemory* p_GUIContextMemory, 
-	K15_GUIElement* p_GUIElement, void* p_Data, kg_u32 p_DataSizeInBytes)
-{
-	void* memoryBuffer = 0;
-	kg_result result = K15_GUIReserveMemoryChunk(p_GUIContextMemory, &memoryBuffer, p_DataSizeInBytes);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-		return result;
-
-	K15_GUI_MEMCPY(memoryBuffer, p_Data, p_DataSizeInBytes);
-
-	p_GUIElement->offsetNextElementInBytes += p_DataSizeInBytes;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
-kg_internal kg_result K15_GUIRetrieveElementData(K15_GUIContextMemory* p_GUIContextMemory,
-	K15_GUIElement* p_GUIElement, void* p_OutData, kg_u32 p_DataSizeInBytes, kg_u32 p_OffsetInBytes)
-{
-	kg_u32 ptrDiff = (kg_u32)((kg_u64)p_GUIElement - (kg_u64)p_GUIContextMemory->memoryBuffer);
-	kg_u32 totalOffsetInBytes = p_OffsetInBytes + ptrDiff + sizeof(K15_GUIElement);
-	
-	if (p_GUIContextMemory->memoryBufferSizeInBytes < totalOffsetInBytes + p_DataSizeInBytes)
-		return K15_GUI_RESULT_OUT_OF_RANGE;
-
-	K15_GUI_MEMCPY(p_OutData, p_GUIContextMemory->memoryBuffer + totalOffsetInBytes, p_DataSizeInBytes);
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -1852,6 +1896,46 @@ kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result
 		*p_ResultOut = p_Result;
 }
 /*********************************************************************************/
+kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILayoutType p_LayoutType,
+	K15_GUIRect* p_ClipRect)
+{
+	if (!p_GUIContext || !p_ClipRect)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	if (p_GUIContext->numLayouts == K15_GUI_MAX_LAYOUTS)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
+
+	K15_GUIElement* layoutElement = 0;
+	kg_result result = K15_GUIRegisterUnidentifiedElement(p_GUIContext, &layoutElement,
+		K15_GUI_LAYOUT_ELEMENT_TYPE, p_ClipRect);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	K15_GUILayoutData layoutData = { 0 };
+	layoutData.type = p_LayoutType;
+
+	result = K15_GUIAddElementData(contextMemory, layoutElement, &layoutData, sizeof(layoutData));
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	K15_GUILayoutData* elementLayoutData = 0;
+	result = K15_GUIGetElementDataRaw(contextMemory, layoutElement, &elementLayoutData, 0);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+		return result;
+
+	kg_u32 layoutIndex = p_GUIContext->numLayouts;
+
+	p_GUIContext->layoutTable[layoutIndex] = layoutElement;
+	++p_GUIContext->numLayouts;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
 kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier,
 	K15_GUIToolBarStyle* p_Style)
 {
@@ -1895,12 +1979,6 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
-}
-/*********************************************************************************/
-kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILayoutType p_LayoutType,
-	K15_GUIRect* p_ClipRect)
-{
-	//implement!
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIBeginWindow(K15_GUIContext* p_GUIContext, kg_s16* p_PosX, kg_s16* p_PosY,
@@ -2272,7 +2350,7 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	kg_color32 lowerBackgroundColor = 0;
 	kg_u32 offset = 0;
 
-	result = K15_GUIRetrieveElementData(p_GUIContextMemory, p_Element, &upperBackgroundColor,
+	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &upperBackgroundColor,
 		sizeof(kg_color32), offset);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2280,7 +2358,7 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 
 	offset += sizeof(kg_color32);
 
-	result = K15_GUIRetrieveElementData(p_GUIContextMemory, p_Element, &lowerBackgroundColor,
+	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &lowerBackgroundColor,
 		sizeof(kg_color32), offset);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2332,7 +2410,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 	kg_u32 offset = 0;
 
-	result = K15_GUIRetrieveElementData(p_GUIContextMemory, p_Element, &buttonData,
+	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &buttonData,
 		sizeof(buttonData), offset);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2341,7 +2419,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	offset += sizeof(buttonData);
 
 	char* text = (char*)alloca(buttonData.textLength);
-	result = K15_GUIRetrieveElementData(p_GUIContextMemory, p_Element, text,
+	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, text,
 		buttonData.textLength, offset);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2461,6 +2539,8 @@ kg_def kg_result K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
 
 	p_GUIContext->flagMask &= ~K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
 	p_GUIContext->memory.memoryBufferSizeInBytes = 0;
+	p_GUIContext->numLayouts = 0;
+	p_GUIContext->numMenus = 0;
 	K15_GUI_MEMSET(p_GUIContext->elementHashTable, 0, sizeof(p_GUIContext->elementHashTable));
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -2468,7 +2548,13 @@ kg_def kg_result K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
 /*********************************************************************************/
 kg_def void K15_GUIPopLayout(K15_GUIContext* p_GUIContext)
 {
+	if (!p_GUIContext)
+		return;
 
+	if (p_GUIContext->numLayouts == 0)
+		return;
+
+	--p_GUIContext->numLayouts;
 }
 /*********************************************************************************/
 kg_def kg_result K15_GUIGetLastResult(K15_GUIContext* p_GUIContext)
