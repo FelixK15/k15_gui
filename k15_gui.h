@@ -1744,7 +1744,7 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 	if (topLayout)
 	{
 		K15_GUILayoutData* layoutData = 0;
-		result = K15_GUIGetElementDataRaw(guiContextMemory, topLayout, &layoutData, 0);
+		result = K15_GUIGetElementDataRaw(guiContextMemory, topLayout, (void**)&layoutData, 0);
 	
 		if (result != K15_GUI_RESULT_SUCCESS)
 			return result;
@@ -1923,7 +1923,7 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 		return result;
 
 	K15_GUILayoutData* elementLayoutData = 0;
-	result = K15_GUIGetElementDataRaw(contextMemory, layoutElement, &elementLayoutData, 0);
+	result = K15_GUIGetElementDataRaw(contextMemory, layoutElement, (void**)&elementLayoutData, 0);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
@@ -2012,6 +2012,7 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 
 	K15_GUIFont* font = p_Style->font;
 	K15_GUIRect textRect = { 0 };
+	K15_GUIButtonData buttonData = { 0 };
 
 	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
 
@@ -2025,7 +2026,6 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIButtonData buttonData = { 0 };
 	buttonData.textLength = textLength;
 	buttonData.buttonStyle = p_Style;
 
@@ -2350,6 +2350,8 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	kg_color32 lowerBackgroundColor = 0;
 	kg_u32 offset = 0;
 
+	K15_GUIColorGradient linearGradient;
+
 	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &upperBackgroundColor,
 		sizeof(kg_color32), offset);
 
@@ -2364,7 +2366,7 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIColorGradient linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor,
+	linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor,
 		lowerBackgroundColor);
 
 	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);
@@ -2410,6 +2412,13 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 	kg_u32 offset = 0;
 
+	K15_GUIButtonStyle* buttonStyle = 0;
+	kg_color32 upperBackgroundColor = 0;
+	kg_color32 lowerBackgroundColor = 0;
+	kg_color32 textColor = 0;
+	K15_GUIFont* font = 0;
+	K15_GUIColorGradient linearGradient;
+
 	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &buttonData,
 		sizeof(buttonData), offset);
 
@@ -2425,13 +2434,13 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIButtonStyle* buttonStyle = buttonData.buttonStyle;
-	kg_color32 upperBackgroundColor = buttonStyle->upperBackgroundColor;
-	kg_color32 lowerBackgroundColor = buttonStyle->lowerBackgroundColor;
-	kg_color32 textColor = buttonStyle->textColor;
-	K15_GUIFont* font = buttonStyle->font;
+	buttonStyle = buttonData.buttonStyle;
+	upperBackgroundColor = buttonStyle->upperBackgroundColor;
+	lowerBackgroundColor = buttonStyle->lowerBackgroundColor;
+	textColor = buttonStyle->textColor;
+	font = buttonStyle->font;
 
-	K15_GUIColorGradient linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor, 
+	linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor, 
 		lowerBackgroundColor);
 
 	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);

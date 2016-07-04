@@ -190,7 +190,7 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 			K15_GUITextShapeData textShapeData = { 0 };
 			K15_GUIGetDrawCommandData(&drawCommandBuffer, drawCommand, &textShapeData, sizeof(textShapeData), 0);
 			char* text = 0;
-			K15_GUIGetDrawCommandDataRaw(&drawCommandBuffer, drawCommand, &text, sizeof(textShapeData));
+			K15_GUIGetDrawCommandDataRaw(&drawCommandBuffer, drawCommand, (void**)&text, sizeof(textShapeData));
 			int bla = 0;
 			bla = bla;
 			//drawText(&textShapeData);
