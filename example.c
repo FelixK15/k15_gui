@@ -26,6 +26,8 @@ HBITMAP backbufferBitmap = 0;
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
 
+K15_GUIContext guiContext;
+
 uint32 convertColor(kg_color32 p_Color)
 {
 	int r = (uint8)(p_Color >> 0);
@@ -106,6 +108,9 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 		}
 		K15_GUIEndMenu(p_GUIContext);
 	}
+
+	K15_GUIBeginMenu(p_GUIContext, "File", "file_2");
+	K15_GUIBeginMenu(p_GUIContext, "File", "file_3");
 
 	K15_GUIEndToolBar(p_GUIContext);
 
@@ -215,6 +220,19 @@ void K15_WindowClosed(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lPa
 
 }
 
+void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
+{
+	WORD newWidth = (WORD)(p_lParam);
+	WORD newHeight = (WORD)(p_lParam >> 16);
+
+	K15_GUISystemEvent systemEvent;
+	systemEvent.type = K15_GUI_WINDOW_RESIZED;
+	systemEvent.params.size.height = newHeight;
+	systemEvent.params.size.width = newWidth;
+
+	K15_GUIAddSystemEvent(&guiContext.events, systemEvent);
+}
+
 void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
 
@@ -267,6 +285,10 @@ LRESULT CALLBACK K15_WNDPROC(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARA
 	case WM_MBUTTONDOWN:
 	case WM_XBUTTONDOWN:
 		K15_MouseButtonInput(p_HWND, p_Message, p_wParam, p_lParam);
+		break;
+
+	case WM_SIZE:
+		K15_WindowResized(p_HWND, p_Message, p_wParam, p_lParam);
 		break;
 
 	case WM_MOUSEMOVE:
@@ -388,7 +410,6 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 		printf("Error during resource database creation: '%s'\n", errorMsg);
 	}
 
-	K15_GUIContext guiContext = { 0 };
 	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, screenWidth, screenHeight);
 
 	if (result != K15_GUI_RESULT_SUCCESS)

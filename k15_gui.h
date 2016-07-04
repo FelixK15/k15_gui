@@ -181,9 +181,14 @@ typedef enum
 typedef enum 
 {
 	K15_GUI_HORIZONTAL_LAYOUT_TYPE = 0,
-	K15_GUI_VERTICAL_LAYOUT_TYPE,
-	K15_GUI_STACKED_LAYOUT_TYPE
+	K15_GUI_VERTICAL_LAYOUT_TYPE
 } K15_GUILayoutType;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_FLOW_LAYOUT_FLAG = 0x01,
+	K15_GUI_STRETCH_LAYOUT_FLAG = 0x02
+} K15_GUILayoutFlags;
 /*********************************************************************************/
 typedef enum 
 {
@@ -430,6 +435,7 @@ typedef struct
 	K15_GUIElement* layoutedElements[K15_GUI_MAX_LAYOUTED_ELEMENTS];
 	K15_GUILayoutType type;
 	kg_u32 numElements;
+	kg_u32 flagMask;
 } K15_GUILayoutData;
 /*********************************************************************************/
 typedef struct
@@ -1897,7 +1903,7 @@ kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILayoutType p_LayoutType,
-	K15_GUIRect* p_ClipRect)
+	kg_u32 p_LayoutFlags, K15_GUIRect* p_ClipRect)
 {
 	if (!p_GUIContext || !p_ClipRect)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
@@ -1916,6 +1922,7 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 
 	K15_GUILayoutData layoutData = { 0 };
 	layoutData.type = p_LayoutType;
+	layoutData.flagMask = p_LayoutFlags;
 
 	result = K15_GUIAddElementData(contextMemory, layoutElement, &layoutData, sizeof(layoutData));
 
@@ -1975,7 +1982,8 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	result = K15_GUIAddElementData(guiContextMemory, guiElement, &lowerBackgroundColor, sizeof(kg_color32));
 
 	if (result == K15_GUI_RESULT_SUCCESS)
-		K15_GUIPushLayout(p_GUIContext, K15_GUI_HORIZONTAL_LAYOUT_TYPE, &clipRect);
+		result = K15_GUIPushLayout(p_GUIContext, K15_GUI_HORIZONTAL_LAYOUT_TYPE, 
+			K15_GUI_FLOW_LAYOUT_FLAG, &clipRect);
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
@@ -2135,22 +2143,60 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 
 	kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
 	kg_u32 numElements = p_LayoutData->numElements;
+	kg_u32 layoutFlagMask = p_LayoutData->flagMask;
 
 	//Thinks about size hints per element
-	kg_u32 widthPerElement = layoutWidth / numElements;
 	kg_u32 posX = p_LayoutClipRect->left;
 
-	for (kg_u32 elementIndex = 0;
-		elementIndex < numElements;
-		++elementIndex)
+	if ((layoutFlagMask & K15_GUI_FLOW_LAYOUT_FLAG) > 0)
 	{
-		guiElement = layoutedElements[elementIndex];
+		kg_u32 width = 0;
+		kg_u32 height = 0;
+		kg_u32 posRight = 0;
+		kg_u32 posY = p_LayoutClipRect->top;
 
-		guiElement->clipRect.left = posX;
-		guiElement->clipRect.right = posX + widthPerElement;
+		for (kg_u32 elementIndex = 0;
+			elementIndex < numElements;
+			++elementIndex)
+		{
+			guiElement = layoutedElements[elementIndex];
+			
+			width = guiElement->clipRect.right - guiElement->clipRect.left;
+			height = guiElement->clipRect.bottom - guiElement->clipRect.top;
 
-		posX += widthPerElement;
+			posRight = posX + width;
+
+			if (posRight > layoutWidth)
+			{
+				posX = p_LayoutClipRect->left;
+				posY += height;
+			}
+
+			guiElement->clipRect.top = posY;
+			guiElement->clipRect.bottom = posY + height;
+			guiElement->clipRect.left = posX;
+			guiElement->clipRect.right = posRight;
+
+			posX += width;
+		}
 	}
+	else
+	{
+		kg_u32 widthPerElement = layoutWidth / numElements;
+
+		for (kg_u32 elementIndex = 0;
+		elementIndex < numElements;
+			++elementIndex)
+		{
+			guiElement = layoutedElements[elementIndex];
+
+			guiElement->clipRect.left = posX;
+			guiElement->clipRect.right = posX + widthPerElement;
+
+			posX += widthPerElement;
+		}
+	}
+	
 }
 /*********************************************************************************/
 kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutData,
@@ -2179,38 +2225,6 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 	}
 }
 /*********************************************************************************/
-kg_internal void K15_GUIArrangeElementsStacked(K15_GUILayoutData* p_LayoutData,
-	K15_GUIRect* p_LayoutClipRect)
-{
-	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
-	K15_GUIElement* guiElement = 0;
-
-	kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
-	kg_u32 layoutHeight = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
-	kg_u32 numElements = p_LayoutData->numElements;
-	kg_u32 elementWidth = 0;
-	kg_u32 elementHeight = 0;
-	kg_u32 posX = p_LayoutClipRect->left;
-	kg_u32 posY = p_LayoutClipRect->top;
-
-	for (kg_u32 elementIndex = 0;
-		elementIndex < numElements;
-		++elementIndex)
-	{
-		guiElement = layoutedElements[elementIndex];
-
-		elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
-		elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
-
-		guiElement->clipRect.left = posX;
-		guiElement->clipRect.right = posX + elementWidth;
-		guiElement->clipRect.top = posY;
-		guiElement->clipRect.bottom = posY + elementHeight;
-
-		posY += elementHeight;
-	}
-}
-/*********************************************************************************/
 kg_internal void K15_GUIArrangeLayoutElements(K15_GUIElement* p_GUIElement)
 {
 	//layout data should follow right after the actual gui element
@@ -2224,8 +2238,6 @@ kg_internal void K15_GUIArrangeLayoutElements(K15_GUIElement* p_GUIElement)
 		K15_GUIArrangeElementsHorizontally(layoutData, &p_GUIElement->clipRect);
 	else if (layoutData->type == K15_GUI_VERTICAL_LAYOUT_TYPE)
 		K15_GUIArrangeElementsVertically(layoutData, &p_GUIElement->clipRect);
-	else if (layoutData->type == K15_GUI_STACKED_LAYOUT_TYPE)
-		K15_GUIArrangeElementsStacked(layoutData, &p_GUIElement->clipRect);
 }
 /*********************************************************************************/
 kg_internal kg_color32 K15_GUISampleColorGradient(K15_GUIColorGradient* p_ColorGradient, float p_SampleValue)
