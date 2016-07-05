@@ -1510,7 +1510,21 @@ kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContext* p_GUIContext, K15_GU
 /*********************************************************************************/
 kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
 {
-	
+	kg_u32 numSystemEvents = p_Events->numBufferedSystemEvents;
+	p_Events->numBufferedSystemEvents = 0;
+
+	for (kg_u32 eventIndex = 0;
+		eventIndex < numSystemEvents;
+		++eventIndex)
+	{ 
+		K15_GUISystemEvent* event = p_Events->bufferedSystemEvents + eventIndex;
+
+		if (event->type == K15_GUI_WINDOW_RESIZED)
+		{
+			p_GUIContext->clipRect.right = event->params.size.width;
+			p_GUIContext->clipRect.bottom = event->params.size.height;
+		}
+	}
 }
 /*********************************************************************************/
 kg_internal void K15_GUIHandleInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_GUIContextEvents)
@@ -1667,6 +1681,11 @@ kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUICo
 	guiContext->activatedElementIdHash = 0;
 	guiContext->events.numBufferedKeyboardInputs = 0;
 	guiContext->events.numBufferedMouseInputs = 0;
+	guiContext->events.numBufferedSystemEvents = 0;
+	guiContext->events.mouseDeltaX = 0;
+	guiContext->events.mouseDeltaY = 0;
+	guiContext->events.mousePosX = 0;
+	guiContext->events.mousePosY = 0;
 	guiContext->flagMask = 0;
 	guiContext->clipRect = clipRect;
 
@@ -2151,7 +2170,7 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 	if ((layoutFlagMask & K15_GUI_FLOW_LAYOUT_FLAG) > 0)
 	{
 		kg_u32 width = 0;
-		kg_u32 height = 0;
+		kg_u32 height = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
 		kg_u32 posRight = 0;
 		kg_u32 posY = p_LayoutClipRect->top;
 
@@ -2162,7 +2181,6 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 			guiElement = layoutedElements[elementIndex];
 			
 			width = guiElement->clipRect.right - guiElement->clipRect.left;
-			height = guiElement->clipRect.bottom - guiElement->clipRect.top;
 
 			posRight = posX + width;
 
@@ -2170,6 +2188,8 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 			{
 				posX = p_LayoutClipRect->left;
 				posY += height;
+
+				posRight = posX + width;
 			}
 
 			guiElement->clipRect.top = posY;
@@ -2558,6 +2578,8 @@ kg_def kg_result K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
 
 	K15_GUIClipElements(p_GUIContext);
 
+	K15_GUIHandleSystemEvents(p_GUIContext, &p_GUIContext->events);
+
 	p_GUIContext->flagMask &= ~K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
 	p_GUIContext->memory.memoryBufferSizeInBytes = 0;
 	p_GUIContext->numLayouts = 0;
@@ -2649,7 +2671,7 @@ kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, 
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	
 	if (p_GUIContextEvents->numBufferedMouseInputs == K15_GUI_MAX_BUFFERED_MOUSE_INPUTS)
-		return K15_GUI_RESULT_OUT_OF_RANGE;
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
 	kg_u32 mouseInputIndex = p_GUIContextEvents->numBufferedMouseInputs++;
 	p_GUIContextEvents->bufferedMouseInput[mouseInputIndex] = p_MouseInput;
@@ -2663,7 +2685,7 @@ kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvent
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	if (p_GUIContextEvents->numBufferedKeyboardInputs == K15_GUI_MAX_BUFFERED_KEYBOARD_INPUTS)
-		return K15_GUI_RESULT_OUT_OF_RANGE;
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
 	kg_u32 keyInputIndex = p_GUIContextEvents->numBufferedKeyboardInputs++;
 	p_GUIContextEvents->bufferedKeyboardInput[keyInputIndex] = p_KeyboardInput;
@@ -2677,10 +2699,21 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	if (p_GUIContextEvents->numBufferedSystemEvents == K15_GUI_MAX_BUFFERED_SYSTEM_EVENTS)
-		return K15_GUI_RESULT_OUT_OF_RANGE;
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	
+	kg_u32 systemEventIndex = p_GUIContextEvents->numBufferedSystemEvents;
 
-	kg_u32 systemEventIndex = p_GUIContextEvents->numBufferedSystemEvents++;
-	p_GUIContextEvents->bufferedSystemEvents[systemEventIndex] = p_SystemEvent;
+	//Window resize hack (event gets usually hammered)
+	if (systemEventIndex > 0 &&
+		p_GUIContextEvents->bufferedSystemEvents[systemEventIndex - 1].type == K15_GUI_WINDOW_RESIZED)
+	{
+		p_GUIContextEvents->bufferedSystemEvents[systemEventIndex - 1] = p_SystemEvent;
+	}
+	else
+	{
+		p_GUIContextEvents->bufferedSystemEvents[systemEventIndex] = p_SystemEvent;
+		++p_GUIContextEvents->numBufferedSystemEvents;
+	}
 
 	return K15_GUI_RESULT_SUCCESS;
 }

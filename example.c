@@ -153,10 +153,8 @@ void drawRect(K15_GUIRectShapeData* p_RectShapeData)
 		kg_color32 color = K15_GUISampleColorGradient(&p_RectShapeData->colorGradient, p);
 		COLORREF c = convertColor(color);
 		HPEN pen = CreatePen(PS_SOLID, 1, c);
-		HBRUSH brush = CreateSolidBrush(c);
 
 		SelectObject(backbufferDC, pen);
-		SelectObject(backbufferDC, brush);
 
 		Rectangle(backbufferDC, p_RectShapeData->rect.left,
 			y + p_RectShapeData->rect.top,
@@ -164,7 +162,6 @@ void drawRect(K15_GUIRectShapeData* p_RectShapeData)
 			y + p_RectShapeData->rect.top + 1);
 
 		DeleteObject(pen);
-		DeleteObject(brush);
 	}
 }
 
