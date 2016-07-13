@@ -860,7 +860,7 @@ kg_internal kg_b8 K15_GUIFitsIntoResourceTableMemory(K15_GUIResourceDatabase* p_
 }
 /*********************************************************************************/
 kg_internal kg_b8 K15_GUISearchResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
-	const char* p_ResourceName, K15_GUIResourceTableEntry** p_OutResourceTableEntryPtr)
+	K15_GUIResourceTableEntry** p_OutResourceTableEntryPtr, const char* p_ResourceName)
 {
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
 	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
@@ -971,7 +971,7 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	kg_s32 lineGap = 0;
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
-	if (K15_GUISearchResourceTableEntry(p_GUIResourceDatabase, p_FontName, 0))
+	if (K15_GUISearchResourceTableEntry(p_GUIResourceDatabase, 0, p_FontName))
 		return K15_GUI_RESULT_NAME_ALREADY_IN_USE;
 
 	stbtt_fontinfo fontInfo = {0};
@@ -1434,6 +1434,12 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	kg_result result = K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &defaultFont, 
 		"Cousine-Regular.ttf", 24, "default_font", K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
 
+
+	stbi_write_png("test1.png", defaultFont->texture.pixelWidth, defaultFont->texture.pixelHeight,
+		defaultFont->texture.numColorComponents, defaultFont->texture.pixelData,
+		defaultFont->texture.numColorComponents * defaultFont->texture.pixelWidth);
+
+
 	//Button Style
 	defaultStyle.buttonStyle.borderLowerColor = K15_GUI_COLOR_RGB(16, 16, 16);
 	defaultStyle.buttonStyle.borderUpperColor = K15_GUI_COLOR_RGB(96, 96, 96);
@@ -1468,16 +1474,16 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 
 	//Menu Style
 	defaultStyle.menuStyle.font = defaultFont;
-	defaultStyle.menuStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-	defaultStyle.menuStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.menuStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(255, 0, 0);
+	defaultStyle.menuStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(0, 0, 255);
 	defaultStyle.menuStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuStyle.verticalPixelPadding = 2;
 	defaultStyle.menuStyle.horizontalPixelPadding = 8;
 
 	//Menu Item Style
 	defaultStyle.menuItemStyle.font = defaultFont;
-	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
+	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(255, 0, 0);
+	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(0, 0, 255);
 	defaultStyle.menuItemStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuItemStyle.verticalPixelPadding = 2;
 	defaultStyle.menuItemStyle.horizontalPixelPadding = 8;
@@ -1620,89 +1626,6 @@ kg_internal kg_result K15_GUIGetElementData(K15_GUIContextMemory* p_GUIContextMe
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
-	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom)
-{
-	kg_byte* guiMemory = (kg_byte*)malloc(K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
-
-	if (!guiMemory)
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-
-	return K15_CreateGUIContextWithCustomMemory(p_OutGUIContext, p_ContextResources, 
-		p_ClipPosLeft, p_ClipPosTop, p_ClipPosRight, p_ClipPosBottom, 
-		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
-}
-/*********************************************************************************/
-kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
-	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
-	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes)
-{
-	if (!p_Memory || p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-
-	K15_GUIRect clipRect = {0};
-	clipRect.left = p_ClipPosLeft;
-	clipRect.top = p_ClipPosTop;
-	clipRect.right = p_ClipPosRight;
-	clipRect.bottom = p_ClipPosBottom;
-
-	kg_result clipRectValidationResult = K15_GUIValidateClipRect(&clipRect);
-
-	if (clipRectValidationResult != K15_GUI_RESULT_SUCCESS)
-		return clipRectValidationResult;
-
-	kg_byte* guiMemory = p_Memory;
-	kg_u32 guiMemorySizeInBytes = p_MemorySizeInBytes;
-
-	K15_GUIContext* guiContext = (K15_GUIContext*)guiMemory;
-	guiMemory += sizeof(K15_GUIContext);
-	guiMemorySizeInBytes -= sizeof(K15_GUIContext);
-
-	//nullify the rest of the memory
-	K15_GUI_MEMSET(guiMemory, 0, guiMemorySizeInBytes);
-
-	guiContext->memory.memoryBuffer = guiMemory;
-	guiContext->memory.memoryBufferCapacityInBytes = p_MemorySizeInBytes;
-	guiContext->memory.memoryBufferSizeInBytes = 0;
-	guiContext->memoryBufferSizeInBytes = guiMemorySizeInBytes;
-	guiContext->memoryBufferCapacityInBytes = guiMemorySizeInBytes;
-	guiContext->drawCmdBuffer.bufferCapacityInBytes = K15_GUI_DRAW_COMMAND_BUFFER_SIZE;
-	guiContext->drawCmdBuffer.bufferSizeInBytes = 0;
-	guiContext->focusedElementIdHash = 0;
-	guiContext->hoveredElementIdHash = 0;
-	guiContext->clickedElementIdHash = 0;
-	guiContext->mouseDownElementIdHash = 0;
-	guiContext->layoutIndex = 0;
-	guiContext->numLayouts = 0;
-	guiContext->numMenus = 0;
-	guiContext->lastResult = K15_GUI_RESULT_SUCCESS;
-	guiContext->style = K15_GUICreateDefaultStyle(p_ContextResources);
-	guiContext->resourceDatabase = p_ContextResources;
-	guiContext->activatedElementIdHash = 0;
-	guiContext->events.numBufferedKeyboardInputs = 0;
-	guiContext->events.numBufferedMouseInputs = 0;
-	guiContext->events.numBufferedSystemEvents = 0;
-	guiContext->events.mouseDeltaX = 0;
-	guiContext->events.mouseDeltaY = 0;
-	guiContext->events.mousePosX = 0;
-	guiContext->events.mousePosY = 0;
-	guiContext->flagMask = 0;
-	guiContext->clipRect = clipRect;
-
-	K15_GUI_MEMSET(guiContext->elementHashTable, 0, sizeof(guiContext->elementHashTable));
-
-	//assign newly created gui context
-	*p_OutGUIContext = *guiContext;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
-kg_def void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier)
-{
-	K15_GUIContextStyle* style = &p_GUIContext->style;
-	K15_GUICustomBeginToolBar(p_GUIContext, p_Identifier, &style->toolBarStyle);
-}
-/*********************************************************************************/
 kg_internal kg_u32 K15_GUICreateHash(const char* p_String, kg_u32 p_StringLength)
 {
 	kg_u32 hash = 0;
@@ -1715,8 +1638,8 @@ kg_internal kg_u32 K15_GUICreateHash(const char* p_String, kg_u32 p_StringLength
 /*********************************************************************************/
 kg_internal kg_result K15_GUIPerformClipping(K15_GUIRect* p_ClipRectToClip, K15_GUIRect* p_ClipRect)
 {
-	p_ClipRectToClip->left = K15_GUI_MIN(p_ClipRectToClip->left, p_ClipRect->left);
-	p_ClipRectToClip->top = K15_GUI_MIN(p_ClipRectToClip->top, p_ClipRect->top);
+	p_ClipRectToClip->left = K15_GUI_MAX(p_ClipRectToClip->left, p_ClipRect->left);
+	p_ClipRectToClip->top = K15_GUI_MAX(p_ClipRectToClip->top, p_ClipRect->top);
 	p_ClipRectToClip->right = K15_GUI_MIN(p_ClipRectToClip->right, p_ClipRect->right);
 	p_ClipRectToClip->bottom = K15_GUI_MIN(p_ClipRectToClip->bottom, p_ClipRect->bottom);
 
@@ -1770,7 +1693,7 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 	{
 		K15_GUILayoutData* layoutData = 0;
 		result = K15_GUIGetElementDataRaw(guiContextMemory, topLayout, (void**)&layoutData, 0);
-	
+
 		if (result != K15_GUI_RESULT_SUCCESS)
 			return result;
 
@@ -1787,8 +1710,8 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUIContext, 
-	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, const char* p_Identifier, 
+kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUIContext,
+	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, const char* p_Identifier,
 	K15_GUIRect* p_ClipRect)
 {
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
@@ -1844,9 +1767,9 @@ kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawComm
 	}
 
 	p_DrawCommandBuffer->bufferSizeInBytes = drawCmdBufferNewSizeInBytes;
-	
+
 	K15_GUI_MEMCPY(drawCmdBuffer + drawCmdBufferSizeInBytes, &drawCmd, sizeof(drawCmd));
-	
+
 	if (p_OutDrawCommand)
 		*p_OutDrawCommand = (K15_GUIDrawCommand*)(drawCmdBuffer + drawCmdBufferSizeInBytes);
 
@@ -1960,6 +1883,89 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	++p_GUIContext->numLayouts;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
+	kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop, kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom)
+{
+	kg_byte* guiMemory = (kg_byte*)malloc(K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
+
+	if (!guiMemory)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	return K15_CreateGUIContextWithCustomMemory(p_OutGUIContext, p_ContextResources, 
+		p_ClipPosLeft, p_ClipPosTop, p_ClipPosRight, p_ClipPosBottom, 
+		guiMemory, K15_GUI_MIN_MEMORY_SIZE_IN_BYTES);
+}
+/*********************************************************************************/
+kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUIContext, 
+	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
+	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes)
+{
+	if (!p_Memory || p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	K15_GUIRect clipRect = {0};
+	clipRect.left = p_ClipPosLeft;
+	clipRect.top = p_ClipPosTop;
+	clipRect.right = p_ClipPosRight;
+	clipRect.bottom = p_ClipPosBottom;
+
+	kg_result clipRectValidationResult = K15_GUIValidateClipRect(&clipRect);
+
+	if (clipRectValidationResult != K15_GUI_RESULT_SUCCESS)
+		return clipRectValidationResult;
+
+	kg_byte* guiMemory = p_Memory;
+	kg_u32 guiMemorySizeInBytes = p_MemorySizeInBytes;
+
+	K15_GUIContext* guiContext = (K15_GUIContext*)guiMemory;
+	guiMemory += sizeof(K15_GUIContext);
+	guiMemorySizeInBytes -= sizeof(K15_GUIContext);
+
+	//nullify the rest of the memory
+	K15_GUI_MEMSET(guiMemory, 0, guiMemorySizeInBytes);
+
+	guiContext->memory.memoryBuffer = guiMemory;
+	guiContext->memory.memoryBufferCapacityInBytes = p_MemorySizeInBytes;
+	guiContext->memory.memoryBufferSizeInBytes = 0;
+	guiContext->memoryBufferSizeInBytes = guiMemorySizeInBytes;
+	guiContext->memoryBufferCapacityInBytes = guiMemorySizeInBytes;
+	guiContext->drawCmdBuffer.bufferCapacityInBytes = K15_GUI_DRAW_COMMAND_BUFFER_SIZE;
+	guiContext->drawCmdBuffer.bufferSizeInBytes = 0;
+	guiContext->focusedElementIdHash = 0;
+	guiContext->hoveredElementIdHash = 0;
+	guiContext->clickedElementIdHash = 0;
+	guiContext->mouseDownElementIdHash = 0;
+	guiContext->layoutIndex = 0;
+	guiContext->numLayouts = 0;
+	guiContext->numMenus = 0;
+	guiContext->lastResult = K15_GUI_RESULT_SUCCESS;
+	guiContext->style = K15_GUICreateDefaultStyle(p_ContextResources);
+	guiContext->resourceDatabase = p_ContextResources;
+	guiContext->activatedElementIdHash = 0;
+	guiContext->events.numBufferedKeyboardInputs = 0;
+	guiContext->events.numBufferedMouseInputs = 0;
+	guiContext->events.numBufferedSystemEvents = 0;
+	guiContext->events.mouseDeltaX = 0;
+	guiContext->events.mouseDeltaY = 0;
+	guiContext->events.mousePosX = 0;
+	guiContext->events.mousePosY = 0;
+	guiContext->flagMask = 0;
+	guiContext->clipRect = clipRect;
+
+	K15_GUI_MEMSET(guiContext->elementHashTable, 0, sizeof(guiContext->elementHashTable));
+
+	//assign newly created gui context
+	*p_OutGUIContext = *guiContext;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier)
+{
+	K15_GUIContextStyle* style = &p_GUIContext->style;
+	K15_GUICustomBeginToolBar(p_GUIContext, p_Identifier, &style->toolBarStyle);
 }
 /*********************************************************************************/
 kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier,
@@ -2269,15 +2275,15 @@ kg_internal kg_color32 K15_GUISampleColorGradient(K15_GUIColorGradient* p_ColorG
 	kg_color32 fromColor = p_ColorGradient->from;
 	kg_color32 toColor = p_ColorGradient->to;
 
-	float fR = (float)((kg_u8)(fromColor >> 0) / 255);
-	float fG = (float)((kg_u8)(fromColor >> 8) / 255);
-	float fB = (float)((kg_u8)(fromColor >> 16) / 255);
-	float fA = (float)((kg_u8)(fromColor >> 24) / 255);
+	float fR = (float)(kg_u8)(fromColor >> 0) / 255.f;
+	float fG = (float)(kg_u8)(fromColor >> 8) / 255.f;
+	float fB = (float)(kg_u8)(fromColor >> 16) / 255.f;
+	float fA = (float)(kg_u8)(fromColor >> 24) / 255.f;
 
-	float tR = (float)((kg_u8)(toColor >> 0) / 255);
-	float tG = (float)((kg_u8)(toColor >> 8) / 255);
-	float tB = (float)((kg_u8)(toColor >> 16) / 255);
-	float tA = (float)((kg_u8)(toColor >> 24) / 255);
+	float tR = (float)(kg_u8)(toColor >> 0) / 255.f;
+	float tG = (float)(kg_u8)(toColor >> 8) / 255.f;
+	float tB = (float)(kg_u8)(toColor >> 16) / 255.f;
+	float tA = (float)(kg_u8)(toColor >> 24) / 255.f;
 
 	float oR = 0.f;
 	float oG = 0.f;
@@ -2291,10 +2297,10 @@ kg_internal kg_color32 K15_GUISampleColorGradient(K15_GUIColorGradient* p_ColorG
 		break;
 
 	case K15_GUI_LINEAR_GRADIENT:
-		oR = fR * 1.f - p_SampleValue + tR * p_SampleValue;
-		oG = fG * 1.f - p_SampleValue + tG * p_SampleValue;
-		oB = fB * 1.f - p_SampleValue + tB * p_SampleValue;
-		oA = fA * 1.f - p_SampleValue + tA * p_SampleValue;
+		oR = fR * (1.f - p_SampleValue) + tR * p_SampleValue;
+		oG = fG * (1.f - p_SampleValue) + tG * p_SampleValue;
+		oB = fB * (1.f - p_SampleValue) + tB * p_SampleValue;
+		oA = fA * (1.f - p_SampleValue) + tA * p_SampleValue;
 		output = ((kg_u8)(oR * 255.f) << 0 |
 			(kg_u8)(oG * 255.f) << 8 |
 			(kg_u8)(oB * 255.f) << 16 |

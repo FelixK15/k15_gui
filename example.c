@@ -20,6 +20,7 @@ typedef unsigned short uint16;
 typedef unsigned char uint8;
 
 typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
+void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
 
 HDC backbufferDC = 0;
 HBITMAP backbufferBitmap = 0;
@@ -58,6 +59,10 @@ void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 
 	K15_GUIIconSet* icons = 0;
 	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
+
+	stbi_write_png("test1.png", icons->texture.pixelWidth, icons->texture.pixelHeight,
+		icons->texture.numColorComponents, icons->texture.pixelData,
+		icons->texture.numColorComponents * icons->texture.pixelWidth);
 
 	// 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
 	// 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
@@ -222,6 +227,8 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 	WORD newWidth = (WORD)(p_lParam);
 	WORD newHeight = (WORD)(p_lParam >> 16);
 
+	resizeBackbuffer(p_HWND, newWidth, newHeight);
+
 	K15_GUISystemEvent systemEvent;
 	systemEvent.type = K15_GUI_WINDOW_RESIZED;
 	systemEvent.params.size.height = newHeight;
@@ -333,6 +340,18 @@ uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
 	appTime.QuadPart *= 1000; //to milliseconds
 
 	return (uint32)(appTime.QuadPart / p_PerformanceFrequency.QuadPart);
+}
+
+void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
+{
+	DeleteObject(backbufferBitmap);
+
+	HDC originalDC = GetDC(p_HWND);
+	backbufferBitmap = CreateCompatibleBitmap(originalDC, p_Width, p_Height);
+	screenWidth = p_Width;
+	screenHeight = p_Height;
+
+	SelectObject(backbufferDC, backbufferBitmap);
 }
 
 void setup(HWND p_HWND)
