@@ -399,6 +399,14 @@ typedef enum
 	K15_GUI_DRAW_TEXT_COMMAND
 } K15_GUIDrawCommandType;
 /*********************************************************************************/
+typedef enum
+{
+	K15_GUI_PIXEL_FORMAT_R8 = 1,
+	K15_GUI_PIXEL_FORMAT_R8A8,
+	K15_GUI_PIXEL_FORMAT_R8G8B8,
+	K15_GUI_PIXEL_FORMAT_R8G8B8A8
+} K15_GUIPixelFormat;
+/*********************************************************************************/
 typedef struct
 {
 	K15_GUIColorGradientType type;
@@ -528,6 +536,16 @@ kg_def kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDa
 
 kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName);
+
+kg_def int K15_GUIConvertToFontGlyphIndex(K15_GUIFont* p_Font, unsigned char p_Character);
+
+kg_def kg_u32 K15_GUICalculateFontPixelBufferSizeInBytes(K15_GUIFont* p_Font, K15_GUIPixelFormat p_PixelFormat);
+kg_def kg_u32 K15_GUICalculateIconSetPixelBufferSizeInBytes(K15_GUIIconSet* p_IconSet, 
+	K15_GUIPixelFormat p_PixelFormat);
+kg_def kg_result K15_GUICopyFontTextureIntoPixelBuffer(K15_GUIFont* p_Font, void* p_PixelBuffer,
+	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight);
+kg_def kg_result K15_GUICopyIconSetTextureIntoPixelBuffer(K15_GUIIconSet* p_IconSet, void* p_PixelBuffer,
+	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight);
 
 //*****************CONTROLS******************//
 kg_def void K15_GUIBeginToolBar(K15_GUIContext* p_GUIContext, const char* p_Identifier);
@@ -984,6 +1002,10 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 	stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
+	ascent = (kg_s32)((float)ascent * scaleFac);
+	descent = (kg_s32)((float)descent * scaleFac);
+	lineGap = (kg_s32)((float)lineGap * scaleFac);
+
 	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
 
 	K15_ImageAtlas textureAtlas = {0};
@@ -1077,8 +1099,7 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				fontGlyph->codepoint = codepoint;
 				fontGlyph->glyphRect = glyphRect;
 				fontGlyph->leftSideBearing = (kg_s32)((float)leftSideBearing * scaleFac);
-				fontGlyph->advanceWidth = (kg_s32)((float)advanceWidth * scaleFac);
-				
+				fontGlyph->advanceWidth = (kg_s32)((float)advanceWidth * scaleFac);				
 				glyphArrayIndex += 1;
 			}
 
@@ -1259,6 +1280,262 @@ kg_internal kg_u32 K15_GUIGetNumIconResources(K15_GUIResourceDatabase* p_GUIReso
 	return numIcons;
 }
 /*********************************************************************************/
+kg_internal kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
+{
+	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	K15_GUIResourceTableEntry* tableEntry = 0;
+	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
+	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
+	kg_u32 resourceMemoryPosition = 0;
+
+	while (resourceMemoryPosition < resourceMemorySizeInBytes)
+	{
+		tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
+
+		if (tableEntry->type == p_ResourceType &&
+			K15_GUI_STRCMP(p_ResourceName, tableEntry->name) == 0)
+		{
+			*p_OutMemory = (void*)(resourceMemory + resourceMemoryPosition + sizeof(K15_GUIResourceTableEntry));
+			return K15_GUI_RESULT_SUCCESS;
+		}
+	}
+
+	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIFont** p_OutFont, const char* p_FontName)
+{
+	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutFont,
+		p_FontName, K15_GUI_FONT_RESOURCE_TYPE);
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
+{
+	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutIconSet,
+		p_IconSetName, K15_GUI_ICONSET_RESOURCE_TYPE);
+}
+/*********************************************************************************/
+kg_def int K15_GUIConvertToFontGlyphIndex(K15_GUIFont* p_Font, unsigned char p_Character)
+{
+	if (!p_Font)
+		return 0;
+
+	K15_GUIGlyphRange glyphRanges[K15_GUI_MAX_GLYPH_RANGES];
+	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+	kg_u32 glyphRangeMask = p_Font->glyphRangeMask;
+	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(glyphRangeMask, &glyphRangesPtr, K15_GUI_MAX_GLYPH_RANGES);
+	kg_u32 glyphIndex = 0;
+	kg_u32 numGlyphs = 0;
+
+	K15_GUIGlyphRange* glyphRangeContainingCharacter = 0;
+
+	for (kg_u32 rangeIndex = 0;
+		rangeIndex < numGlyphRanges;
+		++rangeIndex)
+	{
+		numGlyphs = glyphRanges->to - glyphRanges->from;
+
+		if (p_Character >= glyphRanges->from && p_Character <= glyphRanges->to)
+		{
+			glyphRangeContainingCharacter = glyphRanges;
+			break;
+		}
+
+		glyphIndex += numGlyphs;
+	}
+
+	if (!glyphRangeContainingCharacter)
+		return 0;
+	
+	glyphIndex += p_Character - glyphRangeContainingCharacter->from;
+
+	return glyphIndex;
+}
+/*********************************************************************************/
+kg_internal kg_u32 K15_GUICalculateTexturePixelBufferSizeInBytes(K15_GUITexture* p_Texture,
+	K15_GUIPixelFormat p_PixelFormat)
+{
+	kg_u32 numPixels = p_Texture->pixelWidth * p_Texture->pixelHeight;
+	return numPixels * p_PixelFormat;
+}
+/*********************************************************************************/
+kg_internal void K15_GUIConvertPixel(kg_byte* p_SourcePixel, K15_GUIPixelFormat p_SourcePixelFormat,
+	kg_byte* p_DestinationPixel, K15_GUIPixelFormat p_DestinationPixelFormat)
+{
+	if (p_SourcePixelFormat == K15_GUI_PIXEL_FORMAT_R8)
+	{
+		for (kg_s32 colorIndex = 0;
+			colorIndex < p_DestinationPixelFormat;
+			++colorIndex)
+		{
+			p_DestinationPixel[colorIndex] = *p_SourcePixel;
+		}
+	}
+	else if (p_SourcePixelFormat == K15_GUI_PIXEL_FORMAT_R8A8)
+	{
+		kg_u8 sourcePixel = (kg_u8)((float)p_SourcePixel[0] * (float)((p_SourcePixel[1]) / 255));
+
+		if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8)
+			p_DestinationPixel[0] = sourcePixel;
+		else if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8G8B8)
+		{
+			p_DestinationPixel[0] = sourcePixel;
+			p_DestinationPixel[1] = sourcePixel;
+			p_DestinationPixel[2] = sourcePixel;
+		}
+		else if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8G8B8A8)
+		{
+			p_DestinationPixel[0] = p_SourcePixel[0];
+			p_DestinationPixel[1] = p_SourcePixel[0];
+			p_DestinationPixel[2] = p_SourcePixel[0];
+			p_DestinationPixel[3] = p_SourcePixel[1];
+		}
+	}
+	else if (p_SourcePixelFormat == K15_GUI_PIXEL_FORMAT_R8G8B8)
+	{
+		kg_u8 greyscale = (kg_u8)((float)(p_SourcePixel[0]) * 0.21f +
+			(float)(p_SourcePixel[1]) * 0.72f +
+			(float)(p_SourcePixel[2]) * 0.07f);
+
+		if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8)
+			p_DestinationPixel[0] = greyscale;
+		else if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8A8)
+		{
+			p_DestinationPixel[0] = greyscale;
+			p_DestinationPixel[1] = 255;
+		}
+		else if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8G8B8A8)
+		{
+			p_DestinationPixel[0] = p_SourcePixel[0];
+			p_DestinationPixel[1] = p_SourcePixel[1];
+			p_DestinationPixel[2] = p_SourcePixel[2];
+			p_DestinationPixel[3] = 255;
+		}
+	}
+	else if (p_SourcePixelFormat == K15_GUI_PIXEL_FORMAT_R8G8B8A8)
+	{
+		float greyscale = (float)(p_SourcePixel[0]) * 0.21f +
+			(float)(p_SourcePixel[1]) * 0.72f +
+			(float)(p_SourcePixel[2]) * 0.07f;
+
+		float alpha = (float)(p_SourcePixel[3] / 255.f);
+		float greyscaleWithAlpha = greyscale * alpha;
+
+		if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8)
+			p_DestinationPixel[0] = (kg_u8)(greyscaleWithAlpha + 0.5f);
+		else if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8A8)
+		{
+			p_DestinationPixel[0] = (kg_u8)(greyscale + 0.5f);
+			p_DestinationPixel[1] = p_SourcePixel[3];
+		}
+		else if (p_DestinationPixelFormat == K15_GUI_PIXEL_FORMAT_R8G8B8)
+		{
+			p_DestinationPixel[0] = (kg_u8)((float)(p_SourcePixel[0]) * alpha);
+			p_DestinationPixel[1] = (kg_u8)((float)(p_SourcePixel[1]) * alpha);
+			p_DestinationPixel[2] = (kg_u8)((float)(p_SourcePixel[2]) * alpha);
+		}
+	}
+}
+/*********************************************************************************/
+kg_internal void K15_GUIConvertPixelStride(kg_byte* p_SourcePixelStride, K15_GUIPixelFormat p_SourcePixelFormat,
+	kg_byte* p_DestinationPixelStride, K15_GUIPixelFormat p_DestinationPixelFormat, kg_u32 p_StrideWidth)
+{
+	kg_u32 sourcePixelOffset = 0;
+	kg_u32 destinationPixelOffset = 0;
+
+	for (kg_u32 pixelIndex = 0;
+		pixelIndex < p_StrideWidth;
+		++pixelIndex)
+	{
+		K15_GUIConvertPixel(p_SourcePixelStride + sourcePixelOffset, p_SourcePixelFormat,
+			p_DestinationPixelStride + destinationPixelOffset, p_DestinationPixelFormat);
+
+		sourcePixelOffset += p_SourcePixelFormat;
+		destinationPixelOffset += p_DestinationPixelFormat;
+	}
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUICopyTextureIntoPixelBuffer(K15_GUITexture* p_Texture, void* p_PixelBuffer,
+	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight)
+{
+	K15_GUIPixelFormat texturePixelFormat = (K15_GUIPixelFormat)p_Texture->numColorComponents;
+	kg_byte* texturePixelData = p_Texture->pixelData;
+	kg_byte* pixelBufferData = (kg_byte*)p_PixelBuffer;
+
+	kg_u32 textureWidth = p_Texture->pixelWidth;
+	kg_u32 textureHeight = p_Texture->pixelHeight;
+	kg_u32 textureOffsetInBytes = 0;
+	kg_u32 pixelBufferOffsetInBytes = 0;
+
+	if (texturePixelFormat != p_PixelFormat)
+	{
+		for (kg_u32 textureRow = 0;
+			textureRow < textureHeight;
+			++textureRow)
+		{
+			K15_GUIConvertPixelStride(texturePixelData + textureOffsetInBytes, texturePixelFormat,
+				pixelBufferData + pixelBufferOffsetInBytes, p_PixelFormat, textureWidth);
+		
+			textureOffsetInBytes += textureWidth * texturePixelFormat;
+			pixelBufferOffsetInBytes += textureWidth * p_PixelFormat;
+		}
+	}
+	else
+	{
+		K15_GUI_MEMCPY(p_PixelBuffer, texturePixelData, textureWidth * textureHeight * texturePixelFormat);
+	}
+
+	if (p_OutHeight)
+		*p_OutHeight = textureHeight;
+
+	if (p_OutWidth)
+		*p_OutWidth = textureWidth;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def kg_u32 K15_GUICalculateFontPixelBufferSizeInBytes(K15_GUIFont* p_Font, K15_GUIPixelFormat p_PixelFormat)
+{
+	if (!p_Font)
+		return 0;
+
+	return K15_GUICalculateTexturePixelBufferSizeInBytes(&p_Font->texture, p_PixelFormat);
+}
+/*********************************************************************************/
+kg_def kg_u32 K15_GUICalculateIconSetPixelBufferSizeInBytes(K15_GUIIconSet* p_IconSet, 
+	K15_GUIPixelFormat p_PixelFormat)
+{
+	if (!p_IconSet)
+		return 0;
+
+	return K15_GUICalculateTexturePixelBufferSizeInBytes(&p_IconSet->texture, p_PixelFormat);
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUICopyFontTextureIntoPixelBuffer(K15_GUIFont* p_Font, void* p_PixelBuffer,
+	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight)
+{
+	if (!p_Font || !p_PixelBuffer)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	return K15_GUICopyTextureIntoPixelBuffer(&p_Font->texture, p_PixelBuffer, p_PixelFormat,
+		p_OutWidth, p_OutHeight);
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUICopyIconSetTextureIntoPixelBuffer(K15_GUIIconSet* p_IconSet, void* p_PixelBuffer, 
+	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight)
+{
+	if (!p_IconSet|| !p_PixelBuffer)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	return K15_GUICopyTextureIntoPixelBuffer(&p_IconSet->texture, p_PixelBuffer, p_PixelFormat,
+		p_OutWidth, p_OutHeight);
+}
+/*********************************************************************************/
 kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
 {
@@ -1386,46 +1663,6 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
-	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
-{
-	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
-	K15_GUIResourceTableEntry* tableEntry = 0;
-	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
-	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
-	kg_u32 resourceMemoryPosition = 0;
-
-	while (resourceMemoryPosition < resourceMemorySizeInBytes)
-	{
-		tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
-
-		if (tableEntry->type == p_ResourceType &&
-			K15_GUI_STRCMP(p_ResourceName, tableEntry->name) == 0)
-		{
-			*p_OutMemory = (void*)(resourceMemory + resourceMemoryPosition + sizeof(K15_GUIResourceTableEntry));
-			return K15_GUI_RESULT_SUCCESS;
-		}
-	}	
-
-	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
-}
-/*********************************************************************************/
-kg_def kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
-	K15_GUIFont** p_OutFont, const char* p_FontName)
-{
-	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutFont,
-		p_FontName, K15_GUI_FONT_RESOURCE_TYPE);
-}
-/*********************************************************************************/
-kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
-	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
-{
-	return K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, (void**)p_OutIconSet,
-		p_IconSetName, K15_GUI_ICONSET_RESOURCE_TYPE);
-}
-/*********************************************************************************/
 kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
 	K15_GUIContextStyle defaultStyle = {0};
@@ -1494,6 +1731,49 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, kg_u32 p_NumMouseEvents,
 	K15_GUIMouseInput* p_MouseEvents, kg_u16* p_MousePosInOutX, kg_u16* p_MousePosInOutY)
 {
+	if (p_NumMouseEvents == 0)
+		return;
+
+	kg_u32 memorySize = p_ContextMemory->memoryBufferSizeInBytes;
+	kg_byte* memory = p_ContextMemory->memoryBuffer;
+
+	kg_u32 memoryPosition = 0;
+	kg_u16 mousePosX = *p_MousePosInOutX;
+	kg_u16 mousePosY = *p_MousePosInOutY;
+
+	K15_GUIElement* element = 0;
+
+	for (kg_u32 eventIndex = 0;
+		eventIndex < p_NumMouseEvents;
+		++eventIndex)
+	{
+		K15_GUIMouseInput* mouseInputEvent = p_MouseEvents + eventIndex;
+
+		if (mouseInputEvent->type == K15_GUI_MOUSE_MOVED)
+		{
+			mousePosX = mouseInputEvent->data.mousePos.x;
+			mousePosY = mouseInputEvent->data.mousePos.y;
+		}
+
+		while (memoryPosition < memorySize)
+		{
+			element = (K15_GUIElement*)(memory + memoryPosition);
+			memoryPosition += element->offsetNextElementInBytes;
+		}
+
+		memoryPosition = 0;
+	}
+
+	*p_MousePosInOutX = mousePosX;
+	*p_MousePosInOutY = mousePosY;
+}
+/*********************************************************************************/
+kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContextMemory* p_ContextMemory, kg_u32 p_NumKeyboardEvents,
+	K15_GUIKeyboardInput* p_KeyboardEvents)
+{
+	if (p_NumKeyboardEvents == 0)
+		return;
+
 	kg_u32 memorySize = p_ContextMemory->memoryBufferSizeInBytes;
 	kg_byte* memory = p_ContextMemory->memoryBuffer;
 
@@ -1506,24 +1786,19 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 		element = (K15_GUIElement*)(memory + memoryPosition);
 		memoryPosition += element->offsetNextElementInBytes;
 	}
-
 }
 /*********************************************************************************/
-kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
+kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, kg_u32 p_NumSystemEvents, 
+	K15_GUISystemEvent* p_SystemEvents)
 {
-	
-}
-/*********************************************************************************/
-kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_Events)
-{
-	kg_u32 numSystemEvents = p_Events->numBufferedSystemEvents;
-	p_Events->numBufferedSystemEvents = 0;
+	if (p_NumSystemEvents == 0)
+		return;
 
 	for (kg_u32 eventIndex = 0;
-		eventIndex < numSystemEvents;
+		eventIndex < p_NumSystemEvents;
 		++eventIndex)
 	{ 
-		K15_GUISystemEvent* event = p_Events->bufferedSystemEvents + eventIndex;
+		K15_GUISystemEvent* event = p_SystemEvents + eventIndex;
 
 		if (event->type == K15_GUI_WINDOW_RESIZED)
 		{
@@ -1533,20 +1808,30 @@ kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, K15_GUI
 	}
 }
 /*********************************************************************************/
-kg_internal void K15_GUIHandleInput(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_GUIContextEvents)
+kg_internal void K15_GUIHandleEvents(K15_GUIContext* p_GUIContext, K15_GUIContextEvents* p_GUIContextEvents)
 {
 	kg_u16 mousePosX = p_GUIContextEvents->mousePosX;
 	kg_u16 mousePosY = p_GUIContextEvents->mousePosY;
 
-// 	K15_GUIHandleMouseInput(p_Memory, p_GUIContextEvents->numBufferedMouseInputs,
-// 		p_GUIContextEvents->bufferedMouseInput, &p_GUIContextEvents->mousePosX,
-// 		&p_GUIContextEvents->mousePosY);
-// 
-// 	K15_GUIHandleKeyboardInput(p_Memory, p_GUIContextEvents->numBufferedKeyboardInputs,
-// 		p_GUIContextEvents->bufferedKeyboardInput);
-// 
-// 	K15_GUIHandleSystemEvents(p_Memory, p_GUIContextEvents->numBufferedSystemEvents,
-// 		p_GUIContextEvents->numBufferedSystemEvents);
+	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
+
+	K15_GUIHandleMouseInput(contextMemory, p_GUIContextEvents->numBufferedMouseInputs,
+		p_GUIContextEvents->bufferedMouseInput, &mousePosX, &mousePosY);
+
+	K15_GUIHandleKeyboardInput(contextMemory, p_GUIContextEvents->numBufferedKeyboardInputs,
+		p_GUIContextEvents->bufferedKeyboardInput);
+
+	K15_GUIHandleSystemEvents(p_GUIContext, p_GUIContextEvents->numBufferedSystemEvents,
+		p_GUIContextEvents->bufferedSystemEvents);
+
+	p_GUIContextEvents->mouseDeltaX = p_GUIContextEvents->mousePosX - mousePosX;
+	p_GUIContextEvents->mouseDeltaY = p_GUIContextEvents->mousePosY - mousePosY;
+	p_GUIContextEvents->mousePosX = mousePosX;
+	p_GUIContextEvents->mousePosY = mousePosY;
+
+	p_GUIContextEvents->numBufferedKeyboardInputs = 0;
+	p_GUIContextEvents->numBufferedMouseInputs = 0;
+	p_GUIContextEvents->numBufferedSystemEvents = 0;
 }
 /*********************************************************************************/
 
@@ -2584,8 +2869,7 @@ kg_def kg_result K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
 
 	K15_GUIClipElements(p_GUIContext);
 
-	K15_GUIHandleSystemEvents(p_GUIContext, &p_GUIContext->events);
-
+	K15_GUIHandleEvents(p_GUIContext, &p_GUIContext->events);
 	p_GUIContext->flagMask &= ~K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
 	p_GUIContext->memory.memoryBufferSizeInBytes = 0;
 	p_GUIContext->numLayouts = 0;
