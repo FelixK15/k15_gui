@@ -2698,36 +2698,6 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-typedef struct 
-{
-	K15_GUIFont* font;
-	K15_GUIRect rect;
-	kg_u32 textLength;
-	kg_color32 textColor;
-} K15_GUITextShapeData;
-/*********************************************************************************/
-kg_internal kg_result K15_GUIAddTextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIRect* p_ClipRect, K15_GUIFont* p_Font, const char* p_Text, kg_u32 p_TextLength, kg_color32 p_TextColor)
-{
-	K15_GUITextShapeData shapeData = { 0 };
-	shapeData.textLength = p_TextLength;
-	shapeData.textColor = p_TextColor;
-	shapeData.rect = *p_ClipRect;
-	shapeData.font = p_Font;
-
-	K15_GUIDrawCommand* drawCmd = 0;
-
-	kg_result result = K15_GUIAddDrawCommand(p_DrawCommandBuffer, &drawCmd, K15_GUI_DRAW_TEXT_COMMAND);
-
-	if (result == K15_GUI_RESULT_SUCCESS)
-		K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCmd, &shapeData, sizeof(shapeData));
-
-	if (result == K15_GUI_RESULT_SUCCESS)
-		result = K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCmd, (void*)p_Text, p_TextLength);
-
-	return result;
-}
-/*********************************************************************************/
 kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
 	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
 {
@@ -2767,7 +2737,6 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 		lowerBackgroundColor);
 
 	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);
-	result = K15_GUIAddTextDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, font, text, buttonData.textLength, textColor);
 functionEnd:
 	return result;
 }

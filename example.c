@@ -2,13 +2,16 @@
 
 #include <windows.h>
 #include <stdio.h>
+#include <GL/GL.h>
 
 #define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
 
+#define GL_CALL(x) x; {GLenum _err; while(_err = glGetError() != 0){__debugbreak();}}
+
 #pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "opengl32.lib")
 
 #define K15_FALSE 0
 #define K15_TRUE 1
@@ -21,13 +24,6 @@ typedef unsigned char uint8;
 
 typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
-
-HDC backbufferDC = 0;
-HDC fontDC = 0;
-HDC iconDC = 0;
-HBITMAP backbufferBitmap = 0;
-HBITMAP fontBitmap = 0;
-HBITMAP iconBitmap = 0;
 
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
@@ -56,36 +52,9 @@ uint32 convertColor(kg_color32 p_Color)
 	return RGB(r, g, b);
 }
 
-HBITMAP loadGDIBitmapFromPixelBuffer(void* p_PixelBuffer, uint32 p_Width, uint32 p_Height)
-{
-	BITMAPINFO bitmapInfo = {0};
-	bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-	bitmapInfo.bmiHeader.biWidth = p_Width;
-	bitmapInfo.bmiHeader.biHeight = p_Height;
-	bitmapInfo.bmiHeader.biPlanes = 1;
-	bitmapInfo.bmiHeader.biCompression = BI_RGB;
-	bitmapInfo.bmiHeader.biBitCount = 24;
+GLuint iconTextureHandle;
+GLuint fontTextureHandle;
 
-	bitmapInfo.bmiHeader.biHeight *= -1;
-
-	void* bitmapPixelData = 0;
-	HDC defaultHDC = GetDC(NULL);
-	HBITMAP bitmapHandle = CreateDIBSection(defaultHDC, &bitmapInfo, DIB_RGB_COLORS,
-		&bitmapPixelData, NULL, 0);
-
-	if (bitmapHandle == INVALID_HANDLE_VALUE)
-		return (HBITMAP)-1;
-
-	uint32 pixelDataSize = p_Width * p_Height * 3;
-	memcpy(bitmapPixelData, p_PixelBuffer, pixelDataSize);
-
-	return bitmapHandle;
-}
-
-int fW = 0;
-int fH = 0;
-int iW = 0;
-int iH = 0;
 void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
 	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "accept.png", "load");
@@ -104,30 +73,26 @@ void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 	uint32 iconPixelBufferSize = K15_GUICalculateIconSetPixelBufferSizeInBytes(icons, K15_GUI_PIXEL_FORMAT_R8G8B8);
 	void* iconPixelBuffer= malloc(fontPixelBufferSize);
 
-	K15_GUICopyIconSetTextureIntoPixelBuffer(icons, iconPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &iW, &iH);
-	K15_GUICopyFontTextureIntoPixelBuffer(font, fontPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &fW, &fH);
+	int iconTextureWidth = 0;
+	int iconTextureHeight = 0;
+	int fontTextureWidth = 0;
+	int fontTextureHeight = 0;
 
-	fontBitmap = loadGDIBitmapFromPixelBuffer(fontPixelBuffer, fW, fH);
-	fontDC = CreateCompatibleDC(NULL);
+	K15_GUICopyIconSetTextureIntoPixelBuffer(icons, iconPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &iconTextureWidth, &iconTextureHeight);
+	K15_GUICopyFontTextureIntoPixelBuffer(font, fontPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &fontTextureWidth, &fontTextureHeight);
+
+	GL_CALL(glGenTextures(1, &iconTextureHandle));
+	GL_CALL(glGenTextures(1, &fontTextureHandle));
+
+	GL_CALL(glBindTexture(GL_TEXTURE_2D, iconTextureHandle));
+	GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, 3, iconTextureWidth, iconTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, iconPixelBuffer));
+	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 	
- 	iconBitmap = loadGDIBitmapFromPixelBuffer(iconPixelBuffer, iW, iH);
- 	iconDC = CreateCompatibleDC(NULL);
-
-	SelectObject(fontDC, fontBitmap);
-	SelectObject(iconDC, iconBitmap);
-
-	
-	// 	kg_u32 fontTextureDataSizeInBytes = K15_GUIGetFontTextureDataSizeInBytes(arial12);
-	// 	kg_byte* fontTextureData = (kg_byte*)malloc(fontTextureDataSizeInBytes);
-	// 
-	// 	K15_GUIGetFontTextureData(arial12, &fontTextureData, fontTextureDataSizeInBytes);
-	// 	arial12->texture.userData = 1;
-	// 
-	// 	kg_u32 iconTextureDataSizeInBytes = K15_GUIGetIconSetTextureSizeInBytes(icons);
-	// 	kg_byte* iconsTextureData = (kg_byte*)malloc(iconTextureDataSizeInBytes);
-	// 
-	// 	K15_GUIGetIconSetTextureData(icons, &iconsTextureData, iconTextureDataSizeInBytes);
-	// 	icons->texture.userData = 2;
+	GL_CALL(glBindTexture(GL_TEXTURE_2D, fontTextureHandle));
+	GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, 3, fontTextureWidth, fontTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, fontPixelBuffer));
+	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 }
 
 void updateGUI(K15_GUIContext* p_GUIContext)
@@ -199,119 +164,9 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 	K15_GUIFinishFrame(p_GUIContext);
 }
 
-void drawRect(K15_GUIRectShapeData* p_RectShapeData)
-{
-	uint32 height = p_RectShapeData->rect.bottom - p_RectShapeData->rect.top;
-
-	for (uint32 y = 0;
-		y < height;
-		++y)
-	{
-		float p = (float)y / (float)height;
-		kg_color32 color = K15_GUISampleColorGradient(&p_RectShapeData->colorGradient, p);
-		COLORREF c = convertColor(color);
-		HPEN pen = CreatePen(PS_SOLID, 1, c);
-
-		SelectObject(backbufferDC, pen);
-
-		Rectangle(backbufferDC, p_RectShapeData->rect.left,
-			y + p_RectShapeData->rect.top,
-			p_RectShapeData->rect.right ,
-			y + p_RectShapeData->rect.top + 1);
-
-		DeleteObject(pen);
-	}
-}
-
-void drawText(K15_GUITextShapeData* p_TextShapeData, const char* p_Text)
-{
-	RECT textRect = { 0 };
-	textRect.bottom = p_TextShapeData->rect.bottom;
-	textRect.left = p_TextShapeData->rect.left;
-	textRect.right = p_TextShapeData->rect.right;
-	textRect.top = p_TextShapeData->rect.top;
-
-	COLORREF textColor = convertColor(p_TextShapeData->textColor);
-
-	K15_GUIFont* font = p_TextShapeData->font;
-
-	uint32 textLength = p_TextShapeData->textLength;
-
-	uint32 posX = p_TextShapeData->rect.left;
-	uint32 posY = p_TextShapeData->rect.top;
-	uint32 baseLine = font->ascent - font->descent;
-
-	for (uint32 i = 0; i < textLength; ++i)
-	{
-		unsigned char c = p_Text[i];
-		int index = K15_GUIConvertToFontGlyphIndex(font, c);
-		K15_GUIFontGlyph* glyph = font->glyphs + index;
-		
-		uint32 gw = glyph->glyphRect.right - glyph->glyphRect.left;
-		uint32 gh = glyph->glyphRect.bottom - glyph->glyphRect.top;
-		uint32 r = baseLine - gh;
-		StretchBlt(backbufferDC, posX + glyph->leftSideBearing, posY + baseLine - gh, gw, gh, fontDC,
-			glyph->glyphRect.left, glyph->glyphRect.top, gw, gh, SRCCOPY);
-
-		posX += glyph->advanceWidth;
-	}
-}
-
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
-	kg_u32 sizeDrawCommandBuffer = K15_GUICalculateDrawCommandBufferSizeInBytes(p_GUIContext);
-	K15_GUIDrawCommandBuffer drawCommandBuffer = { 0 };
 
-	K15_GUICopyDrawCommandBuffer(p_GUIContext, &drawCommandBuffer);
-
-	while (K15_GUIHasDrawCommand(&drawCommandBuffer))
-	{
-		K15_GUIDrawCommand* drawCommand = 0;
-		K15_GUIGetDrawCommand(&drawCommandBuffer, &drawCommand);
-
-		switch (drawCommand->type)
-		{
-		case K15_GUI_DRAW_RECT_COMMAND:
-		{
-			K15_GUIRectShapeData rectShapeData = { 0 };
-			K15_GUIGetDrawCommandData(&drawCommandBuffer, drawCommand, &rectShapeData, sizeof(rectShapeData), 0);
-			drawRect(&rectShapeData);
-			break;
-		}
-
-		case K15_GUI_DRAW_TEXT_COMMAND:
-		{
-			K15_GUITextShapeData textShapeData = { 0 };
-			K15_GUIGetDrawCommandData(&drawCommandBuffer, drawCommand, &textShapeData, sizeof(textShapeData), 0);
-			char* text = 0;
-			K15_GUIGetDrawCommandDataRaw(&drawCommandBuffer, drawCommand, (void**)&text, sizeof(textShapeData));
-			drawText(&textShapeData, text);
-			break;
-		}
-
-		default:
-			break;
-		}
-
-		K15_GUINextDrawCommand(&drawCommandBuffer);
-	}
-
-	HPEN p = CreatePen(PS_SOLID, 4, WHITENESS);
-	SelectObject(backbufferDC, p);
-	Rectangle(backbufferDC, p_GUIContext->events.mousePosX - 4,
-		p_GUIContext->events.mousePosY - 4,
-		p_GUIContext->events.mousePosX + 4,
-		p_GUIContext->events.mousePosY + 4);
-	DeleteObject(p);
-
-	if (p_GUIContext->events.mouseDeltaX != 0 ||
-		p_GUIContext->events.mouseDeltaY != 0)
-	{
-		char buf[455];
-		sprintf(buf, "DeltaX: %d, DeltaY: %d\n", p_GUIContext->events.mouseDeltaX,
-			p_GUIContext->events.mouseDeltaY);
-		OutputDebugStringA(buf);
-	}
 }
 
 void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
@@ -459,50 +314,64 @@ uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 {
-	DeleteObject(backbufferBitmap);
-
-	HDC originalDC = GetDC(p_HWND);
-	backbufferBitmap = CreateCompatibleBitmap(originalDC, p_Width, p_Height);
-	screenWidth = p_Width;
-	screenHeight = p_Height;
-
-	SelectObject(backbufferDC, backbufferBitmap);
+	glViewport(0, 0, p_Width, p_Height);
 }
 
 void setup(HWND p_HWND)
 {
-	HDC originalDC = GetDC(p_HWND);
-	backbufferDC = CreateCompatibleDC(originalDC);
-	backbufferBitmap = CreateCompatibleBitmap(originalDC, screenWidth, screenHeight);
-	
-	SelectObject(backbufferDC, backbufferBitmap);
+	HDC deviceContext = GetDC(p_HWND);
+
+	PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR),
+		1,
+		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
+		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
+		32,                        //Colordepth of the framebuffer.
+		0, 0, 0, 0, 0, 0,
+		0,
+		0,
+		0,
+		0, 0, 0, 0,
+		24,                        //Number of bits for the depthbuffer
+		8,                        //Number of bits for the stencilbuffer
+		0,                        //Number of Aux buffers in the framebuffer.
+		PFD_MAIN_PLANE,
+		0,
+		0, 0, 0
+	};
+
+	int pixelFormat = ChoosePixelFormat(deviceContext, &pfd);
+	SetPixelFormat(deviceContext, pixelFormat, &pfd);
+
+	HGLRC glContext = wglCreateContext(deviceContext);
+
+	wglMakeCurrent(deviceContext, glContext);
+
+	//set default gl state
+	glShadeModel(GL_SMOOTH);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	glClearColor(0.f, 0.f, 0.f, 1.f);
+
+	glEnable(GL_TEXTURE_2D);
 }
 
 void swapBuffers(HWND p_HWND)
 {
-	HDC originalDC = GetDC(p_HWND);
-
-	//blit to front buffer
-	BitBlt(originalDC, 0, 0, screenWidth, screenHeight, backbufferDC, 0, 0, SRCCOPY);
-
-	//clear backbuffer
-	BitBlt(backbufferDC, 0, 0, screenWidth, screenHeight, backbufferDC, 0, 0, BLACKNESS);
+	HDC deviceContext = GetDC(p_HWND);
+	SwapBuffers(deviceContext);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
 {
-	RECT textRect;
-	textRect.left = 70;
-	textRect.top = 70;
-	textRect.bottom = screenHeight;
-	textRect.right = screenWidth;
 
-	char messageBuffer[64];
-	SetTextColor(backbufferDC, RGB(255, 255, 255));
-	SetBkColor(backbufferDC, RGB(0, 0, 0));
-
-	sprintf_s(messageBuffer, 64, "MS: %d", p_DeltaTimeInMS);
-	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
 }
 
 void doFrame(K15_GUIContext* p_GUIContext, uint32 p_DeltaTimeInMS, HWND p_HWND)
