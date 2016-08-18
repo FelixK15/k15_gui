@@ -93,6 +93,9 @@ void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 	GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, 3, fontTextureWidth, fontTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, fontPixelBuffer));
 	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
 	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+
+	K15_GUISetIconSetTextureUserData(icons, iconTextureHandle);
+	K15_GUISetFontTextureUserData(font, fontTextureHandle);
 }
 
 void updateGUI(K15_GUIContext* p_GUIContext)
@@ -166,7 +169,19 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
+	K15_GUIDrawCommandBuffer drawCommandBuffer = { 0 };
+	K15_GUICopyDrawCommandBuffer(p_GUIContext, &drawCommandBuffer);
 
+	//updateVertexBuffer(guiVertexBuffer, drawCommandBuffer.vertexData, drawCommandBuffer.vertexDataSize);
+
+	for (uint32 drawCommandIndex = 0;
+		drawCommandIndex < drawCommandBuffer.numDrawCommands;
+		++drawCommandIndex)
+	{
+		K15_GUIDrawCommand* drawCommand = drawCommandBuffer.drawCommands + drawCommandIndex;
+		
+		drawCommand->textureUserData;
+	}
 }
 
 void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)

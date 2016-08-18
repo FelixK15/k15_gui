@@ -12,6 +12,8 @@
 #define K15_GUI_MAX_ICONS_PER_ICON_SET 64
 #define K15_GUI_MAX_ELEMENT_PTR_PER_LAYOUT 128
 
+#define K15_GUI_TRIANGLE_SIZE_IN_BYTES (8 + 8 + 16) //(Position - Vec2) + (UV - Vec2) + (Color - Vec4)
+
 #define K15_GUI_MAX_BUFFERED_MOUSE_INPUTS 16
 #define K15_GUI_MAX_BUFFERED_KEYBOARD_INPUTS 16
 #define K15_GUI_MAX_BUFFERED_SYSTEM_EVENTS 16
@@ -388,35 +390,14 @@ typedef struct
 /*********************************************************************************/
 typedef enum
 {
-	K15_GUI_SOLID_COLOR = 0,
-	K15_GUI_LINEAR_GRADIENT
-} K15_GUIColorGradientType;
-/*********************************************************************************/
-typedef enum
-{
-	K15_GUI_DRAW_RECT_COMMAND = 0,
-	K15_GUI_DRAW_CIRCLE_COMMAND,
-	K15_GUI_DRAW_TEXT_COMMAND
-} K15_GUIDrawCommandType;
-/*********************************************************************************/
-typedef enum
-{
 	K15_GUI_PIXEL_FORMAT_R8 = 1,
 	K15_GUI_PIXEL_FORMAT_R8A8,
 	K15_GUI_PIXEL_FORMAT_R8G8B8,
 	K15_GUI_PIXEL_FORMAT_R8G8B8A8
 } K15_GUIPixelFormat;
 /*********************************************************************************/
-typedef struct
-{
-	K15_GUIColorGradientType type;
-	kg_color32 from;
-	kg_color32 to;
-} K15_GUIColorGradient;
-/*********************************************************************************/
 typedef struct 
 {
-	K15_GUIDrawCommandType type;
 	kg_u32 sizeInBytes;
 } K15_GUIDrawCommand;
 /*********************************************************************************/
@@ -451,12 +432,6 @@ typedef struct
 	K15_GUIButtonStyle* buttonStyle;
 	kg_u32 textLength;
 } K15_GUIButtonData;
-/*********************************************************************************/
-typedef struct
-{
-	K15_GUIRect rect;
-	K15_GUIColorGradient colorGradient;
-} K15_GUIRectShapeData;
 /*********************************************************************************/
 typedef struct 
 {
@@ -542,6 +517,10 @@ kg_def int K15_GUIConvertToFontGlyphIndex(K15_GUIFont* p_Font, unsigned char p_C
 kg_def kg_u32 K15_GUICalculateFontPixelBufferSizeInBytes(K15_GUIFont* p_Font, K15_GUIPixelFormat p_PixelFormat);
 kg_def kg_u32 K15_GUICalculateIconSetPixelBufferSizeInBytes(K15_GUIIconSet* p_IconSet, 
 	K15_GUIPixelFormat p_PixelFormat);
+
+kg_def kg_u64 K15_GUISetFontTextureUserData(K15_GUIFont* p_Font, kg_u64 p_UserData);
+kg_def kg_u64 K15_GUISetIconSetTextureUserData(K15_GUIIconSet* p_IconSet, kg_u64 p_UserData);
+
 kg_def kg_result K15_GUICopyFontTextureIntoPixelBuffer(K15_GUIFont* p_Font, void* p_PixelBuffer,
 	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight);
 kg_def kg_result K15_GUICopyIconSetTextureIntoPixelBuffer(K15_GUIIconSet* p_IconSet, void* p_PixelBuffer,
@@ -1516,6 +1495,30 @@ kg_def kg_u32 K15_GUICalculateIconSetPixelBufferSizeInBytes(K15_GUIIconSet* p_Ic
 	return K15_GUICalculateTexturePixelBufferSizeInBytes(&p_IconSet->texture, p_PixelFormat);
 }
 /*********************************************************************************/
+kg_internal kg_u64 K15_GUISetTextureUserData(K15_GUITexture* p_Texture, kg_u64 p_UserData)
+{
+	kg_u64 oldUserData = p_Texture->userData;
+	p_Texture->userData = p_UserData;
+
+	return oldUserData;
+}
+/*********************************************************************************/
+kg_def kg_u64 K15_GUISetFontTextureUserData(K15_GUIFont* p_Font, kg_u64 p_UserData)
+{
+	if (!p_Font)
+		return (~0);
+
+	return K15_GUISetTextureUserData(&p_Font->texture, p_UserData);
+}
+/*********************************************************************************/
+kg_def kg_u64 K15_GUISetIconSetextureUserData(K15_GUIIconSet* p_IconSet, kg_u64 p_UserData)
+{
+	if (!p_IconSet)
+		return (~0);
+
+	return K15_GUISetTextureUserData(&p_IconSet->texture, p_UserData);
+}
+/*********************************************************************************/
 kg_def kg_result K15_GUICopyFontTextureIntoPixelBuffer(K15_GUIFont* p_Font, void* p_PixelBuffer,
 	K15_GUIPixelFormat p_PixelFormat, int* p_OutWidth, int* p_OutHeight)
 {
@@ -2097,30 +2100,11 @@ functionEnd:
 	return result;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIAddRectShapeDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIRect* p_ClipRect, K15_GUIColorGradient p_Gradient)
+kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
+	K15_GUIRect* p_ClipRect, kg_color32 p_ColorFrom, kg_color32 p_ColorTo)
 {
-	K15_GUIRectShapeData shapeData = { 0 };
-	shapeData.rect = *p_ClipRect;
-	shapeData.colorGradient = p_Gradient;
-
-	K15_GUIDrawCommand* drawCommand = 0;
-	kg_result result = K15_GUIAddDrawCommand(p_DrawCommandBuffer, &drawCommand, K15_GUI_DRAW_RECT_COMMAND);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-		return result;
-
-	return K15_GUIAddDrawCommandData(p_DrawCommandBuffer, drawCommand, &shapeData, sizeof(shapeData));
-}
-/*********************************************************************************/
-kg_internal K15_GUIColorGradient K15_GUICreateLinearColorGradiant(kg_color32 p_From, kg_color32 p_To)
-{
-	K15_GUIColorGradient lerpGradient;
-	lerpGradient.type = K15_GUI_LINEAR_GRADIENT;
-	lerpGradient.from = p_From;
-	lerpGradient.to = p_To;
-
-	return lerpGradient;
+	K15_GUIDrawCommand drawCommand = { 0 };
+	drawCommand.sizeInBytes = K15_GUI_TRIANGLE_SIZE_IN_BYTES * 2;
 }
 /*********************************************************************************/
 kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result)
@@ -2551,51 +2535,6 @@ kg_internal void K15_GUIArrangeLayoutElements(K15_GUIElement* p_GUIElement)
 		K15_GUIArrangeElementsVertically(layoutData, &p_GUIElement->clipRect);
 }
 /*********************************************************************************/
-kg_internal kg_color32 K15_GUISampleColorGradient(K15_GUIColorGradient* p_ColorGradient, float p_SampleValue)
-{
-	p_SampleValue = K15_GUI_CLAMP(p_SampleValue, 0.f, 1.f);
-
-	kg_color32 output = 0;
-	K15_GUIColorGradientType colorGradientType = p_ColorGradient->type;
-	kg_color32 fromColor = p_ColorGradient->from;
-	kg_color32 toColor = p_ColorGradient->to;
-
-	float fR = (float)(kg_u8)(fromColor >> 0) / 255.f;
-	float fG = (float)(kg_u8)(fromColor >> 8) / 255.f;
-	float fB = (float)(kg_u8)(fromColor >> 16) / 255.f;
-	float fA = (float)(kg_u8)(fromColor >> 24) / 255.f;
-
-	float tR = (float)(kg_u8)(toColor >> 0) / 255.f;
-	float tG = (float)(kg_u8)(toColor >> 8) / 255.f;
-	float tB = (float)(kg_u8)(toColor >> 16) / 255.f;
-	float tA = (float)(kg_u8)(toColor >> 24) / 255.f;
-
-	float oR = 0.f;
-	float oG = 0.f;
-	float oB = 0.f;
-	float oA = 0.f;
-
-	switch (colorGradientType)
-	{
-	case K15_GUI_SOLID_COLOR:
-		output = p_SampleValue > 0.5f ? toColor : fromColor;
-		break;
-
-	case K15_GUI_LINEAR_GRADIENT:
-		oR = fR * (1.f - p_SampleValue) + tR * p_SampleValue;
-		oG = fG * (1.f - p_SampleValue) + tG * p_SampleValue;
-		oB = fB * (1.f - p_SampleValue) + tB * p_SampleValue;
-		oA = fA * (1.f - p_SampleValue) + tA * p_SampleValue;
-		output = ((kg_u8)(oR * 255.f) << 0 |
-			(kg_u8)(oG * 255.f) << 8 |
-			(kg_u8)(oB * 255.f) << 16 |
-			(kg_u8)(oA * 255.f) << 24);
-		break;
-	}
-
-	return output;
-}
-/*********************************************************************************/
 kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
 {
 	if (!p_Text || !p_Font || !p_OutRect)
@@ -2673,8 +2612,6 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	kg_color32 lowerBackgroundColor = 0;
 	kg_u32 offset = 0;
 
-	K15_GUIColorGradient linearGradient;
-
 	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &upperBackgroundColor,
 		sizeof(kg_color32), offset);
 
@@ -2689,10 +2626,7 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor,
-		lowerBackgroundColor);
-
-	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);
+	result = K15_GUIAddColoredRectDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
 
 functionEnd:
 	return result;
@@ -2710,7 +2644,6 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	kg_color32 lowerBackgroundColor = 0;
 	kg_color32 textColor = 0;
 	K15_GUIFont* font = 0;
-	K15_GUIColorGradient linearGradient;
 
 	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &buttonData,
 		sizeof(buttonData), offset);
@@ -2733,10 +2666,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	textColor = buttonStyle->textColor;
 	font = buttonStyle->font;
 
-	linearGradient = K15_GUICreateLinearColorGradiant(upperBackgroundColor, 
-		lowerBackgroundColor);
-
-	result = K15_GUIAddRectShapeDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, linearGradient);
+	result = K15_GUIAddColoredRectDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
 functionEnd:
 	return result;
 }
