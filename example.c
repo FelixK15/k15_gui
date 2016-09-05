@@ -1,17 +1,17 @@
 #define _CRT_SECURE_NO_WARNINGS
+#define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include <stdio.h>
-#include <GL/GL.h>
+
+#define K15_OPENGL_ENABLE_ERROR_CHECK_CALLS
+#include "k15_gl3.h"
 
 #define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
 
-#define GL_CALL(x) x; {GLenum _err; while(_err = glGetError() != 0){__debugbreak();}}
-
 #pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "user32.lib")
-#pragma comment(lib, "opengl32.lib")
 
 #define K15_FALSE 0
 #define K15_TRUE 1
@@ -27,6 +27,11 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
 
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
+
+GLint vbo = 0;
+GLint ibo = 0;
+GLint vao = 0;
+GLint shaderProgram = 0;
 
 K15_GUIContext guiContext;
 
@@ -81,18 +86,22 @@ void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 	K15_GUICopyIconSetTextureIntoPixelBuffer(icons, iconPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &iconTextureWidth, &iconTextureHeight);
 	K15_GUICopyFontTextureIntoPixelBuffer(font, fontPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &fontTextureWidth, &fontTextureHeight);
 
-	GL_CALL(glGenTextures(1, &iconTextureHandle));
-	GL_CALL(glGenTextures(1, &fontTextureHandle));
+	K15_OPENGL_CALL(kglGenTextures(1, &iconTextureHandle));
+	K15_OPENGL_CALL(kglGenTextures(1, &fontTextureHandle));
 
-	GL_CALL(glBindTexture(GL_TEXTURE_2D, iconTextureHandle));
-	GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, 3, iconTextureWidth, iconTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, iconPixelBuffer));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+	K15_OPENGL_CALL(kglBindTexture(GL_TEXTURE_2D, iconTextureHandle));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0));
+	K15_OPENGL_CALL(kglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, iconTextureWidth, iconTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, iconPixelBuffer));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 	
-	GL_CALL(glBindTexture(GL_TEXTURE_2D, fontTextureHandle));
-	GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, 3, fontTextureWidth, fontTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, fontPixelBuffer));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+	K15_OPENGL_CALL(kglBindTexture(GL_TEXTURE_2D, fontTextureHandle));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0));
+	K15_OPENGL_CALL(kglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, fontTextureWidth, fontTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, fontPixelBuffer));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 
 	K15_GUISetIconSetTextureUserData(icons, iconTextureHandle);
 	K15_GUISetFontTextureUserData(font, fontTextureHandle);
@@ -163,24 +172,35 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 		message[bytesWritten] = 0;
 		printf("Error: %s\n", message);
 	}
-
 	K15_GUIFinishFrame(p_GUIContext);
 }
 
 void drawGUI(K15_GUIContext* p_GUIContext)
 {
-	K15_GUIDrawCommandBuffer drawCommandBuffer = { 0 };
-	K15_GUICopyDrawCommandBuffer(p_GUIContext, &drawCommandBuffer);
+	K15_GUIDrawInformation* drawInformation = &p_GUIContext->drawInformation;
+	int indexSizeInBytes = drawInformation->indexSizeInBytes;
 
-	//updateVertexBuffer(guiVertexBuffer, drawCommandBuffer.vertexData, drawCommandBuffer.vertexDataSize);
-
-	for (uint32 drawCommandIndex = 0;
-		drawCommandIndex < drawCommandBuffer.numDrawCommands;
-		++drawCommandIndex)
+	if (drawInformation->numDrawCommands > 0)
 	{
-		K15_GUIDrawCommand* drawCommand = drawCommandBuffer.drawCommands + drawCommandIndex;
-		
-		drawCommand->textureUserData;
+		K15_OPENGL_CALL(kglBufferData(GL_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW));
+		K15_OPENGL_CALL(kglBufferData(GL_ARRAY_BUFFER, drawInformation->vertexBufferDataSizeInBytes, drawInformation->vertexBufferData, GL_DYNAMIC_DRAW));
+
+		K15_OPENGL_CALL(kglBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW));
+		K15_OPENGL_CALL(kglBufferData(GL_ELEMENT_ARRAY_BUFFER, drawInformation->indexBufferDataSizeInBytes, drawInformation->indexBufferData, GL_DYNAMIC_DRAW));
+
+		for (uint32 drawCommandIndex = 0;
+			drawCommandIndex < drawInformation->numDrawCommands;
+			++drawCommandIndex)
+		{
+			K15_GUIDrawCommand* drawCommand = drawInformation->drawCommands + drawCommandIndex;
+			kg_u64 textureUserData = drawCommand->textureUserData;
+			kg_u32 numTriangles = drawCommand->numTriangles;
+			kg_u32 vertexOffset = drawCommand->vertexOffset;
+			kg_u32 indexOffset = drawCommand->indexOffset;
+
+			K15_OPENGL_CALL(kglBindTexture(GL_TEXTURE_2D, (GLuint)textureUserData));
+			K15_OPENGL_CALL(kglDrawElements(GL_TRIANGLES, numTriangles * 3, indexSizeInBytes == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (const void*)(indexOffset * indexSizeInBytes)));
+		}
 	}
 }
 
@@ -310,6 +330,8 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
 		p_Width, p_Height, 0, 0, p_Instance, 0);
 
+	K15_GL3RegisterWGLFunctions(hwnd);
+
 	if (hwnd == INVALID_HANDLE_VALUE)
 		MessageBox(0, "Error creating Window.\n", "Error!", 0);
 	else
@@ -329,59 +351,145 @@ uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 {
-	glViewport(0, 0, p_Width, p_Height);
+	kglViewport(0, 0, p_Width, p_Height);
+}
+
+char* getInfoLogForShader(GLuint p_Shader)
+{
+	GLint infoLogLength = 0;
+	K15_OPENGL_CALL(kglGetShaderiv(p_Shader, GL_INFO_LOG_LENGTH, &infoLogLength));
+	char* infoLog = 0;
+
+	if (infoLogLength > 0)
+	{
+		infoLog = (char*)malloc(infoLogLength);
+		kglGetShaderInfoLog(p_Shader, infoLogLength, 0, infoLog);
+	}
+	return infoLog;
 }
 
 void setup(HWND p_HWND)
 {
-	HDC deviceContext = GetDC(p_HWND);
+	const char* vertexShaderSource = ""
+		"#version 330\n"
+		"in vec2 position;\n"
+		"in vec2 uv;\n"
+		"in vec4 color;\n"
+		"uniform sampler2D textureSampler;\n"
+		"out vec4 outColor;\n"
+		"out gl_PerVertex{\n"
+		"vec4 gl_Position;\n"
+		"float gl_PointSize;\n"
+		"float gl_ClipDistance[];\n"
+		"};\n"
+		"void main()\n"
+		"{\n"
+		"   outColor = vec4(1.f, 1.f, 1.f, 1.f);\n"
+		"	//outColor *= texture(textureSampler, uv);\n"
+		"	outColor *= color;\n"
+		"	gl_Position = vec4(position.x, -1.f * position.y, 1.f, 1.f);\n"
+		"}";
 
-	PIXELFORMATDESCRIPTOR pfd =
+	const char* fragmentShaderSource = ""
+		"#version 330\n"
+		"in vec4 outColor;\n"
+		"void main()\n"
+		"{\n"
+		"	gl_FragColor = outColor;\n"
+		"}";
+
+	kg_u32 vertexShaderSourceLength = strlen(vertexShaderSource);
+	kg_u32 fragmentShaderSourceLenght = strlen(fragmentShaderSource);
+
+	K15_OPENGL_CALL(kglGenBuffers(1, &vbo));
+	K15_OPENGL_CALL(kglGenBuffers(1, &ibo));
+	K15_OPENGL_CALL(kglGenVertexArrays(1, &vao));
+
+	K15_OPENGL_CALL(kglFrontFace(GL_CW));
+	K15_OPENGL_CALL(kglCullFace(GL_FRONT));
+
+	K15_OPENGL_CALL(kglBindVertexArray(vao));
+	K15_OPENGL_CALL(kglBindBuffer(GL_ARRAY_BUFFER, vbo));
+	K15_OPENGL_CALL(kglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));
+
+	kg_u32 sizeVertexStrideInBytes = K15_GUI_VERTEX_SIZE_IN_BYTES;
+
+	K15_OPENGL_CALL(shaderProgram = kglCreateProgram());
+
+	GLuint vertexShader = 0;
+	GLuint fragmentShader = 0;
+
+	K15_OPENGL_CALL(vertexShader = kglCreateShader(GL_VERTEX_SHADER));
+	K15_OPENGL_CALL(fragmentShader = kglCreateShader(GL_FRAGMENT_SHADER));
+
+	K15_OPENGL_CALL(kglShaderSource(vertexShader, 1, &vertexShaderSource, &vertexShaderSourceLength));
+	K15_OPENGL_CALL(kglShaderSource(fragmentShader, 1, &fragmentShaderSource, &fragmentShaderSourceLenght));
+
+	K15_OPENGL_CALL(kglCompileShader(vertexShader));
+	K15_OPENGL_CALL(kglCompileShader(fragmentShader));
+
+	GLint vertexShaderCompileStatus = 0;
+	GLint fragmentShaderCompileStatus = 0;
+	K15_OPENGL_CALL(kglGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexShaderCompileStatus));
+	K15_OPENGL_CALL(kglGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentShaderCompileStatus));
+
+	if (vertexShaderCompileStatus == GL_FALSE)
 	{
-		sizeof(PIXELFORMATDESCRIPTOR),
-		1,
-		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-		32,                        //Colordepth of the framebuffer.
-		0, 0, 0, 0, 0, 0,
-		0,
-		0,
-		0,
-		0, 0, 0, 0,
-		24,                        //Number of bits for the depthbuffer
-		8,                        //Number of bits for the stencilbuffer
-		0,                        //Number of Aux buffers in the framebuffer.
-		PFD_MAIN_PLANE,
-		0,
-		0, 0, 0
-	};
+		const char* error = getInfoLogForShader(vertexShader);
+		MessageBoxA(p_HWND, error, "Vertex Shader Error!", 0);
+	}
 
-	int pixelFormat = ChoosePixelFormat(deviceContext, &pfd);
-	SetPixelFormat(deviceContext, pixelFormat, &pfd);
+	if (fragmentShaderCompileStatus == GL_FALSE)
+	{
+		const char* error = getInfoLogForShader(fragmentShader);
+		MessageBoxA(p_HWND, error, "Fragment Shader Error!", 0);
+	}
 
-	HGLRC glContext = wglCreateContext(deviceContext);
+	K15_OPENGL_CALL(kglAttachShader(shaderProgram, vertexShader));
+	K15_OPENGL_CALL(kglAttachShader(shaderProgram, fragmentShader));
+	K15_OPENGL_CALL(kglLinkProgram(shaderProgram));
 
-	wglMakeCurrent(deviceContext, glContext);
+	GLint linkStatus = 0;
+	K15_OPENGL_CALL(kglGetProgramiv(shaderProgram, GL_LINK_STATUS, &linkStatus));
 
-	//set default gl state
-	glShadeModel(GL_SMOOTH);
+	if (linkStatus == GL_FALSE)
+	{
+		GLint programLogLength = 0;
+		K15_OPENGL_CALL(kglGetProgramiv(shaderProgram, GL_INFO_LOG_LENGTH, &programLogLength));
 
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+		if (programLogLength > 0)
+		{
+			char* programLog = (char*)malloc(programLogLength);
+			K15_OPENGL_CALL(kglGetProgramInfoLog(shaderProgram, programLogLength, 0, programLog));
+			MessageBoxA(p_HWND, programLog, "Shader Linker Error!", 0);
+		}
+	}
 
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
+	K15_OPENGL_CALL(kglEnableVertexAttribArray(0));
+	K15_OPENGL_CALL(kglEnableVertexAttribArray(1));
+	K15_OPENGL_CALL(kglEnableVertexAttribArray(2));
 
-	glClearColor(0.f, 0.f, 0.f, 1.f);
+	GLint posAttribLocation = 0;
+	GLint uvAttribLocation = 0;
+	GLint colorAttribLocation = 0;
 
-	glEnable(GL_TEXTURE_2D);
+	//get register location using attribute name
+	K15_OPENGL_CALL(posAttribLocation = kglGetAttribLocation(shaderProgram, "position"));
+ 	K15_OPENGL_CALL(uvAttribLocation = kglGetAttribLocation(shaderProgram, "uv"));
+ 	K15_OPENGL_CALL(colorAttribLocation = kglGetAttribLocation(shaderProgram, "color"));
+
+	K15_OPENGL_CALL(kglVertexAttribPointer(posAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, 0));
+	K15_OPENGL_CALL(kglVertexAttribPointer(uvAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 2)));
+	K15_OPENGL_CALL(kglVertexAttribPointer(colorAttribLocation, 4, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 4)));
+
+	K15_OPENGL_CALL(kglUseProgram(shaderProgram));
 }
 
 void swapBuffers(HWND p_HWND)
 {
 	HDC deviceContext = GetDC(p_HWND);
 	SwapBuffers(deviceContext);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	kglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
@@ -458,7 +566,7 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 		}
 
 		doFrame(&guiContext, deltaMs, hwnd);
-		
+
 // 		StretchBlt(backbufferDC, 0, 0, iW, iH, iconDC, 0, 0, iW, iH, SRCCOPY);
 // 		swapBuffers(hwnd);
 

@@ -12,7 +12,9 @@
 #define K15_GUI_MAX_ICONS_PER_ICON_SET 64
 #define K15_GUI_MAX_ELEMENT_PTR_PER_LAYOUT 128
 
-#define K15_GUI_TRIANGLE_SIZE_IN_BYTES (8 + 8 + 16) //(Position - Vec2) + (UV - Vec2) + (Color - Vec4)
+#define K15_GUI_VERTEX_SIZE_IN_BYTES (8 + 8 + 16) //(Position - Vec2) + (UV - Vec2) + (Color - Vec4)
+#define K15_GUI_INDEX_DATA_TYPE kg_u32
+#define K15_GUI_INDEX_SIZE_IN_BYTES sizeof(K15_GUI_INDEX_DATA_TYPE)
 
 #define K15_GUI_MAX_BUFFERED_MOUSE_INPUTS 16
 #define K15_GUI_MAX_BUFFERED_KEYBOARD_INPUTS 16
@@ -20,14 +22,17 @@
 #define K15_GUI_ELEMENT_HASH_TABLE_SIZE 4096
 #define K15_GUI_MAX_LAYOUTED_ELEMENTS 256
 #define K15_GUI_MAX_GLYPH_RANGES 10
+#define K15_GUI_MAX_DRAW_COMMANDS 256
 
 #define K15_GUI_TRUE 1
 #define K15_GUI_FALSE 0
 
 #define kg_size_kilo_bytes(n) (n*1024)
 #define kg_size_mega_bytes(n) (n*1024*1024)
-#define K15_GUI_DRAW_COMMAND_BUFFER_SIZE kg_size_kilo_bytes(5)
-#define K15_GUI_MIN_MEMORY_SIZE_IN_BYTES sizeof(K15_GUIContext) + kg_size_kilo_bytes(10)
+#define K15_GUI_CONTEXT_MEMORY_SIZE kg_size_kilo_bytes(5)
+#define K15_GUI_DRAW_VERTEX_BUFFER_SIZE kg_size_kilo_bytes(5)
+#define K15_GUI_DRAW_INDEX_BUFFER_SIZE kg_size_kilo_bytes(5)
+#define K15_GUI_MIN_MEMORY_SIZE_IN_BYTES sizeof(K15_GUIContext) + K15_GUI_CONTEXT_MEMORY_SIZE + K15_GUI_DRAW_VERTEX_BUFFER_SIZE + K15_GUI_DRAW_INDEX_BUFFER_SIZE
 #define K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE kg_size_mega_bytes(5)
 
 typedef unsigned long long kg_u64;
@@ -265,6 +270,14 @@ typedef struct
 	kg_s16 right;
 	kg_s16 bottom;
 } K15_GUIRect;
+//*********************************************************************************/
+typedef struct
+{
+	float left;
+	float top;
+	float right;
+	float bottom;
+} K15_GUIFloatRect;
 /*********************************************************************************/
 typedef struct 
 {
@@ -398,16 +411,23 @@ typedef enum
 /*********************************************************************************/
 typedef struct 
 {
-	kg_u32 sizeInBytes;
+	kg_u64 textureUserData;
+	kg_u32 numTriangles;
+	kg_u32 vertexOffset;
+	kg_u32 indexOffset;
 } K15_GUIDrawCommand;
 /*********************************************************************************/
 typedef struct 
 {
-	kg_byte drawCommandBuffer[K15_GUI_DRAW_COMMAND_BUFFER_SIZE];
-	kg_u32 bufferPosition;
-	kg_u32 bufferCapacityInBytes;
-	kg_u32 bufferSizeInBytes;
-} K15_GUIDrawCommandBuffer;
+	K15_GUIDrawCommand drawCommands[K15_GUI_MAX_DRAW_COMMANDS];
+	kg_byte* vertexBufferData;
+	kg_byte* indexBufferData;
+	kg_u32 vertexStride;
+	kg_u32 vertexBufferDataSizeInBytes;
+	kg_u32 indexBufferDataSizeInBytes;
+	kg_u32 indexSizeInBytes;
+	kg_u32 numDrawCommands;
+} K15_GUIDrawInformation;
 /*********************************************************************************/
 typedef struct 
 {
@@ -415,7 +435,7 @@ typedef struct
 	K15_GUIElementType type;
 	kg_u32 identifierHash;
 	kg_u32 offsetNextElementInBytes;
-	kg_u32 layoutIndex;
+	kg_u8 layoutIndex;
 	kg_u8 flags;
 } K15_GUIElement;
 /*********************************************************************************/
@@ -447,7 +467,7 @@ typedef struct
 	K15_GUIContextStyle style;
 	K15_GUIContextEvents events;
 	K15_GUIContextMemory memory;
-	K15_GUIDrawCommandBuffer drawCmdBuffer;
+	K15_GUIDrawInformation drawInformation;
 	K15_GUIRect clipRect;
 	K15_GUIResourceDatabase* resourceDatabase;
 	kg_result lastResult;
@@ -456,8 +476,6 @@ typedef struct
 	kg_u32 activatedElementIdHash;
 	kg_u32 hoveredElementIdHash;
 	kg_u32 mouseDownElementIdHash;
-	kg_u32 memoryBufferCapacityInBytes;
-	kg_u32 memoryBufferSizeInBytes;
 	kg_u32 flagMask;
 	kg_u8 numMenus;
 	kg_u8 numLayouts;
@@ -572,17 +590,6 @@ kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, 
 kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput);
 kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent);
 
-//*****************RENDERING******************//
-kg_def kg_u32 K15_GUICalculateDrawCommandBufferSizeInBytes(K15_GUIContext* p_GUIContext);
-kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer);
-kg_def void K15_GUINextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer);
-kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext,
-	K15_GUIDrawCommandBuffer* p_GUIDrawCommandBuffer);
-kg_def kg_result K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, 
-	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSize, kg_u32 p_OffsetInBytes);
-kg_def kg_result K15_GUIGetDrawCommandDataRaw(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommand* p_DrawCommand, void** p_DataPtr, kg_u32 p_OffsetInBytes);
-
 #ifdef K15_GUI_IMPLEMENTATION
 
 void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect);
@@ -642,6 +649,8 @@ void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRe
 #ifndef K15_GUI_CLAMP
 # define K15_GUI_CLAMP(v, min, max) ((v) < (min) ? (min) : (v) > (max) ? (max) : (v))
 #endif //K15_GUI_CLAMP
+
+#define K15_GUI_INVALID_LAYOUT_INDEX (0xFF)
 
 #define K15_GUI_COLOR_RGBA(r,g,b,a) (((a)<< 24) | ((b) << 16) | ((g) << 8) | ((r) << 0))
 #define K15_GUI_COLOR_RGB(r,g,b) K15_GUI_COLOR_RGBA(r,g,b,255)
@@ -1511,7 +1520,7 @@ kg_def kg_u64 K15_GUISetFontTextureUserData(K15_GUIFont* p_Font, kg_u64 p_UserDa
 	return K15_GUISetTextureUserData(&p_Font->texture, p_UserData);
 }
 /*********************************************************************************/
-kg_def kg_u64 K15_GUISetIconSetextureUserData(K15_GUIIconSet* p_IconSet, kg_u64 p_UserData)
+kg_def kg_u64 K15_GUISetIconSetTextureUserData(K15_GUIIconSet* p_IconSet, kg_u64 p_UserData)
 {
 	if (!p_IconSet)
 		return (~0);
@@ -1673,12 +1682,6 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	K15_GUIFont* defaultFont = 0;
 	kg_result result = K15_GUICreateFontResourceFromFile(p_GUIResourceDatabase, &defaultFont, 
 		"Cousine-Regular.ttf", 24, "default_font", K15_GUI_FONT_INCLUDE_LATIN_GLYPHS);
-
-
-	stbi_write_png("test1.png", defaultFont->texture.pixelWidth, defaultFont->texture.pixelHeight,
-		defaultFont->texture.numColorComponents, defaultFont->texture.pixelData,
-		defaultFont->texture.numColorComponents * defaultFont->texture.pixelWidth);
-
 
 	//Button Style
 	defaultStyle.buttonStyle.borderLowerColor = K15_GUI_COLOR_RGB(16, 16, 16);
@@ -2033,78 +2036,154 @@ kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUICont
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIAddDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommand** p_OutDrawCommand, K15_GUIDrawCommandType p_DrawCommandType)
+kg_internal void K15_GUIUnpackColor32(kg_color32 p_Color, float* p_OutRed, float* p_OutGreen, 
+	float* p_OutBlue, float* p_OutAlpha)
 {
-	K15_GUIDrawCommand drawCmd;
-	drawCmd.type = p_DrawCommandType;
-	drawCmd.sizeInBytes = 0;
+	kg_u8 red = (kg_u8)(p_Color >> 0);
+	kg_u8 green = (kg_u8)(p_Color >> 8);
+	kg_u8 blue = (kg_u8)(p_Color >> 16);
+	kg_u8 alpha = (kg_u8)(p_Color >> 24);
 
-	kg_result result = K15_GUI_RESULT_SUCCESS;
-	kg_u32 drawCmdSizeInBytes = sizeof(drawCmd);
-
-	kg_u32 drawCmdBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
-	kg_u32 drawCmdBufferCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
-	kg_u32 drawCmdBufferNewSizeInBytes = drawCmdBufferSizeInBytes + drawCmdSizeInBytes;
-	kg_byte* drawCmdBuffer = p_DrawCommandBuffer->drawCommandBuffer;
-
-	if (drawCmdBufferNewSizeInBytes > drawCmdBufferCapacityInBytes)
-	{
-		result = K15_GUI_RESULT_OUT_OF_MEMORY;
-		goto functionEnd;
-	}
-
-	p_DrawCommandBuffer->bufferSizeInBytes = drawCmdBufferNewSizeInBytes;
-
-	K15_GUI_MEMCPY(drawCmdBuffer + drawCmdBufferSizeInBytes, &drawCmd, sizeof(drawCmd));
-
-	if (p_OutDrawCommand)
-		*p_OutDrawCommand = (K15_GUIDrawCommand*)(drawCmdBuffer + drawCmdBufferSizeInBytes);
-
-functionEnd:
-	return result;
+	*p_OutRed = (float)red / 255.f;
+	*p_OutGreen = (float)green / 255.f;
+	*p_OutBlue = (float)blue / 255.f;
+	*p_OutAlpha = (float)alpha / 255.f;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIAddDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSizeInBytes)
+kg_internal kg_u32 K15_GUICalculateVertexCount(kg_u32 p_VertexBufferSizeInBytes)
 {
-	if (!p_DrawCommandBuffer || !p_DrawCommand || !p_Data || p_DataSizeInBytes == 0)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
-	kg_result result = K15_GUI_RESULT_SUCCESS;
-
-	if ((p_DrawCommandBuffer->bufferCapacityInBytes - p_DrawCommandBuffer->bufferSizeInBytes) < p_DataSizeInBytes)
-	{
-		result = K15_GUI_RESULT_OUT_OF_MEMORY;
-		goto functionEnd;
-	}
-
-	kg_u32 drawCommandSizeInBytes = sizeof(K15_GUIDrawCommand) + p_DrawCommand->sizeInBytes;
-	kg_u64 drawCommandAddress = (kg_u64)p_DrawCommand;
-	kg_u64 drawCommandBufferEndAddress = (kg_u64)p_DrawCommandBuffer->drawCommandBuffer + p_DrawCommandBuffer->bufferSizeInBytes;
-
-	if (drawCommandBufferEndAddress - drawCommandAddress > drawCommandSizeInBytes)
-	{
-		result = K15_GUI_RESULT_DRAW_COMMAND_FINISHED;
-		goto functionEnd;
-	}
-
-	kg_byte* bufferPosition = p_DrawCommandBuffer->drawCommandBuffer + p_DrawCommandBuffer->bufferSizeInBytes;
-
-	K15_GUI_MEMCPY(bufferPosition, p_Data, p_DataSizeInBytes);
-
-	p_DrawCommandBuffer->bufferSizeInBytes += p_DataSizeInBytes;
-	p_DrawCommand->sizeInBytes += p_DataSizeInBytes;
-
-functionEnd:
-	return result;
+	return p_VertexBufferSizeInBytes / K15_GUI_VERTEX_SIZE_IN_BYTES;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIRect* p_ClipRect, kg_color32 p_ColorFrom, kg_color32 p_ColorTo)
+kg_internal kg_u32 K15_GUICalculateIndexCount(kg_u32 p_IndexBufferSizeInBytes)
 {
-	K15_GUIDrawCommand drawCommand = { 0 };
-	drawCommand.sizeInBytes = K15_GUI_TRIANGLE_SIZE_IN_BYTES * 2;
+	return p_IndexBufferSizeInBytes / 4;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddVertex(kg_byte* p_VertexBuffer, kg_u32* p_InOutVertexBufferSizeInBytes, kg_u32* p_OutVertexIndex, 
+	float p_PositionX, float p_PositionY, float p_TexCoordU, float p_TexCoordV, kg_color32 p_Color)
+{
+	kg_u32 vertexBufferSizeInBytes = *p_InOutVertexBufferSizeInBytes;
+
+	if (vertexBufferSizeInBytes + K15_GUI_VERTEX_SIZE_IN_BYTES > K15_GUI_DRAW_VERTEX_BUFFER_SIZE)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	kg_u32 vertexIndex = K15_GUICalculateVertexCount(vertexBufferSizeInBytes);
+
+	float red = 0.f, green = 0.f, blue = 0.f, alpha = 0.f;
+	K15_GUIUnpackColor32(p_Color, &red, &green, &blue, &alpha);
+
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 0, &p_PositionX, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 4, &p_PositionY, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 8, &p_TexCoordU, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 12, &p_TexCoordV, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 16, &red, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 20, &green, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 24, &blue, sizeof(float));
+	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 28, &alpha, sizeof(float));
+
+	*p_InOutVertexBufferSizeInBytes = vertexBufferSizeInBytes + K15_GUI_VERTEX_SIZE_IN_BYTES;
+	*p_OutVertexIndex = vertexIndex;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddTriangleIndices(kg_byte* p_IndexBuffer, kg_u32* p_InOutIndexBufferSizeInBytes,
+	K15_GUI_INDEX_DATA_TYPE p_Index1, K15_GUI_INDEX_DATA_TYPE p_Index2, K15_GUI_INDEX_DATA_TYPE p_Index3)
+{
+	kg_u32 indexBufferSizeInBytes = *p_InOutIndexBufferSizeInBytes;
+
+	if (indexBufferSizeInBytes + K15_GUI_INDEX_SIZE_IN_BYTES > K15_GUI_DRAW_INDEX_BUFFER_SIZE)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	K15_GUI_MEMCPY(p_IndexBuffer + indexBufferSizeInBytes + K15_GUI_INDEX_SIZE_IN_BYTES * 0, &p_Index1, K15_GUI_INDEX_SIZE_IN_BYTES);
+	K15_GUI_MEMCPY(p_IndexBuffer + indexBufferSizeInBytes + K15_GUI_INDEX_SIZE_IN_BYTES * 1, &p_Index2, K15_GUI_INDEX_SIZE_IN_BYTES);
+	K15_GUI_MEMCPY(p_IndexBuffer + indexBufferSizeInBytes + K15_GUI_INDEX_SIZE_IN_BYTES * 2, &p_Index3, K15_GUI_INDEX_SIZE_IN_BYTES);
+
+	indexBufferSizeInBytes += K15_GUI_INDEX_SIZE_IN_BYTES * 3;
+	*p_InOutIndexBufferSizeInBytes = indexBufferSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal K15_GUIFloatRect K15_GUIGetTransformedNDCRect(K15_GUIRect* p_ClipRect,
+	K15_GUIRect* p_ContextClipRect)
+{
+	K15_GUIFloatRect ndcRect = { 0 };
+
+	float contextClipRectWidth = (float)(p_ContextClipRect->right - p_ContextClipRect->left);
+	float contextClipRectHeight = (float)(p_ContextClipRect->bottom - p_ContextClipRect->top);
+	ndcRect.left = (float)p_ClipRect->left / contextClipRectWidth;
+	ndcRect.right = (float)p_ClipRect->right / contextClipRectWidth;
+	ndcRect.bottom = (float)p_ClipRect->bottom / contextClipRectHeight;
+	ndcRect.top = (float)p_ClipRect->top / contextClipRectHeight;
+
+	ndcRect.left = ndcRect.left * 2.f - 1.f;
+	ndcRect.right = ndcRect.right * 2.f - 1.f;
+	ndcRect.bottom = ndcRect.bottom * 2.f - 1.f;
+	ndcRect.top = ndcRect.top * 2.f - 1.f;
+
+	return ndcRect;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddDrawCommandData(K15_GUIDrawInformation* p_DrawInformation,
+	kg_u64 p_TextureUserData, kg_u32 p_NumTriangles, kg_u32 p_VertexOffset, kg_u32 p_IndexOffset)
+{
+	kg_u32 drawCommandIndex = p_DrawInformation->numDrawCommands;
+
+	if (drawCommandIndex == K15_GUI_MAX_DRAW_COMMANDS)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	p_DrawInformation->drawCommands[drawCommandIndex].textureUserData = p_TextureUserData;
+	p_DrawInformation->drawCommands[drawCommandIndex].numTriangles = p_NumTriangles;
+	p_DrawInformation->drawCommands[drawCommandIndex].vertexOffset = p_VertexOffset;
+	p_DrawInformation->drawCommands[drawCommandIndex].indexOffset = p_IndexOffset;
+	
+	++p_DrawInformation->numDrawCommands;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawInformation* p_DrawInformation,
+	K15_GUIRect* p_ContextClipRect, K15_GUIRect* p_ClipRect, kg_color32 p_ColorFrom, kg_color32 p_ColorTo)
+{
+	kg_byte* vertexBuffer = p_DrawInformation->vertexBufferData;
+	kg_byte* indexBuffer = p_DrawInformation->indexBufferData;
+	kg_u32 vertexBufferSizeInBytes = p_DrawInformation->vertexBufferDataSizeInBytes;
+	kg_u32 indexBufferSizeInBytes = p_DrawInformation->indexBufferDataSizeInBytes;
+	kg_u32 vertexOffset = K15_GUICalculateVertexCount(vertexBufferSizeInBytes);
+	kg_u32 indexOffset = K15_GUICalculateIndexCount(indexBufferSizeInBytes);
+	kg_u32 numTriangles = 2;
+	kg_u32 v1, v2, v3, v4;
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	K15_GUIFloatRect ndcClipRect = K15_GUIGetTransformedNDCRect(p_ClipRect, p_ContextClipRect);
+
+	// or'ing together for nicer code.
+	// works as K15_GUIAddVertex and GUIAddTriangleIndices only return
+	// K15_GUI_RESULT_SUCCESS(0) or K15_GUI_RESULT_OUT_OF_MEMORY(non 0)
+	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes, 
+		&v1, ndcClipRect.left, ndcClipRect.top, 0.f, 0.f, p_ColorFrom);
+
+	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+		&v2, ndcClipRect.left, ndcClipRect.bottom, 0.f, 0.f, p_ColorTo);
+
+	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+		&v3, ndcClipRect.right, ndcClipRect.top, 0.f, 0.f, p_ColorFrom);
+
+	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+		&v4, ndcClipRect.right, ndcClipRect.bottom, 0.f, 0.f, p_ColorTo);
+
+	result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v1, v2, v3);
+	result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v2, v4, v3);
+	
+	p_DrawInformation->vertexBufferDataSizeInBytes = vertexBufferSizeInBytes;
+	p_DrawInformation->indexBufferDataSizeInBytes = indexBufferSizeInBytes;
+
+	if (result == K15_GUI_RESULT_SUCCESS)
+		result = K15_GUIAddDrawCommandData(p_DrawInformation, 0, numTriangles, vertexOffset, indexOffset);
+
+	return result;
 }
 /*********************************************************************************/
 kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result)
@@ -2151,6 +2230,8 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	p_GUIContext->layoutTable[layoutIndex] = layoutElement;
 	++p_GUIContext->numLayouts;
 
+	p_GUIContext->layoutIndex = layoutIndex;
+
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
@@ -2186,27 +2267,36 @@ kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUICo
 		return clipRectValidationResult;
 
 	kg_byte* guiMemory = p_Memory;
+	kg_byte* vertexBufferMemory = 0;
+	kg_byte* indexBufferMemory = 0;
+
 	kg_u32 guiMemorySizeInBytes = p_MemorySizeInBytes;
 
 	K15_GUIContext* guiContext = (K15_GUIContext*)guiMemory;
 	guiMemory += sizeof(K15_GUIContext);
 	guiMemorySizeInBytes -= sizeof(K15_GUIContext);
 
+	vertexBufferMemory = guiMemory + K15_GUI_CONTEXT_MEMORY_SIZE;
+	indexBufferMemory = vertexBufferMemory + K15_GUI_DRAW_VERTEX_BUFFER_SIZE;
+
 	//nullify the rest of the memory
 	K15_GUI_MEMSET(guiMemory, 0, guiMemorySizeInBytes);
 
 	guiContext->memory.memoryBuffer = guiMemory;
-	guiContext->memory.memoryBufferCapacityInBytes = p_MemorySizeInBytes;
+	guiContext->memory.memoryBufferCapacityInBytes = K15_GUI_CONTEXT_MEMORY_SIZE;
 	guiContext->memory.memoryBufferSizeInBytes = 0;
-	guiContext->memoryBufferSizeInBytes = guiMemorySizeInBytes;
-	guiContext->memoryBufferCapacityInBytes = guiMemorySizeInBytes;
-	guiContext->drawCmdBuffer.bufferCapacityInBytes = K15_GUI_DRAW_COMMAND_BUFFER_SIZE;
-	guiContext->drawCmdBuffer.bufferSizeInBytes = 0;
+	guiContext->drawInformation.indexBufferData = indexBufferMemory;
+	guiContext->drawInformation.vertexBufferData = vertexBufferMemory;
+	guiContext->drawInformation.indexBufferDataSizeInBytes = 0;
+	guiContext->drawInformation.vertexBufferDataSizeInBytes = 0;
+	guiContext->drawInformation.vertexStride = K15_GUI_VERTEX_SIZE_IN_BYTES;
+	guiContext->drawInformation.numDrawCommands = 0;
+	guiContext->drawInformation.indexSizeInBytes = K15_GUI_INDEX_SIZE_IN_BYTES;
 	guiContext->focusedElementIdHash = 0;
 	guiContext->hoveredElementIdHash = 0;
 	guiContext->clickedElementIdHash = 0;
 	guiContext->mouseDownElementIdHash = 0;
-	guiContext->layoutIndex = 0;
+	guiContext->layoutIndex = K15_GUI_INVALID_LAYOUT_INDEX;
 	guiContext->numLayouts = 0;
 	guiContext->numMenus = 0;
 	guiContext->lastResult = K15_GUI_RESULT_SUCCESS;
@@ -2249,8 +2339,6 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	}
 
 	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
-
-	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
 
 	kg_s16 toolbarHeight = p_Style->pixelHeight;
 	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
@@ -2307,7 +2395,6 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 	const char* p_Identifier, K15_GUIButtonStyle* p_Style)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
-	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
 
 	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
 	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
@@ -2605,7 +2692,7 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
-	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
+	K15_GUIRect* p_ContextClipRect, K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 	kg_color32 upperBackgroundColor = 0;
@@ -2626,14 +2713,15 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	result = K15_GUIAddColoredRectDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
+	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, p_ContextClipRect, 
+		&p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
 
 functionEnd:
 	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
-	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
+	K15_GUIRect* p_ContextClipRect, K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
 {
 	K15_GUIButtonData buttonData = { 0 };
 	kg_result result = K15_GUI_RESULT_SUCCESS;
@@ -2666,13 +2754,15 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	textColor = buttonStyle->textColor;
 	font = buttonStyle->font;
 
-	result = K15_GUIAddColoredRectDrawCommand(p_DrawCmdBuffer, &p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
+	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, p_ContextClipRect, 
+		&p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
 functionEnd:
 	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextMemory, 
-	K15_GUIElement* p_Element, K15_GUIDrawCommandBuffer* p_DrawCmdBuffer)
+	K15_GUIRect* p_ContextClipRect, K15_GUIElement* p_Element, 
+	K15_GUIDrawInformation* p_DrawInformation)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
@@ -2680,7 +2770,8 @@ kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextM
 	{
 	case K15_GUI_TOOLBAR_ELEMENT_TYPE:
 	{
-		result = K15_GUICreateToolBarDrawCommands(p_ContextMemory, p_Element, p_DrawCmdBuffer);
+		result = K15_GUICreateToolBarDrawCommands(p_ContextMemory, p_ContextClipRect, 
+			p_Element, p_DrawInformation);
 		break;
 	}
 
@@ -2688,7 +2779,8 @@ kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextM
 	case K15_GUI_MENU_ITEM_ELEMENT_TYPE:
 	case K15_GUI_BUTTON_ELEMENT_TYPE:
 	{
-		result = K15_GUICreateButtonDrawCommands(p_ContextMemory, p_Element, p_DrawCmdBuffer);
+		result = K15_GUICreateButtonDrawCommands(p_ContextMemory, p_ContextClipRect, 
+			p_Element, p_DrawInformation);
 		break;
 	}
 	default:
@@ -2702,9 +2794,10 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 {
 	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
 	kg_u32 memorySize = contextMemory->memoryBufferSizeInBytes;
+
 	kg_byte* memory = contextMemory->memoryBuffer;
 
-	K15_GUIDrawCommandBuffer* drawCmdBuffer = &p_GUIContext->drawCmdBuffer;
+	K15_GUIDrawInformation* drawInformation = &p_GUIContext->drawInformation;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
@@ -2721,23 +2814,23 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 		guiElement = (K15_GUIElement*)(memory + memoryPosition);
 		guiElementClipRect = &guiElement->clipRect;
 		
-		if (guiElement->layoutIndex != 0)
-			clipRectUsedForClipping = &layoutElements[guiElement->layoutIndex - 1]->clipRect;
+		if (guiElement->layoutIndex != K15_GUI_INVALID_LAYOUT_INDEX)
+			clipRectUsedForClipping = &layoutElements[guiElement->layoutIndex]->clipRect;
 		else
 			clipRectUsedForClipping = contextClipRect;
 
-		if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) == K15_GUI_RESULT_EMPTY_CLIP_RECT)
-			continue;
-
-		if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
-			K15_GUIArrangeLayoutElements(guiElement);
-
-		result = K15_GUICreateDrawCommands(contextMemory, guiElement, drawCmdBuffer);
-
-		if (result != K15_GUI_RESULT_SUCCESS)
+		if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
 		{
-			K15_GUISetLastResult(&p_GUIContext->lastResult, result);
-			break;
+			if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
+				K15_GUIArrangeLayoutElements(guiElement);
+
+			result = K15_GUICreateDrawCommands(contextMemory, contextClipRect, guiElement, drawInformation);
+
+			if (result != K15_GUI_RESULT_SUCCESS)
+			{
+				K15_GUISetLastResult(&p_GUIContext->lastResult, result);
+				break;
+			}
 		}
 
 		memoryPosition += guiElement->offsetNextElementInBytes;	
@@ -2752,8 +2845,11 @@ kg_def kg_result K15_GUIBeginFrame(K15_GUIContext* p_GUIContext)
 		return K15_GUI_RESULT_FRAME_NOT_FINISHED;
 	}
 		
-	p_GUIContext->drawCmdBuffer.bufferSizeInBytes = 0;
 	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
+
+	p_GUIContext->drawInformation.vertexBufferDataSizeInBytes = 0;
+	p_GUIContext->drawInformation.indexBufferDataSizeInBytes = 0;
+	p_GUIContext->drawInformation.numDrawCommands = 0;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -2787,6 +2883,9 @@ kg_def void K15_GUIPopLayout(K15_GUIContext* p_GUIContext)
 		return;
 
 	--p_GUIContext->numLayouts;
+
+	if (p_GUIContext->numLayouts == 0)
+		p_GUIContext->layoutIndex = K15_GUI_INVALID_LAYOUT_INDEX;
 }
 /*********************************************************************************/
 kg_def kg_result K15_GUIGetLastResult(K15_GUIContext* p_GUIContext)
@@ -2905,110 +3004,6 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 	}
 
 	return K15_GUI_RESULT_SUCCESS;
-}
-
-/*********************************************************************************/
-kg_def kg_u32 K15_GUICalculateDrawCommandBufferSizeInBytes(K15_GUIContext* p_GUIContext)
-{
-	if (!p_GUIContext)
-		return 0;
-
-	return p_GUIContext->drawCmdBuffer.bufferSizeInBytes + sizeof(K15_GUIDrawCommandBuffer);
-}
-/*********************************************************************************/
-kg_def void K15_GUIGetDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer, K15_GUIDrawCommand**
-	p_DrawCommandOut)
-{
-	K15_GUIDrawCommand* drawCommand = (K15_GUIDrawCommand*)(p_DrawCommandBuffer->drawCommandBuffer +
-		p_DrawCommandBuffer->bufferPosition);
-
-	*p_DrawCommandOut = drawCommand;
-} 
-/*********************************************************************************/
-kg_def void K15_GUICopyDrawCommandBuffer(K15_GUIContext* p_GUIContext, 
-	K15_GUIDrawCommandBuffer* p_GUIDrawCommandBuffer)
-{
-	if (!p_GUIContext || !p_GUIDrawCommandBuffer)
-		return;
-
-	*p_GUIDrawCommandBuffer = p_GUIContext->drawCmdBuffer;
-	p_GUIDrawCommandBuffer->bufferPosition = 0;
-
-	if (p_GUIDrawCommandBuffer->bufferSizeInBytes > 0)
-	{
-		K15_IA_MEMCPY(p_GUIDrawCommandBuffer->drawCommandBuffer, 
-			p_GUIContext->drawCmdBuffer.drawCommandBuffer,
-			p_GUIContext->drawCmdBuffer.bufferSizeInBytes);
-	}
-}
-/*********************************************************************************/
-kg_def kg_result K15_GUIGetDrawCommandDataRaw(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommand* p_DrawCommand, void** p_DataPtr, kg_u32 p_OffsetInBytes)
-{
-	if (!p_DrawCommandBuffer || !p_DrawCommand)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
-	size_t addressDrawCommand = (size_t)p_DrawCommand;
-	size_t addressDrawCommandBuffer = (size_t)p_DrawCommandBuffer->drawCommandBuffer;
-	size_t addressOffsetDrawCommand = addressDrawCommand - addressDrawCommandBuffer + sizeof(K15_GUIDrawCommand);
-
-	kg_u32 drawCommandBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
-	kg_u32 drawCommandCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
-	kg_byte* drawCommandMemoryBuffer = p_DrawCommandBuffer->drawCommandBuffer;
-
-	if (addressDrawCommand < addressDrawCommandBuffer ||
-		addressDrawCommand > addressDrawCommandBuffer + drawCommandCapacityInBytes)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
-	*p_DataPtr = drawCommandMemoryBuffer + addressOffsetDrawCommand + p_OffsetInBytes;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
-kg_def kg_result K15_GUIGetDrawCommandData(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer,
-	K15_GUIDrawCommand* p_DrawCommand, void* p_Data, kg_u32 p_DataSizeInBytes, kg_u32 p_OffsetInBytes)
-{
-	if (!p_DrawCommandBuffer || !p_Data || p_DataSizeInBytes == 0)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
-	size_t addressDrawCommand = (size_t)p_DrawCommand;
-	size_t addressDrawCommandBuffer = (size_t)p_DrawCommandBuffer->drawCommandBuffer;
-	size_t addressOffsetDrawCommand = addressDrawCommand - addressDrawCommandBuffer + sizeof(K15_GUIDrawCommand);
-
-	kg_u32 drawCommandParamSizeInBytes = p_DrawCommand->sizeInBytes;
-	kg_u32 drawCommandBufferSizeInBytes = p_DrawCommandBuffer->bufferSizeInBytes;
-	kg_u32 drawCommandCapacityInBytes = p_DrawCommandBuffer->bufferCapacityInBytes;
-	kg_byte* drawCommandMemoryBuffer = p_DrawCommandBuffer->drawCommandBuffer;
-
-	if (drawCommandParamSizeInBytes < p_OffsetInBytes + p_DataSizeInBytes)
-		return K15_GUI_RESULT_OUT_OF_RANGE;
-
-	if (drawCommandBufferSizeInBytes + p_DataSizeInBytes > drawCommandCapacityInBytes)
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-
-	void* drawCommandData = 0;
-	kg_result result = K15_GUIGetDrawCommandDataRaw(p_DrawCommandBuffer, p_DrawCommand, &drawCommandData,
-		p_OffsetInBytes);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-		return result;
-
-	K15_IA_MEMCPY(p_Data, drawCommandData, p_DataSizeInBytes);
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-/*********************************************************************************/
-kg_def kg_b8 K15_GUIHasDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
-{
-	return p_DrawCommandBuffer->bufferPosition < p_DrawCommandBuffer->bufferSizeInBytes;
-}
-/*********************************************************************************/
-kg_def void K15_GUINextDrawCommand(K15_GUIDrawCommandBuffer* p_DrawCommandBuffer)
-{
-	K15_GUIDrawCommand* drawCommand = (K15_GUIDrawCommand*)(p_DrawCommandBuffer->drawCommandBuffer +
-		p_DrawCommandBuffer->bufferPosition);
-
-	p_DrawCommandBuffer->bufferPosition += drawCommand->sizeInBytes + sizeof(K15_GUIDrawCommand);
 }
 /*********************************************************************************/
 
