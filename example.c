@@ -32,7 +32,7 @@ GLint vbo = 0;
 GLint ibo = 0;
 GLint vao = 0;
 GLint shaderProgram = 0;
-
+GLint projUniform = 0;
 K15_GUIContext guiContext;
 
 uint32 convertColor(kg_color32 p_Color)
@@ -226,6 +226,11 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 	systemEvent.params.size.height = newHeight;
 	systemEvent.params.size.width = newWidth;
 
+	float projMatrix[16];
+	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, newWidth, -newHeight);
+
+	K15_OPENGL_CALL(kglUniformMatrix4fv(projUniform, 1, GL_FALSE, projMatrix));
+
 	K15_GUIAddSystemEvent(&guiContext.events, systemEvent);
 }
 
@@ -351,6 +356,8 @@ uint32 getTimeInMilliseconds(LARGE_INTEGER p_PerformanceFrequency)
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 {
+	screenWidth = p_Width;
+	screenHeight = p_Height;
 	kglViewport(0, 0, p_Width, p_Height);
 }
 
@@ -372,6 +379,7 @@ void setup(HWND p_HWND)
 {
 	const char* vertexShaderSource = ""
 		"#version 330\n"
+		"uniform mat4 projMatrix;"
 		"in vec2 position;\n"
 		"in vec2 uv;\n"
 		"in vec4 color;\n"
@@ -387,7 +395,8 @@ void setup(HWND p_HWND)
 		"   outColor = vec4(1.f, 1.f, 1.f, 1.f);\n"
 		"	//outColor *= texture(textureSampler, uv);\n"
 		"	outColor *= color;\n"
-		"	gl_Position = vec4(position.x, -1.f * position.y, 1.f, 1.f);\n"
+		"	vec4 pos = vec4(position.x, -1.f * position.y, 1.f, 1.f);"
+		"	gl_Position = projMatrix * pos;\n"
 		"}";
 
 	const char* fragmentShaderSource = ""
@@ -482,7 +491,11 @@ void setup(HWND p_HWND)
 	K15_OPENGL_CALL(kglVertexAttribPointer(uvAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 2)));
 	K15_OPENGL_CALL(kglVertexAttribPointer(colorAttribLocation, 4, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 4)));
 
+	K15_OPENGL_CALL(projUniform = kglGetUniformLocation(shaderProgram, "projMatrix"));
+
 	K15_OPENGL_CALL(kglUseProgram(shaderProgram));
+
+	K15_WindowResized(p_HWND, 0, 0, (LPARAM)(screenWidth | (screenHeight << 16)));
 }
 
 void swapBuffers(HWND p_HWND)

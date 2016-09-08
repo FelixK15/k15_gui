@@ -590,6 +590,14 @@ kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, 
 kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput);
 kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent);
 
+
+//*****************UTIL******************//
+kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMatrix,
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight);
+
+kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_ProjectionMatrix,
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight);
+
 #ifdef K15_GUI_IMPLEMENTATION
 
 void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect);
@@ -1717,16 +1725,16 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 
 	//Menu Style
 	defaultStyle.menuStyle.font = defaultFont;
-	defaultStyle.menuStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(255, 0, 0);
-	defaultStyle.menuStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(0, 0, 255);
+	defaultStyle.menuStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.menuStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
 	defaultStyle.menuStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuStyle.verticalPixelPadding = 2;
 	defaultStyle.menuStyle.horizontalPixelPadding = 8;
 
 	//Menu Item Style
 	defaultStyle.menuItemStyle.font = defaultFont;
-	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(255, 0, 0);
-	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(0, 0, 255);
+	defaultStyle.menuItemStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
+	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
 	defaultStyle.menuItemStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuItemStyle.verticalPixelPadding = 2;
 	defaultStyle.menuItemStyle.horizontalPixelPadding = 8;
@@ -2145,7 +2153,7 @@ kg_internal kg_result K15_GUIAddDrawCommandData(K15_GUIDrawInformation* p_DrawIn
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawInformation* p_DrawInformation,
-	K15_GUIRect* p_ContextClipRect, K15_GUIRect* p_ClipRect, kg_color32 p_ColorFrom, kg_color32 p_ColorTo)
+	K15_GUIRect* p_ClipRect, kg_color32 p_ColorFrom, kg_color32 p_ColorTo)
 {
 	kg_byte* vertexBuffer = p_DrawInformation->vertexBufferData;
 	kg_byte* indexBuffer = p_DrawInformation->indexBufferData;
@@ -2157,22 +2165,20 @@ kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawInformation* p
 	kg_u32 v1, v2, v3, v4;
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
-	K15_GUIFloatRect ndcClipRect = K15_GUIGetTransformedNDCRect(p_ClipRect, p_ContextClipRect);
-
 	// or'ing together for nicer code.
 	// works as K15_GUIAddVertex and GUIAddTriangleIndices only return
 	// K15_GUI_RESULT_SUCCESS(0) or K15_GUI_RESULT_OUT_OF_MEMORY(non 0)
 	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes, 
-		&v1, ndcClipRect.left, ndcClipRect.top, 0.f, 0.f, p_ColorFrom);
+		&v1, p_ClipRect->left, p_ClipRect->top, 0.f, 0.f, p_ColorFrom);
 
 	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
-		&v2, ndcClipRect.left, ndcClipRect.bottom, 0.f, 0.f, p_ColorTo);
+		&v2, p_ClipRect->left, p_ClipRect->bottom, 0.f, 0.f, p_ColorTo);
 
 	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
-		&v3, ndcClipRect.right, ndcClipRect.top, 0.f, 0.f, p_ColorFrom);
+		&v3, p_ClipRect->right, p_ClipRect->top, 0.f, 0.f, p_ColorFrom);
 
 	result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
-		&v4, ndcClipRect.right, ndcClipRect.bottom, 0.f, 0.f, p_ColorTo);
+		&v4, p_ClipRect->right, p_ClipRect->bottom, 0.f, 0.f, p_ColorTo);
 
 	result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v1, v2, v3);
 	result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v2, v4, v3);
@@ -2531,8 +2537,10 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 
 	if ((layoutFlagMask & K15_GUI_FLOW_LAYOUT_FLAG) > 0)
 	{
-		kg_u32 width = 0;
-		kg_u32 height = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
+		kg_u32 elementWidth = 0;
+		kg_u32 elementHeight = 0;
+		kg_u32 layoutHeight = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
+		kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
 		kg_u32 posRight = 0;
 		kg_u32 posY = p_LayoutClipRect->top;
 
@@ -2542,24 +2550,30 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 		{
 			guiElement = layoutedElements[elementIndex];
 			
-			width = guiElement->clipRect.right - guiElement->clipRect.left;
+			elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
+			elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
 
-			posRight = posX + width;
+			posRight = posX + elementWidth;
 
 			if (posRight > layoutWidth)
 			{
 				posX = p_LayoutClipRect->left;
-				posY += height;
 
-				posRight = posX + width;
+				if (posX + elementWidth <= layoutWidth)
+				{
+					posY += layoutHeight;
+					p_LayoutClipRect->bottom = K15_GUI_MAX(posY + layoutHeight, p_LayoutClipRect->bottom);
+				}
+
+				posRight = posX + elementWidth;
 			}
 
 			guiElement->clipRect.top = posY;
-			guiElement->clipRect.bottom = posY + height;
+			guiElement->clipRect.bottom = posY + layoutHeight;
 			guiElement->clipRect.left = posX;
 			guiElement->clipRect.right = posRight;
 
-			posX += width;
+			posX += elementWidth;
 		}
 	}
 	else
@@ -2578,7 +2592,6 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 			posX += widthPerElement;
 		}
 	}
-	
 }
 /*********************************************************************************/
 kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutData,
@@ -2692,7 +2705,7 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
-	K15_GUIRect* p_ContextClipRect, K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
+	K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 	kg_color32 upperBackgroundColor = 0;
@@ -2713,15 +2726,15 @@ kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_G
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, p_ContextClipRect, 
-		&p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
+	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, &p_Element->clipRect, 
+		upperBackgroundColor, lowerBackgroundColor);
 
 functionEnd:
 	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
-	K15_GUIRect* p_ContextClipRect, K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
+	K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
 {
 	K15_GUIButtonData buttonData = { 0 };
 	kg_result result = K15_GUI_RESULT_SUCCESS;
@@ -2754,15 +2767,19 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	textColor = buttonStyle->textColor;
 	font = buttonStyle->font;
 
-	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, p_ContextClipRect, 
-		&p_Element->clipRect, upperBackgroundColor, lowerBackgroundColor);
+	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, &p_Element->clipRect, 
+		upperBackgroundColor, lowerBackgroundColor);
+
+	if (result == K15_GUI_RESULT_SUCCESS)
+	{
+		//result = K15_GUIAddColoredTextDrawCommand(p_DrawInformation, )
+	}
 functionEnd:
 	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextMemory, 
-	K15_GUIRect* p_ContextClipRect, K15_GUIElement* p_Element, 
-	K15_GUIDrawInformation* p_DrawInformation)
+	K15_GUIElement* p_Element, K15_GUIDrawInformation* p_DrawInformation)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
@@ -2770,8 +2787,7 @@ kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextM
 	{
 	case K15_GUI_TOOLBAR_ELEMENT_TYPE:
 	{
-		result = K15_GUICreateToolBarDrawCommands(p_ContextMemory, p_ContextClipRect, 
-			p_Element, p_DrawInformation);
+		result = K15_GUICreateToolBarDrawCommands(p_ContextMemory, p_Element, p_DrawInformation);
 		break;
 	}
 
@@ -2779,8 +2795,7 @@ kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextM
 	case K15_GUI_MENU_ITEM_ELEMENT_TYPE:
 	case K15_GUI_BUTTON_ELEMENT_TYPE:
 	{
-		result = K15_GUICreateButtonDrawCommands(p_ContextMemory, p_ContextClipRect, 
-			p_Element, p_DrawInformation);
+		result = K15_GUICreateButtonDrawCommands(p_ContextMemory, p_Element, p_DrawInformation);
 		break;
 	}
 	default:
@@ -2824,7 +2839,7 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 			if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
 				K15_GUIArrangeLayoutElements(guiElement);
 
-			result = K15_GUICreateDrawCommands(contextMemory, contextClipRect, guiElement, drawInformation);
+			result = K15_GUICreateDrawCommands(contextMemory, guiElement, drawInformation);
 
 			if (result != K15_GUI_RESULT_SUCCESS)
 			{
@@ -3002,6 +3017,64 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 		p_GUIContextEvents->bufferedSystemEvents[systemEventIndex] = p_SystemEvent;
 		++p_GUIContextEvents->numBufferedSystemEvents;
 	}
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMatrix,
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight)
+{
+	if (p_ScreenWidth == 0 || p_ScreenHeight == 0 || p_ProjectionMatrix == 0)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	p_ProjectionMatrix[ 0] = 2.f / p_ScreenWidth;
+	p_ProjectionMatrix[ 1] = 0.f;
+	p_ProjectionMatrix[ 2] = 0.f;
+	p_ProjectionMatrix[ 3] = -1.f;
+
+	p_ProjectionMatrix[ 4] = 0.f;
+	p_ProjectionMatrix[ 5] = 2.f / p_ScreenHeight;
+	p_ProjectionMatrix[ 6] = 0.f;
+	p_ProjectionMatrix[ 7] = -1.f;
+
+	p_ProjectionMatrix[ 8] = 0.f;
+	p_ProjectionMatrix[ 9] = 0.f;
+	p_ProjectionMatrix[10] = 0.f;
+	p_ProjectionMatrix[11] = 0.f;
+
+	p_ProjectionMatrix[12] = 0.f;
+	p_ProjectionMatrix[13] = 0.f;
+	p_ProjectionMatrix[14] = 0.f;
+	p_ProjectionMatrix[15] = 1.f;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_ProjectionMatrix,
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight)
+{
+	if (p_ScreenWidth == 0 || p_ScreenHeight == 0 || p_ProjectionMatrix == 0)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	p_ProjectionMatrix[0] = 2.f / p_ScreenWidth;
+	p_ProjectionMatrix[1] = 0.f;
+	p_ProjectionMatrix[2] = 0.f;
+	p_ProjectionMatrix[3] = 0.f;
+
+	p_ProjectionMatrix[4] = 0.f;
+	p_ProjectionMatrix[5] = 2.f / p_ScreenHeight;
+	p_ProjectionMatrix[6] = 0.f;
+	p_ProjectionMatrix[7] = 0.f;
+
+	p_ProjectionMatrix[8] = 0.f;
+	p_ProjectionMatrix[9] = 0.f;
+	p_ProjectionMatrix[10] = 0.f;
+	p_ProjectionMatrix[11] = 0.f;
+
+	p_ProjectionMatrix[12] = -1.f;
+	p_ProjectionMatrix[13] = -1.f;
+	p_ProjectionMatrix[14] = 0.f;
+	p_ProjectionMatrix[15] = 1.f;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
