@@ -227,7 +227,8 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 	systemEvent.params.size.width = newWidth;
 
 	float projMatrix[16];
-	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, newWidth, -newHeight);
+	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, 
+		newWidth, -newHeight);
 
 	K15_OPENGL_CALL(kglUniformMatrix4fv(projUniform, 1, GL_FALSE, projMatrix));
 
@@ -395,7 +396,7 @@ void setup(HWND p_HWND)
 		"   outColor = vec4(1.f, 1.f, 1.f, 1.f);\n"
 		"	//outColor *= texture(textureSampler, uv);\n"
 		"	outColor *= color;\n"
-		"	vec4 pos = vec4(position.x, -1.f * position.y, 1.f, 1.f);"
+		"	vec4 pos = vec4(position.x, position.y, 1.f, 1.f);"
 		"	gl_Position = projMatrix * pos;\n"
 		"}";
 
