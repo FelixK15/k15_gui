@@ -228,7 +228,7 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 
 	float projMatrix[16];
 	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, 
-		newWidth, -newHeight);
+		newWidth, newHeight, K15_GUI_INVERT_Y_AXIS);
 
 	K15_OPENGL_CALL(kglUniformMatrix4fv(projUniform, 1, GL_FALSE, projMatrix));
 
