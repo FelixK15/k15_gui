@@ -99,6 +99,11 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
+	K15_GUI_INVERT_Y_AXIS = 0x01
+} K15_GUIMatrixFlags;
+/*********************************************************************************/
+typedef enum 
+{
 	K15_GUI_CONTEXT_INSIDE_FRAME_FLAG = 0x01,
 	K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG = 0x02,
 	K15_GUI_CONTEXT_INSIDE_MENU_FLAG = 0x04
@@ -595,7 +600,6 @@ kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, 
 kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput);
 kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent);
 
-
 //*****************UTIL******************//
 kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMatrix,
 	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags);
@@ -878,33 +882,6 @@ kg_internal kg_b8 K15_GUIFitsIntoResourceTableMemory(K15_GUIResourceDatabase* p_
 	return (capacityResourceMemoryInBytes >= sizeResourceMemoryInBytes + p_SizeInBytes);
 }
 /*********************************************************************************/
-kg_internal kg_b8 K15_GUISearchResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
-	K15_GUIResourceTableEntry** p_OutResourceTableEntryPtr, const char* p_ResourceName)
-{
-	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
-	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
-	kg_u32 resourceMemoryPosition = 0;
-
-	K15_GUIResourceTableEntry* tableEntry = 0;
-	
-	while (resourceMemoryPosition < resourceMemorySizeInBytes)
-	{
-		tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
-
-		if (K15_GUI_STRCMP(tableEntry->name, p_ResourceName) == 0)
-		{
-			if (p_OutResourceTableEntryPtr)
-				*p_OutResourceTableEntryPtr = tableEntry;
-
-			return K15_GUI_TRUE;
-		}
-
-		resourceMemoryPosition += tableEntry->sizeInBytes;
-	}
-
-	return K15_GUI_FALSE;
-}
-/*********************************************************************************/
 kg_internal kg_result K15_GUICreateResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIResourceTableEntry** p_TableEntryPtr, const char* p_Name, K15_GUIResourceType p_ResourceType)
 {
@@ -980,6 +957,34 @@ kg_internal kg_result K15_GUIRemoveResourceTableEntryByName(K15_GUIResourceDatab
 	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
 }
 /*********************************************************************************/
+kg_internal kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
+	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
+{
+	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	K15_GUIResourceTableEntry* tableEntry = 0;
+	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
+	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
+	kg_u32 resourceMemoryPosition = 0;
+
+	while (resourceMemoryPosition < resourceMemorySizeInBytes)
+	{
+		tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
+
+		if (tableEntry->type == p_ResourceType &&
+			K15_GUI_STRCMP(p_ResourceName, tableEntry->name) == 0)
+		{
+			*p_OutMemory = (void*)(resourceMemory + resourceMemoryPosition + sizeof(K15_GUIResourceTableEntry));
+			return K15_GUI_RESULT_SUCCESS;
+		}
+
+		resourceMemoryPosition += tableEntry->sizeInBytes;
+	}
+
+	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
+}
+/*********************************************************************************/
 kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIFont** p_OutFont, kg_byte* p_TrueTypeFontBuffer, kg_u8 p_FontSize, const char* p_FontName,
 	kg_u8 p_GlyphRangeFlags)
@@ -990,8 +995,11 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	kg_s32 lineGap = 0;
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
-	if (K15_GUISearchResourceTableEntry(p_GUIResourceDatabase, 0, p_FontName))
+	if (K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, 0, p_FontName,
+		K15_GUI_FONT_RESOURCE_TYPE) == K15_GUI_RESULT_SUCCESS)
+	{
 		return K15_GUI_RESULT_NAME_ALREADY_IN_USE;
+	}
 
 	stbtt_fontinfo fontInfo = {0};
 	int resultSTBTT = stbtt_InitFont(&fontInfo, p_TrueTypeFontBuffer, 0);
@@ -1279,32 +1287,6 @@ kg_internal kg_u32 K15_GUIGetNumIconResources(K15_GUIResourceDatabase* p_GUIReso
 	}
 
 	return numIcons;
-}
-/*********************************************************************************/
-kg_internal kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
-	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
-{
-	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
-	K15_GUIResourceTableEntry* tableEntry = 0;
-	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
-	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
-	kg_u32 resourceMemoryPosition = 0;
-
-	while (resourceMemoryPosition < resourceMemorySizeInBytes)
-	{
-		tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + resourceMemoryPosition);
-
-		if (tableEntry->type == p_ResourceType &&
-			K15_GUI_STRCMP(p_ResourceName, tableEntry->name) == 0)
-		{
-			*p_OutMemory = (void*)(resourceMemory + resourceMemoryPosition + sizeof(K15_GUIResourceTableEntry));
-			return K15_GUI_RESULT_SUCCESS;
-		}
-	}
-
-	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
 }
 /*********************************************************************************/
 kg_def kg_result K15_GUIGetFontResource(K15_GUIResourceDatabase* p_GUIResourceDatabase,
