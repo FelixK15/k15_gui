@@ -228,7 +228,7 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 
 	float projMatrix[16];
 	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, 
-		newWidth, -newHeight);
+		newWidth, newHeight, K15_GUI_INVERT_Y_AXIS);
 
 	K15_OPENGL_CALL(kglUniformMatrix4fv(projUniform, 1, GL_FALSE, projMatrix));
 
@@ -384,8 +384,8 @@ void setup(HWND p_HWND)
 		"in vec2 position;\n"
 		"in vec2 uv;\n"
 		"in vec4 color;\n"
-		"uniform sampler2D textureSampler;\n"
-		"out vec4 outColor;\n"
+		"out vec4 fragColor;\n"
+		"out vec2 fragUV;\n"
 		"out gl_PerVertex{\n"
 		"vec4 gl_Position;\n"
 		"float gl_PointSize;\n"
@@ -393,19 +393,20 @@ void setup(HWND p_HWND)
 		"};\n"
 		"void main()\n"
 		"{\n"
-		"   outColor = vec4(1.f, 1.f, 1.f, 1.f);\n"
-		"	//outColor *= texture(textureSampler, uv);\n"
-		"	outColor *= color;\n"
+		"	fragColor = color;\n"
+		"	fragUV = uv;\n"
 		"	vec4 pos = vec4(position.x, position.y, 1.f, 1.f);"
 		"	gl_Position = projMatrix * pos;\n"
 		"}";
 
 	const char* fragmentShaderSource = ""
 		"#version 330\n"
-		"in vec4 outColor;\n"
+		"in vec4 fragColor;\n"
+		"in vec2 fragUV;\n"
+		"uniform sampler2D textureSampler;\n"
 		"void main()\n"
 		"{\n"
-		"	gl_FragColor = outColor;\n"
+		"	gl_FragColor = fragColor;\n"
 		"}";
 
 	kg_u32 vertexShaderSourceLength = strlen(vertexShaderSource);

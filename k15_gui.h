@@ -124,6 +124,11 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
+	K15_GUI_INVERT_Y_AXIS = 0x01
+} K15_GUIMatrixFlags;
+/*********************************************************************************/
+typedef enum 
+{
 	K15_GUI_CTRL_MODIFIER = 0x01,
 	K15_GUI_L_ALT_MODIFIER = 0x02,
 	K15_GIU_R_ALT_MODIFIER = 0x04,
@@ -593,10 +598,10 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 
 //*****************UTIL******************//
 kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMatrix,
-	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight);
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags);
 
 kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_ProjectionMatrix,
-	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight);
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags);
 
 #ifdef K15_GUI_IMPLEMENTATION
 
@@ -3022,10 +3027,14 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 }
 /*********************************************************************************/
 kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMatrix,
-	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight)
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags)
 {
 	if (p_ScreenWidth == 0 || p_ScreenHeight == 0 || p_ProjectionMatrix == 0)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+	kg_b8 invertYAxis = (p_Flags & K15_GUI_INVERT_Y_AXIS) > 0;
+	p_ScreenHeight = invertYAxis ? -p_ScreenHeight : p_ScreenHeight;
+	float yw = invertYAxis ? 1.f : -1.f;
 
 	p_ProjectionMatrix[ 0] = 2.f / p_ScreenWidth;
 	p_ProjectionMatrix[ 1] = 0.f;
@@ -3035,7 +3044,7 @@ kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMat
 	p_ProjectionMatrix[ 4] = 0.f;
 	p_ProjectionMatrix[ 5] = 2.f / p_ScreenHeight;
 	p_ProjectionMatrix[ 6] = 0.f;
-	p_ProjectionMatrix[ 7] = -1.f;
+	p_ProjectionMatrix[ 7] = yw;
 
 	p_ProjectionMatrix[ 8] = 0.f;
 	p_ProjectionMatrix[ 9] = 0.f;
@@ -3051,28 +3060,32 @@ kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMat
 }
 /*********************************************************************************/
 kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_ProjectionMatrix,
-	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight)
+	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags)
 {
 	if (p_ScreenWidth == 0 || p_ScreenHeight == 0 || p_ProjectionMatrix == 0)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	p_ProjectionMatrix[0] = 2.f / p_ScreenWidth;
-	p_ProjectionMatrix[1] = 0.f;
-	p_ProjectionMatrix[2] = 0.f;
-	p_ProjectionMatrix[3] = 0.f;
+	kg_b8 invertYAxis = (p_Flags & K15_GUI_INVERT_Y_AXIS) > 0;
+	p_ScreenHeight = invertYAxis ? -p_ScreenHeight : p_ScreenHeight;
+	float yw = invertYAxis ? 1.f : -1.f;
 
-	p_ProjectionMatrix[4] = 0.f;
-	p_ProjectionMatrix[5] = 2.f / p_ScreenHeight;
-	p_ProjectionMatrix[6] = 0.f;
-	p_ProjectionMatrix[7] = 0.f;
+	p_ProjectionMatrix[ 0] = 2.f / p_ScreenWidth;
+	p_ProjectionMatrix[ 1] = 0.f;
+	p_ProjectionMatrix[ 2] = 0.f;
+	p_ProjectionMatrix[ 3] = 0.f;
 
-	p_ProjectionMatrix[8] = 0.f;
-	p_ProjectionMatrix[9] = 0.f;
+	p_ProjectionMatrix[ 4] = 0.f;
+	p_ProjectionMatrix[ 5] = 2.f / p_ScreenHeight;
+	p_ProjectionMatrix[ 6] = 0.f;
+	p_ProjectionMatrix[ 7] = 0.f;
+
+	p_ProjectionMatrix[ 8] = 0.f;
+	p_ProjectionMatrix[ 9] = 0.f;
 	p_ProjectionMatrix[10] = 0.f;
 	p_ProjectionMatrix[11] = 0.f;
 
 	p_ProjectionMatrix[12] = -1.f;
-	p_ProjectionMatrix[13] = -1.f;
+	p_ProjectionMatrix[13] = yw;
 	p_ProjectionMatrix[14] = 0.f;
 	p_ProjectionMatrix[15] = 1.f;
 
