@@ -99,11 +99,6 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
-	K15_GUI_INVERT_Y_AXIS = 0x01
-} K15_GUIMatrixFlags;
-/*********************************************************************************/
-typedef enum 
-{
 	K15_GUI_CONTEXT_INSIDE_FRAME_FLAG = 0x01,
 	K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG = 0x02,
 	K15_GUI_CONTEXT_INSIDE_MENU_FLAG = 0x04
