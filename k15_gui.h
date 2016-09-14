@@ -296,6 +296,9 @@ typedef struct
 typedef struct
 {
 	K15_GUIRect glyphRect;
+
+	kg_s16 offsetX;
+	kg_s16 offsetY;
 	kg_u32 codepoint;
 	kg_s32 leftSideBearing;
 	kg_s32 advanceWidth;
@@ -308,9 +311,9 @@ typedef struct
 	float scaleFactor;
 	kg_u32 glyphRangeMask;
 	kg_s32 fontSize;
-	kg_s32 lineGap;
-	kg_s32 ascent;
-	kg_s32 descent;
+	kg_s16 lineGap;
+	kg_s16 ascent;
+	kg_s16 descent;
 	kg_u32 numGlyphs;
 } K15_GUIFont;
 /*********************************************************************************/
@@ -1062,15 +1065,18 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 
 		while (codepoint < endCodepoint)
 		{
-			K15_GUIRect glyphRect = {0};
+			K15_GUIRect glyphRect = { 0 };
 			
 			kg_s32 glyphIndex = stbtt_FindGlyphIndex(&fontInfo, codepoint);
 
 			kg_s32 glyphBitmapWidth = 0;
 			kg_s32 glyphBitmapHeight = 0;
 
+			int glyphXOff = 0;
+			int glyphYOff = 0;
+
 			kg_byte* glyphBitmap = stbtt_GetGlyphBitmap(&fontInfo, scaleFac, scaleFac, glyphIndex, 
-				&glyphBitmapWidth, &glyphBitmapHeight, 0, 0);
+				&glyphBitmapWidth, &glyphBitmapHeight, &glyphXOff, &glyphYOff);
 
 			if (glyphBitmap && 
 				glyphBitmapHeight > 0 && 
@@ -1102,6 +1108,8 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				K15_GUIFontGlyph* fontGlyph = guiFontGlyphs + (codepoint - startCodePoint);
 				fontGlyph->codepoint = codepoint;
 				fontGlyph->glyphRect = glyphRect;
+				fontGlyph->offsetX = glyphXOff;
+				fontGlyph->offsetY = glyphYOff;
 				fontGlyph->leftSideBearing = (kg_s32)((float)leftSideBearing * scaleFac);
 				fontGlyph->advanceWidth = (kg_s32)((float)advanceWidth * scaleFac);				
 				glyphArrayIndex += 1;
@@ -1711,7 +1719,7 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	defaultStyle.menuStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
 	defaultStyle.menuStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuStyle.verticalPixelPadding = 2;
-	defaultStyle.menuStyle.horizontalPixelPadding = 8;
+	defaultStyle.menuStyle.horizontalPixelPadding = 10;
 
 	//Menu Item Style
 	defaultStyle.menuItemStyle.font = defaultFont;
@@ -2165,12 +2173,158 @@ kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawInformation* p
 	result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v1, v2, v3);
 	result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v2, v4, v3);
 	
-	p_DrawInformation->vertexBufferDataSizeInBytes = vertexBufferSizeInBytes;
-	p_DrawInformation->indexBufferDataSizeInBytes = indexBufferSizeInBytes;
+	if (result == K15_GUI_RESULT_SUCCESS)
+	{
+		p_DrawInformation->vertexBufferDataSizeInBytes = vertexBufferSizeInBytes;
+		p_DrawInformation->indexBufferDataSizeInBytes = indexBufferSizeInBytes;
+		result = K15_GUIAddDrawCommandData(p_DrawInformation, 0, numTriangles, vertexOffset, indexOffset);
+	}
+
+	return result;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p_DrawInformation,
+	K15_GUIRect* p_ClipRect, K15_GUIFont* p_Font, const char* p_Text, 
+	kg_u32 p_TextLength, kg_color32 p_TextColor)
+{
+	kg_byte* vertexBuffer = p_DrawInformation->vertexBufferData;
+	kg_byte* indexBuffer = p_DrawInformation->indexBufferData;
+	kg_u32 vertexBufferSizeInBytes = p_DrawInformation->vertexBufferDataSizeInBytes;
+	kg_u32 indexBufferSizeInBytes = p_DrawInformation->indexBufferDataSizeInBytes;
+	kg_u32 vertexOffset = K15_GUICalculateVertexCount(vertexBufferSizeInBytes);
+	kg_u32 indexOffset = K15_GUICalculateIndexCount(indexBufferSizeInBytes);
+	kg_u32 numTriangles = 0;
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	kg_s16 ascent = p_Font->ascent;
+	kg_s16 descent = p_Font->descent;
+	kg_s16 lineGap = p_Font->lineGap;
+	kg_s16 verticalOffset = ascent - descent + lineGap;
+
+	kg_s16 posLeft = p_ClipRect->left;
+	kg_s16 posTop = p_ClipRect->top;
+
+	float fontTextureWidth = (float)p_Font->texture.pixelWidth;
+	float fontTextureHeight = (float)p_Font->texture.pixelHeight;
+
+	kg_s32 leftSideBearing = 0;
+	kg_s32 advanceWidth = 0;
+
+	float clipRectLeft = (float)p_ClipRect->left;
+	float clipRectRight = (float)p_ClipRect->right;
+	float clipRectBottom = (float)p_ClipRect->bottom;
+	float clipRectTop = (float)p_ClipRect->top;
+
+	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
+	K15_GUIFontGlyph* glyph = 0;
+
+	K15_GUIGlyphRange glyphRanges[10];
+	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+
+	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
+	K15_GUIGlyphRange* glyphRange = 0;
+
+	for (kg_u32 textIndex = 0; textIndex < p_TextLength; ++textIndex)
+	{
+		kg_u32 codePoint = p_Text[textIndex];
+		kg_u32 glyphIndex = -1;
+
+		if (codePoint == '\n')
+		{
+			posTop += verticalOffset;
+			posLeft = p_ClipRect->left;
+		}
+
+		for (kg_u32 glyphRangeIndex = 0;
+			glyphRangeIndex < numGlyphRanges;
+			++glyphRangeIndex)
+		{
+			glyphRange = glyphRanges + glyphRangeIndex;
+
+			if (codePoint >= glyphRange->from ||
+				codePoint <= glyphRange->to)
+			{
+				glyphIndex = codePoint - glyphRange->from;
+				break;
+			}
+		}
+
+		if (glyphIndex > glyphRange->to)
+			continue;
+
+		glyph = glyphs + glyphIndex;
+		advanceWidth = glyph->advanceWidth;
+
+		if (glyph)
+		{
+			leftSideBearing = glyph->leftSideBearing;
+
+			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
+			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
+			
+			kg_s16 offsetX = glyph->offsetX;
+			kg_s16 offsetY = glyph->offsetY;
+			
+			float textPosLeft = (float)(posLeft + leftSideBearing);
+			float textPosTop = (float)(posTop + ascent + offsetY);
+			float textPosRight = (float)(textPosLeft + glyphWidth);
+			float textPosBottom = (float)(textPosTop + glyphHeight);
+
+			float leftExtend = (p_ClipRect->left - textPosLeft);
+			float topExtend = (p_ClipRect->top - textPosTop);
+			float rightExtend = (textPosRight - p_ClipRect->right);
+			float bottomExtend = (textPosBottom - p_ClipRect->bottom);
+
+			if (leftExtend > glyphWidth || rightExtend > glyphWidth ||
+				topExtend > glyphHeight || bottomExtend > glyphHeight)
+			{
+				continue;
+			}
+
+			// vertex indices
+			kg_u32 v1, v2, v3, v4;
+
+			float glyphTexcoordU1 = (float)glyph->glyphRect.left / fontTextureWidth;
+			float glyphTexcoordU2 = (float)glyph->glyphRect.right / fontTextureWidth;
+			float glyphTexcoordV1 = (float)glyph->glyphRect.top / fontTextureHeight;
+			float glyphTexcoordV2 = (float)glyph->glyphRect.bottom / fontTextureHeight;
+
+			// or'ing together for nicer code.
+			// works as K15_GUIAddVertex and GUIAddTriangleIndices only return
+			// K15_GUI_RESULT_SUCCESS(0) or K15_GUI_RESULT_OUT_OF_MEMORY(non 0)
+			result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+				&v1, textPosLeft, textPosTop, glyphTexcoordU1, glyphTexcoordV1, p_TextColor);
+
+			result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+				&v2, textPosLeft, textPosBottom, glyphTexcoordU1, glyphTexcoordV2, p_TextColor);
+
+			result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+				&v3, textPosRight, textPosTop, glyphTexcoordU2, glyphTexcoordV1, p_TextColor);
+
+			result |= K15_GUIAddVertex(vertexBuffer, &vertexBufferSizeInBytes,
+				&v4, textPosRight, textPosBottom, glyphTexcoordU2, glyphTexcoordV2, p_TextColor);
+
+			result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v1, v2, v3);
+			result |= K15_GUIAddTriangleIndices(indexBuffer, &indexBufferSizeInBytes, v2, v4, v3);
+
+			if (result != K15_GUI_RESULT_SUCCESS)
+				break;
+
+			posLeft += advanceWidth;
+
+			numTriangles += 2;
+		}
+	}
 
 	if (result == K15_GUI_RESULT_SUCCESS)
-		result = K15_GUIAddDrawCommandData(p_DrawInformation, 0, numTriangles, vertexOffset, indexOffset);
+	{
+		p_DrawInformation->vertexBufferDataSizeInBytes = vertexBufferSizeInBytes;
+		p_DrawInformation->indexBufferDataSizeInBytes = indexBufferSizeInBytes;
 
+		result = K15_GUIAddDrawCommandData(p_DrawInformation, p_Font->texture.userData,
+			numTriangles, vertexOffset, indexOffset);
+	}
+		
 	return result;
 }
 /*********************************************************************************/
@@ -2386,12 +2540,26 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 
 	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
 	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
+	
+	kg_u16 horizontalPadding = p_Style->horizontalPixelPadding;
+	kg_u16 verticalPadding = p_Style->verticalPixelPadding;
 
 	K15_GUIFont* font = p_Style->font;
 	K15_GUIRect textRect = { 0 };
 	K15_GUIButtonData buttonData = { 0 };
 
 	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
+
+	if (K15_GUIValidateClipRect(&textRect) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
+	{
+		//add padding
+		textRect.left -= horizontalPadding;
+		textRect.right += horizontalPadding;
+
+		textRect.top -= verticalPadding;
+		textRect.bottom += verticalPadding;
+	}
+	
 
 	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
 	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
@@ -2622,15 +2790,16 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 	if (!p_Text || !p_Font || !p_OutRect)
 		return;
 
-	kg_s32 ascent = p_Font->ascent;
-	kg_s32 descent = p_Font->descent;
-	kg_s32 lineGap = p_Font->lineGap;
-	kg_u32 verticalOffset = (kg_u32)(ascent - descent + lineGap);
+	kg_s16 ascent = p_Font->ascent;
+	kg_s16 descent = p_Font->descent;
+	kg_s16 lineGap = p_Font->lineGap;
+	kg_u16 verticalOffset = (ascent - descent + lineGap);
 
 	kg_s16 posX = 0;
 	kg_s16 posY = 0;
-	kg_s32 leftSideBearing = 0;
-	kg_s32 advanceWidth = 0;
+	kg_s16 offsetY = 0;
+	kg_s16 leftSideBearing = 0;
+	kg_s16 advanceWidth = 0;
 	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
 	K15_GUIFontGlyph* glyph = 0;
 
@@ -2672,16 +2841,25 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 			continue;
 
 		glyph = glyphs + glyphIndex;
-		advanceWidth = glyph->advanceWidth;
 
 		if (glyph)
 		{
-			kg_s16 height = glyph->glyphRect.bottom - glyph->glyphRect.top;
-			posX += advanceWidth;
-			posY = K15_GUI_MAX(posY, height);
+			advanceWidth = glyph->advanceWidth;
+			leftSideBearing = glyph->leftSideBearing;
+			offsetY = glyph->offsetY;
+			
+			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
+			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
 
-			p_OutRect->right = K15_GUI_MAX(p_OutRect->right, posX);
-			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, posY);
+			kg_s16 textPosLeft = posX + leftSideBearing;
+			kg_s16 textPosTop = posY + ascent + offsetY;
+			kg_s16 textPosRight = textPosLeft + glyphWidth;
+			kg_s16 textPosBottom = textPosTop + glyphHeight;
+
+			p_OutRect->right = K15_GUI_MAX(p_OutRect->right, textPosRight);
+			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, textPosBottom);
+
+			posX += advanceWidth;
 		}
 	}
 }
@@ -2721,6 +2899,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	K15_GUIButtonData buttonData = { 0 };
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 	kg_u32 offset = 0;
+	kg_u32 textLength = 0;
 
 	K15_GUIButtonStyle* buttonStyle = 0;
 	kg_color32 upperBackgroundColor = 0;
@@ -2744,6 +2923,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 		goto functionEnd;
 
 	buttonStyle = buttonData.buttonStyle;
+	textLength = buttonData.textLength;
 	upperBackgroundColor = buttonStyle->upperBackgroundColor;
 	lowerBackgroundColor = buttonStyle->lowerBackgroundColor;
 	textColor = buttonStyle->textColor;
@@ -2754,8 +2934,10 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 
 	if (result == K15_GUI_RESULT_SUCCESS)
 	{
-		//result = K15_GUIAddColoredTextDrawCommand(p_DrawInformation, )
+		result = K15_GUIAddColoredTextDrawCommand(p_DrawInformation, &p_Element->clipRect,
+			font, text, textLength, textColor);
 	}
+
 functionEnd:
 	return result;
 }

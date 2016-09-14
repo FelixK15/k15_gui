@@ -33,6 +33,7 @@ GLint ibo = 0;
 GLint vao = 0;
 GLint shaderProgram = 0;
 GLint projUniform = 0;
+GLint textureUniform = 0;
 K15_GUIContext guiContext;
 
 uint32 convertColor(kg_color32 p_Color)
@@ -120,7 +121,7 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 	K15_GUIBeginFrame(p_GUIContext);
 	K15_GUIBeginToolBar(p_GUIContext, "toolbar_1");
 
-	if (K15_GUIBeginMenu(p_GUIContext, "File0123456789.,!", "file_1"))
+	if (K15_GUIBeginMenu(p_GUIContext, "File", "file"))
 	{
 		if (K15_GUIMenuItem(p_GUIContext, "Open...", "open_1"))
 		{
@@ -144,8 +145,8 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 		K15_GUIEndMenu(p_GUIContext);
 	}
 
-	K15_GUIBeginMenu(p_GUIContext, "File", "file_2");
-	K15_GUIBeginMenu(p_GUIContext, "File", "file_3");
+	K15_GUIBeginMenu(p_GUIContext, "Edit", "edit");
+	K15_GUIBeginMenu(p_GUIContext, "View", "view");
 
 	K15_GUIEndToolBar(p_GUIContext);
 
@@ -182,10 +183,7 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 
 	if (drawInformation->numDrawCommands > 0)
 	{
-		K15_OPENGL_CALL(kglBufferData(GL_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW));
 		K15_OPENGL_CALL(kglBufferData(GL_ARRAY_BUFFER, drawInformation->vertexBufferDataSizeInBytes, drawInformation->vertexBufferData, GL_DYNAMIC_DRAW));
-
-		K15_OPENGL_CALL(kglBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW));
 		K15_OPENGL_CALL(kglBufferData(GL_ELEMENT_ARRAY_BUFFER, drawInformation->indexBufferDataSizeInBytes, drawInformation->indexBufferData, GL_DYNAMIC_DRAW));
 
 		for (uint32 drawCommandIndex = 0;
@@ -406,7 +404,7 @@ void setup(HWND p_HWND)
 		"uniform sampler2D textureSampler;\n"
 		"void main()\n"
 		"{\n"
-		"	gl_FragColor = fragColor;\n"
+		"	gl_FragColor = texture(textureSampler, fragUV);\n"
 		"}";
 
 	kg_u32 vertexShaderSourceLength = strlen(vertexShaderSource);
@@ -476,10 +474,6 @@ void setup(HWND p_HWND)
 		}
 	}
 
-	K15_OPENGL_CALL(kglEnableVertexAttribArray(0));
-	K15_OPENGL_CALL(kglEnableVertexAttribArray(1));
-	K15_OPENGL_CALL(kglEnableVertexAttribArray(2));
-
 	GLint posAttribLocation = 0;
 	GLint uvAttribLocation = 0;
 	GLint colorAttribLocation = 0;
@@ -489,13 +483,33 @@ void setup(HWND p_HWND)
  	K15_OPENGL_CALL(uvAttribLocation = kglGetAttribLocation(shaderProgram, "uv"));
  	K15_OPENGL_CALL(colorAttribLocation = kglGetAttribLocation(shaderProgram, "color"));
 
-	K15_OPENGL_CALL(kglVertexAttribPointer(posAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, 0));
-	K15_OPENGL_CALL(kglVertexAttribPointer(uvAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 2)));
-	K15_OPENGL_CALL(kglVertexAttribPointer(colorAttribLocation, 4, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 4)));
+	int attribArrayIndex = 0;
+
+	if (posAttribLocation >= 0)
+	{
+		K15_OPENGL_CALL(kglEnableVertexAttribArray(attribArrayIndex++));
+		K15_OPENGL_CALL(kglVertexAttribPointer(posAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, 0));
+	}
+
+	if (uvAttribLocation >= 0)
+	{
+		K15_OPENGL_CALL(kglEnableVertexAttribArray(attribArrayIndex++));
+		K15_OPENGL_CALL(kglVertexAttribPointer(uvAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 2)));
+	}
+
+	if (colorAttribLocation >= 0)
+	{
+		K15_OPENGL_CALL(kglEnableVertexAttribArray(attribArrayIndex));
+		K15_OPENGL_CALL(kglVertexAttribPointer(colorAttribLocation, 4, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 4)));
+	}
 
 	K15_OPENGL_CALL(projUniform = kglGetUniformLocation(shaderProgram, "projMatrix"));
+	K15_OPENGL_CALL(textureUniform = kglGetUniformLocation(shaderProgram, "textureSampler"));
 
 	K15_OPENGL_CALL(kglUseProgram(shaderProgram));
+
+	K15_OPENGL_CALL(kglUniform1i(textureUniform, 0));
+	K15_OPENGL_CALL(kglActiveTexture(GL_TEXTURE0));
 
 	K15_WindowResized(p_HWND, 0, 0, (LPARAM)(screenWidth | (screenHeight << 16)));
 }

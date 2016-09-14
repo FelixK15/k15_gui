@@ -60,9 +60,6 @@ void APIENTRY K15_DebugProcARB(GLenum source, GLenum type, GLuint id, GLenum sev
 	const char* sourceName = 0;
 	const char* typeName = 0;
 
-	if (source == GL_DEBUG_SOURCE_API)
-		return;
-
 	switch (source)
 	{
 	case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
@@ -96,6 +93,9 @@ void APIENTRY K15_DebugProcARB(GLenum source, GLenum type, GLuint id, GLenum sev
 	case GL_DEBUG_TYPE_PERFORMANCE:
 		typeName = "Performance";
 	}
+
+	if (typeName == 0 || sourceName == 0)
+		return;
 
 	char buffer[512];
 	sprintf(buffer, "OpenGL %s Warning. Category: %s Message: %s\n", typeName, sourceName, (const char*)message);
