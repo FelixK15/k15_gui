@@ -79,7 +79,13 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
-	K15_GUI_ELEMENT_CLIPPED = 0x001
+	K15_GUI_ELEMENT_CLIPPED = 0x001,
+	K15_GUI_ELEMENT_ACTIVE = 0x002,
+	K15_GUI_ELEMENT_HOVERED = 0x004,
+	K15_GUI_ELEMENT_MOUSE_DOWN = 0x008,
+	K15_GUI_ELEMENT_CLICKED = 0x010,
+	K15_GUI_ELEMENT_DISABLED = 0x020,
+	K15_GUI_ELEMENT_IGNORE_LAYOUTING = 0x040
 } K15_GUIElementFlags;
 /*********************************************************************************/
 typedef enum 
@@ -199,7 +205,8 @@ typedef enum
 typedef enum
 {
 	K15_GUI_FLOW_LAYOUT_FLAG = 0x01,
-	K15_GUI_STRETCH_LAYOUT_FLAG = 0x02
+	K15_GUI_STRETCH_LAYOUT_FLAG = 0x02,
+	K15_GUI_IGNORE_LAYOUTING_LAYOUT_FLAG = 0x04
 } K15_GUILayoutFlags;
 /*********************************************************************************/
 typedef enum 
@@ -1711,7 +1718,7 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	//Toolbar Style
 	defaultStyle.toolBarStyle.upperBackgroundColor = K15_GUI_COLOR_RGB(16, 16, 16);
 	defaultStyle.toolBarStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
-	defaultStyle.toolBarStyle.pixelHeight = 22;
+	defaultStyle.toolBarStyle.pixelHeight = 28;
 
 	//Menu Style
 	defaultStyle.menuStyle.font = defaultFont;
@@ -1727,12 +1734,13 @@ kg_internal K15_GUIContextStyle K15_GUICreateDefaultStyle(K15_GUIResourceDatabas
 	defaultStyle.menuItemStyle.lowerBackgroundColor = K15_GUI_COLOR_RGB(128, 128, 128);
 	defaultStyle.menuItemStyle.textColor = K15_GUI_COLOR_BLACK;
 	defaultStyle.menuItemStyle.verticalPixelPadding = 2;
-	defaultStyle.menuItemStyle.horizontalPixelPadding = 8;
+	defaultStyle.menuItemStyle.horizontalPixelPadding = 10;
 
 	return defaultStyle;
 }
 /*********************************************************************************/
-kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, kg_u32 p_NumMouseEvents,
+kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, kg_u32* p_HoveredElementID, 
+	kg_u32* p_ClickedElementID, kg_u32* p_MouseDownElementID, kg_u32 p_NumMouseEvents, 
 	K15_GUIMouseInput* p_MouseEvents, kg_u16* p_MousePosInOutX, kg_u16* p_MousePosInOutY)
 {
 	if (p_NumMouseEvents == 0)
@@ -1747,6 +1755,8 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 
 	K15_GUIElement* element = 0;
 
+	kg_b8 leftMouseDown = K15_GUI_FALSE;
+
 	for (kg_u32 eventIndex = 0;
 		eventIndex < p_NumMouseEvents;
 		++eventIndex)
@@ -1759,14 +1769,40 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 			mousePosY = mouseInputEvent->data.mousePos.y;
 		}
 
-		while (memoryPosition < memorySize)
+		if (mouseInputEvent->type == K15_GUI_MOUSE_BUTTON_PRESSED &&
+			mouseInputEvent->data.mouseButton == K15_GUI_MOUSE_BUTTON_LEFT)
 		{
-			element = (K15_GUIElement*)(memory + memoryPosition);
-			memoryPosition += element->offsetNextElementInBytes;
+			leftMouseDown = K15_GUI_TRUE;
 		}
 
-		memoryPosition = 0;
+		if (mouseInputEvent->type == K15_GUI_MOUSE_BUTTON_RELEASED &&
+			mouseInputEvent->data.mouseButton == K15_GUI_MOUSE_BUTTON_LEFT)
+		{
+			leftMouseDown = K15_GUI_FALSE;
+		}
 	}
+
+	if (leftMouseDown)
+		*p_MouseDownElementID = 0;
+
+	kg_u32 elementIdentifier = 0;
+	while (memoryPosition < memorySize)
+	{
+		element = (K15_GUIElement*)(memory + memoryPosition);
+		elementIdentifier = element->identifierHash;
+
+		if (leftMouseDown && elementIdentifier == *p_HoveredElementID)
+			*p_MouseDownElementID = elementIdentifier;
+
+		if (!leftMouseDown && elementIdentifier == *p_MouseDownElementID)
+		{
+			*p_ClickedElementID = elementIdentifier;
+			*p_MouseDownElementID = 0;
+		}
+
+		memoryPosition += element->offsetNextElementInBytes;
+	}
+
 
 	*p_MousePosInOutX = mousePosX;
 	*p_MousePosInOutY = mousePosY;
@@ -1819,8 +1855,10 @@ kg_internal void K15_GUIHandleEvents(K15_GUIContext* p_GUIContext, K15_GUIContex
 
 	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
 
-	K15_GUIHandleMouseInput(contextMemory, p_GUIContextEvents->numBufferedMouseInputs,
-		p_GUIContextEvents->bufferedMouseInput, &mousePosX, &mousePosY);
+	K15_GUIHandleMouseInput(contextMemory, &p_GUIContext->hoveredElementIdHash, 
+		&p_GUIContext->clickedElementIdHash, &p_GUIContext->mouseDownElementIdHash, 
+		p_GUIContextEvents->numBufferedMouseInputs, p_GUIContextEvents->bufferedMouseInput, 
+		&mousePosX, &mousePosY);
 
 	K15_GUIHandleKeyboardInput(contextMemory, p_GUIContextEvents->numBufferedKeyboardInputs,
 		p_GUIContextEvents->bufferedKeyboardInput);
@@ -2025,7 +2063,18 @@ kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUICont
 	element->identifierHash = identiferHash;
 	element->clipRect = *p_ClipRect;
 	element->layoutIndex = p_GUIContext->layoutIndex;
+	element->flags = 0;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
+
+	//set flags
+	if (p_GUIContext->activatedElementIdHash == identiferHash)
+		element->flags |= K15_GUI_ELEMENT_ACTIVE;
+	if (p_GUIContext->hoveredElementIdHash == identiferHash)
+		element->flags |= K15_GUI_ELEMENT_HOVERED;
+	if (p_GUIContext->clickedElementIdHash == identiferHash)
+		element->flags |= K15_GUI_ELEMENT_CLICKED;
+	if (p_GUIContext->mouseDownElementIdHash == identiferHash)
+		element->flags |= K15_GUI_ELEMENT_MOUSE_DOWN;
 
 	guiElementHashTable[identiferHash] = element;
 
@@ -2184,8 +2233,8 @@ kg_internal kg_result K15_GUIAddColoredRectDrawCommand(K15_GUIDrawInformation* p
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p_DrawInformation,
-	K15_GUIRect* p_ClipRect, K15_GUIFont* p_Font, const char* p_Text, 
-	kg_u32 p_TextLength, kg_color32 p_TextColor)
+	K15_GUIRect* p_ClipRect, K15_GUIFont* p_Font, const char* p_Text,  kg_u32 p_TextLength, 
+	kg_color32 p_TextColor, kg_u16 p_VerticalPadding, kg_u16 p_HorizontalPadding)
 {
 	kg_byte* vertexBuffer = p_DrawInformation->vertexBufferData;
 	kg_byte* indexBuffer = p_DrawInformation->indexBufferData;
@@ -2201,19 +2250,14 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 	kg_s16 lineGap = p_Font->lineGap;
 	kg_s16 verticalOffset = ascent - descent + lineGap;
 
-	kg_s16 posLeft = p_ClipRect->left;
-	kg_s16 posTop = p_ClipRect->top;
+	kg_s16 posLeft = p_ClipRect->left + p_HorizontalPadding;
+	kg_s16 posTop = p_ClipRect->top + p_VerticalPadding;
 
 	float fontTextureWidth = (float)p_Font->texture.pixelWidth;
 	float fontTextureHeight = (float)p_Font->texture.pixelHeight;
 
 	kg_s32 leftSideBearing = 0;
 	kg_s32 advanceWidth = 0;
-
-	float clipRectLeft = (float)p_ClipRect->left;
-	float clipRectRight = (float)p_ClipRect->right;
-	float clipRectBottom = (float)p_ClipRect->bottom;
-	float clipRectTop = (float)p_ClipRect->top;
 
 	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
 	K15_GUIFontGlyph* glyph = 0;
@@ -2232,7 +2276,7 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 		if (codePoint == '\n')
 		{
 			posTop += verticalOffset;
-			posLeft = p_ClipRect->left;
+			posLeft = p_ClipRect->left + p_HorizontalPadding;
 		}
 
 		for (kg_u32 glyphRangeIndex = 0;
@@ -2270,10 +2314,10 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 			float textPosRight = (float)(textPosLeft + glyphWidth);
 			float textPosBottom = (float)(textPosTop + glyphHeight);
 
-			float leftExtend = (p_ClipRect->left - textPosLeft);
-			float topExtend = (p_ClipRect->top - textPosTop);
-			float rightExtend = (textPosRight - p_ClipRect->right);
-			float bottomExtend = (textPosBottom - p_ClipRect->bottom);
+			float leftExtend = (p_ClipRect->left + p_HorizontalPadding - textPosLeft);
+			float topExtend = (p_ClipRect->top + p_VerticalPadding - textPosTop);
+			float rightExtend = (textPosRight - p_HorizontalPadding - p_ClipRect->right);
+			float bottomExtend = (textPosBottom - p_VerticalPadding - p_ClipRect->bottom);
 
 			if (leftExtend > glyphWidth || rightExtend > glyphWidth ||
 				topExtend > glyphHeight || bottomExtend > glyphHeight)
@@ -2356,6 +2400,9 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	layoutData.type = p_LayoutType;
 	layoutData.flagMask = p_LayoutFlags;
 
+	if ((p_LayoutFlags & K15_GUI_IGNORE_LAYOUTING_LAYOUT_FLAG) > 0)
+		layoutElement->flags |= K15_GUI_ELEMENT_IGNORE_LAYOUTING;
+
 	result = K15_GUIAddElementData(contextMemory, layoutElement, &layoutData, sizeof(layoutData));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2375,6 +2422,55 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	p_GUIContext->layoutIndex = layoutIndex;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext, const char* p_MenuText,
+	const char* p_Identifier, K15_GUIElement** p_GUIElement, K15_GUIButtonStyle* p_Style)
+{
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
+	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
+
+	kg_u16 horizontalPadding = p_Style->horizontalPixelPadding;
+	kg_u16 verticalPadding = p_Style->verticalPixelPadding;
+
+	K15_GUIFont* font = p_Style->font;
+	K15_GUIRect textRect = { 0 };
+	K15_GUIButtonData buttonData = { 0 };
+
+	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
+
+	if (K15_GUIValidateClipRect(&textRect) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
+	{
+		//add padding
+		textRect.left += horizontalPadding;
+		textRect.right += horizontalPadding * 2;
+
+		textRect.top += verticalPadding;
+		textRect.bottom += verticalPadding * 2;
+	}
+
+	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
+	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+
+	K15_GUIElement* guiElement = 0;
+	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE,
+		p_Identifier, &textRect);
+
+	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
+		goto functionEnd;
+
+	buttonData.textLength = textLength;
+	buttonData.buttonStyle = p_Style;
+
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, &buttonData, sizeof(buttonData));
+	result = K15_GUIAddElementData(guiContextMemory, guiElement, (void*)p_MenuText, textLength);
+
+	*p_GUIElement = guiElement;
+
+functionEnd:
+	return result;
 }
 /*********************************************************************************/
 kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
@@ -2533,54 +2629,6 @@ kg_def kg_b8 K15_GUIBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuTe
 	return K15_GUICustomBeginMenu(p_GUIContext, p_MenuText, p_Identifier, &p_GUIContext->style.menuStyle);
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext, const char* p_MenuText,
-	const char* p_Identifier, K15_GUIButtonStyle* p_Style)
-{
-	kg_result result = K15_GUI_RESULT_SUCCESS;
-
-	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
-	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
-	
-	kg_u16 horizontalPadding = p_Style->horizontalPixelPadding;
-	kg_u16 verticalPadding = p_Style->verticalPixelPadding;
-
-	K15_GUIFont* font = p_Style->font;
-	K15_GUIRect textRect = { 0 };
-	K15_GUIButtonData buttonData = { 0 };
-
-	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
-
-	if (K15_GUIValidateClipRect(&textRect) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
-	{
-		//add padding
-		textRect.left -= horizontalPadding;
-		textRect.right += horizontalPadding;
-
-		textRect.top -= verticalPadding;
-		textRect.bottom += verticalPadding;
-	}
-	
-
-	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
-	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
-
-	K15_GUIElement* guiElement = 0;
-	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE, 
-		p_Identifier, &textRect);
-
-	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
-		goto functionEnd;
-
-	buttonData.textLength = textLength;
-	buttonData.buttonStyle = p_Style;
-
-	result = K15_GUIAddElementData(guiContextMemory, guiElement, &buttonData, sizeof(buttonData));
-	result = K15_GUIAddElementData(guiContextMemory, guiElement, (void*)p_MenuText, textLength);
-
-functionEnd:
-	return result;
-}
-/*********************************************************************************/
 kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_MenuText, const char* p_Identifier,
 	K15_GUIButtonStyle* p_Style)
 {
@@ -2594,11 +2642,27 @@ kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_
 
 	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_MENU_FLAG;
 
-	result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_MenuText, p_Identifier, p_Style);
+	K15_GUIElement* buttonElement = 0;
+	result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_MenuText, p_Identifier, &buttonElement, p_Style);
+
+	kg_b8 active = buttonElement->flags & K15_GUI_ELEMENT_MOUSE_DOWN ||
+		buttonElement->flags & K15_GUI_ELEMENT_ACTIVE;
+
+	if (active)
+	{
+		K15_GUIRect layoutRect = { 0 };
+		layoutRect.left = buttonElement->clipRect.left;
+		layoutRect.right = layoutRect.left + 200;
+		layoutRect.top = buttonElement->clipRect.bottom;
+		layoutRect.bottom = layoutRect.top + 200;
+
+		K15_GUIPushLayout(p_GUIContext, K15_GUI_VERTICAL_LAYOUT_TYPE, 
+			K15_GUI_FLOW_LAYOUT_FLAG | K15_GUI_IGNORE_LAYOUTING_LAYOUT_FLAG, &layoutRect);
+	}
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
-	return 0;
+	return active;
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier)
@@ -2609,7 +2673,11 @@ kg_def kg_b8 K15_GUIMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemTex
 kg_def kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_ItemText, const char* p_Identifier,
 	K15_GUIButtonStyle* p_Style)
 {
-	return 0;
+	K15_GUIElement* buttonElement = 0;
+	kg_result result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_ItemText, p_Identifier, &buttonElement, p_Style);
+
+	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
+	return buttonElement->flags & K15_GUI_ELEMENT_ACTIVE;;
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier)
@@ -2678,6 +2746,7 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
 	K15_GUIElement* guiElement = 0;
 
+	kg_u32 elementFlags = 0;
 	kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
 	kg_u32 numElements = p_LayoutData->numElements;
 	kg_u32 layoutFlagMask = p_LayoutData->flagMask;
@@ -2699,7 +2768,11 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 			++elementIndex)
 		{
 			guiElement = layoutedElements[elementIndex];
-			
+			elementFlags = guiElement->flags;
+
+			if ((elementFlags & K15_GUI_ELEMENT_IGNORE_LAYOUTING) > 0)
+				continue;
+
 			elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
 			elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
 
@@ -2719,7 +2792,7 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 			}
 
 			guiElement->clipRect.top = posY;
-			guiElement->clipRect.bottom = posY + layoutHeight;
+			guiElement->clipRect.bottom = posY + elementHeight;
 			guiElement->clipRect.left = posX;
 			guiElement->clipRect.right = posRight;
 
@@ -2750,23 +2823,72 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 	K15_GUIElement** layoutedElements = p_LayoutData->layoutedElements;
 	K15_GUIElement* guiElement = 0;
 
+	kg_u32 elementFlags = 0;
+	kg_u32 layoutFlagMask = p_LayoutData->flagMask;
 	kg_u32 layoutHeight = p_LayoutClipRect->bottom - p_LayoutClipRect->top;
+	kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
 	kg_u32 numElements = p_LayoutData->numElements;
-
-	//Thinks about size hints per element
-	kg_u32 heightPerElement = layoutHeight / numElements;
+	kg_u32 posX = p_LayoutClipRect->left;
 	kg_u32 posY = p_LayoutClipRect->top;
+	kg_u32 elementWidth = 0;
+	kg_u32 elementHeight = 0;
 
-	for (kg_u32 elementIndex = 0;
-		elementIndex < numElements;
-		++elementIndex)
+	if ((layoutFlagMask & K15_GUI_FLOW_LAYOUT_FLAG) > 0)
 	{
-		guiElement = layoutedElements[elementIndex];
+		kg_u32 posBottom = 0;
 
-		guiElement->clipRect.top = posY;
-		guiElement->clipRect.bottom = posY + heightPerElement;
+		for (kg_u32 elementIndex = 0;
+			elementIndex < numElements;
+			++elementIndex)
+		{
+			guiElement = layoutedElements[elementIndex];
+			elementFlags = guiElement->flags;
 
-		posY += heightPerElement;
+			if ((elementFlags & K15_GUI_ELEMENT_IGNORE_LAYOUTING) > 0)
+				continue;
+
+			elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
+			elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
+
+			posBottom = posY + elementHeight;
+
+// 			if (posTop > layoutHeight)
+// 			{
+// 				posY = p_LayoutClipRect->left;
+// 
+// 				if (posX + elementWidth <= layoutWidth)
+// 				{
+// 					posY += layoutHeight;
+// 					p_LayoutClipRect->bottom = K15_GUI_MAX(posY + layoutHeight, p_LayoutClipRect->bottom);
+// 				}
+// 
+// 				posRight = posX + elementWidth;
+// 			}
+
+			guiElement->clipRect.top = posY;
+			guiElement->clipRect.bottom = posY + posBottom;
+			guiElement->clipRect.left = posX;
+			guiElement->clipRect.right = posX + elementWidth;
+
+			posY += elementHeight;
+		}
+	}
+	else
+	{
+		//Thinks about size hints per element
+		kg_u32 heightPerElement = layoutHeight / numElements;
+
+		for (kg_u32 elementIndex = 0;
+			elementIndex < numElements;
+			++elementIndex)
+		{
+			guiElement = layoutedElements[elementIndex];
+
+			guiElement->clipRect.top = posY;
+			guiElement->clipRect.bottom = posY + heightPerElement;
+
+			posY += heightPerElement;
+		}
 	}
 }
 /*********************************************************************************/
@@ -2900,7 +3022,8 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 	kg_u32 offset = 0;
 	kg_u32 textLength = 0;
-
+	kg_u16 verticalPadding = 0;
+	kg_u16 horizontalPadding = 0;
 	K15_GUIButtonStyle* buttonStyle = 0;
 	kg_color32 upperBackgroundColor = 0;
 	kg_color32 lowerBackgroundColor = 0;
@@ -2928,6 +3051,8 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	lowerBackgroundColor = buttonStyle->lowerBackgroundColor;
 	textColor = buttonStyle->textColor;
 	font = buttonStyle->font;
+	horizontalPadding = buttonStyle->horizontalPixelPadding;
+	verticalPadding = buttonStyle->verticalPixelPadding;
 
 	result = K15_GUIAddColoredRectDrawCommand(p_DrawInformation, &p_Element->clipRect, 
 		upperBackgroundColor, lowerBackgroundColor);
@@ -2935,7 +3060,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	if (result == K15_GUI_RESULT_SUCCESS)
 	{
 		result = K15_GUIAddColoredTextDrawCommand(p_DrawInformation, &p_Element->clipRect,
-			font, text, textLength, textColor);
+			font, text, textLength, textColor, verticalPadding, horizontalPadding);
 	}
 
 functionEnd:
@@ -2972,6 +3097,7 @@ kg_internal kg_result K15_GUICreateDrawCommands(K15_GUIContextMemory* p_ContextM
 kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 {
 	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
+	K15_GUIContextEvents* contextEvents = &p_GUIContext->events;
 	kg_u32 memorySize = contextMemory->memoryBufferSizeInBytes;
 
 	kg_byte* memory = contextMemory->memoryBuffer;
@@ -2998,10 +3124,21 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 		else
 			clipRectUsedForClipping = contextClipRect;
 
-		if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
+		//if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
 		{
 			if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
 				K15_GUIArrangeLayoutElements(guiElement);
+
+			if ((guiElement->flags & K15_GUI_ELEMENT_DISABLED) == 0)
+			{
+				if (guiElementClipRect->left < contextEvents->mousePosX &&
+					guiElementClipRect->right > contextEvents->mousePosX &&
+					guiElementClipRect->top < contextEvents->mousePosY &&
+					guiElementClipRect->bottom > contextEvents->mousePosY)
+				{
+					p_GUIContext->hoveredElementIdHash = guiElement->identifierHash;
+				}
+			}
 
 			result = K15_GUICreateDrawCommands(contextMemory, guiElement, drawInformation);
 
@@ -3041,13 +3178,24 @@ kg_def kg_result K15_GUIFinishFrame(K15_GUIContext* p_GUIContext)
 		return K15_GUI_RESULT_FRAME_NOT_STARTED;
 	}
 
+	K15_GUIHandleEvents(p_GUIContext, &p_GUIContext->events);
+
+	p_GUIContext->hoveredElementIdHash = 0;
+	
 	K15_GUIClipElements(p_GUIContext);
 
-	K15_GUIHandleEvents(p_GUIContext, &p_GUIContext->events);
+	if (p_GUIContext->clickedElementIdHash)
+	{
+		p_GUIContext->activatedElementIdHash = p_GUIContext->clickedElementIdHash;
+		p_GUIContext->clickedElementIdHash = 0;
+		p_GUIContext->mouseDownElementIdHash = 0;
+	}
+
 	p_GUIContext->flagMask &= ~K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
 	p_GUIContext->memory.memoryBufferSizeInBytes = 0;
 	p_GUIContext->numLayouts = 0;
 	p_GUIContext->numMenus = 0;
+
 	K15_GUI_MEMSET(p_GUIContext->elementHashTable, 0, sizeof(p_GUIContext->elementHashTable));
 
 	return K15_GUI_RESULT_SUCCESS;

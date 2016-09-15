@@ -141,6 +141,8 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 			{
 				showWindow = !showWindow;
 			}
+
+			K15_GUIEndMenu(p_GUIContext);
 		}
 		K15_GUIEndMenu(p_GUIContext);
 	}
