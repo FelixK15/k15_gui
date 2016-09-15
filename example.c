@@ -12,6 +12,7 @@
 
 #pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
 
 #define K15_FALSE 0
 #define K15_TRUE 1

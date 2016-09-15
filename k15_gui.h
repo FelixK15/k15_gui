@@ -2785,7 +2785,7 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 				if (posX + elementWidth <= layoutWidth)
 				{
 					posY += layoutHeight;
-					p_LayoutClipRect->bottom = K15_GUI_MAX(posY + layoutHeight, p_LayoutClipRect->bottom);
+					p_LayoutClipRect->bottom = K15_GUI_MAX(posY + layoutHeight, (kg_u32)p_LayoutClipRect->bottom);
 				}
 
 				posRight = posX + elementWidth;
