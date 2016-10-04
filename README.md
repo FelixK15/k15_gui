@@ -43,6 +43,12 @@ To do this you have to add #define K15_GUI_IMPLEMENTATION before the #include.
 * Designed to work well with 3D APIs.
 * Easy to multithread.
 
+# Example
+An example build with OpenGL rendering can be found in the example.c file. You can build this file using the build.bat file on windows with an installed visual studio version.
+
+This example is mostly used internally by me to test new features and to have a minimal working application. 
+The example will be extended over time. Just don't expect a fully fledged application.
+
 # Customization
 You can customize some aspects of the library by adding some #define statements before you include the library.
 
