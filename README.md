@@ -54,18 +54,18 @@ You can customize some aspects of the library by adding some #define statements 
 
 **Note: You have to add these #define statements in the same header where you place the implementation using #define K15_GUI_IMPLEMENTATION.**
 
-* K15_GUI_STRIP_STANDARD_IO - define this to strip the support for file IO (using stdio.h). 
+* **K15_GUI_STRIP_STANDARD_IO** - define this to strip the support for file IO (using stdio.h). 
 Defining this will effectively restrict you to load resources like fonts and image only from memory.
-* K15_GUI_MALLOC - resolves to malloc (must be defined together with K15_GUI_FREE)
-* K15_GUI_FREE - resolves to free (must be defined together with K15_GUI_MALLOC)
-* K15_GUI_MEMCPY - resolves to memcpy
-* K15_GUI_MEMSET - resolves to memset
-* K15_GUI_STRLEN - resolves to strlen
-* K15_GUI_STRCMP - resolves to strcmp
-* K15_GUI_MIN - resolves to a simple macro that filter the element with the lowest value from a set of two elements.
-* K15_GUI_MIN - resolves to a simple macro that filter the element with the highest value from a set of two elements.
-* K15_GUI_SWAP - resolves to a simple macro that swaps the content of two elements using XOR.
-* K15_GUI_CLAMP - resolves to a simple macro that clamps the value of a given element to min|max.
+* **K15_GUI_MALLOC** - resolves to malloc (must be defined together with K15_GUI_FREE)
+* **K15_GUI_FREE** - resolves to free (must be defined together with K15_GUI_MALLOC)
+* **K15_GUI_MEMCPY** - resolves to memcpy
+* **K15_GUI_MEMSET** - resolves to memset
+* **K15_GUI_STRLEN** - resolves to strlen
+* **K15_GUI_STRCMP** - resolves to strcmp
+* **K15_GUI_MIN** - resolves to a simple macro that filter the element with the lowest value from a set of two elements.
+* **K15_GUI_MIN** - resolves to a simple macro that filter the element with the highest value from a set of two elements.
+* **K15_GUI_SWAP** - resolves to a simple macro that swaps the content of two elements using XOR.
+* **K15_GUI_CLAMP** - resolves to a simple macro that clamps the value of a given element to min|max.
 
 Just #define your own functions if you don't want to use the standard library functions.
 ```c
