@@ -148,8 +148,25 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 		K15_GUIEndMenu(p_GUIContext);
 	}
 
-	K15_GUIBeginMenu(p_GUIContext, "Edit", "edit");
-	K15_GUIBeginMenu(p_GUIContext, "View", "view");
+	if (K15_GUIBeginMenu(p_GUIContext, "Edit", "edit"))
+	{
+		if (K15_GUIMenuItem(p_GUIContext, "Whales", "open_2"))
+		{
+			printf("Open pressed...\n");
+		}
+
+		K15_GUIEndMenu(p_GUIContext);
+	}
+
+	if (K15_GUIBeginMenu(p_GUIContext, "View", "view"))
+	{
+		if (K15_GUIMenuItem(p_GUIContext, "Cambridge", "open_3"))
+		{
+			printf("Open pressed...\n");
+		}
+
+		K15_GUIEndMenu(p_GUIContext);
+	}
 
 	K15_GUIEndToolBar(p_GUIContext);
 

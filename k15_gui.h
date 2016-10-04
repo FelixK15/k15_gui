@@ -7,6 +7,8 @@
 # define kg_def extern
 #endif //K15_GUI_STATIC
 
+#define K15_GUI_DEBUG_STORE_ELEMENT_IDENTIFIER
+
 #define K15_GUI_MAX_LAYOUTS 20
 #define K15_GUI_MAX_RESOURCE_NAME_LENGTH 64
 #define K15_GUI_MAX_ICONS_PER_ICON_SET 64
@@ -85,7 +87,8 @@ typedef enum
 	K15_GUI_ELEMENT_MOUSE_DOWN = 0x008,
 	K15_GUI_ELEMENT_CLICKED = 0x010,
 	K15_GUI_ELEMENT_DISABLED = 0x020,
-	K15_GUI_ELEMENT_IGNORE_LAYOUTING = 0x040
+	K15_GUI_ELEMENT_IGNORE_LAYOUTING = 0x040,
+	K15_GUI_ELEMENT_CAN_HAVE_CHILDREN = 0x080
 } K15_GUIElementFlags;
 /*********************************************************************************/
 typedef enum 
@@ -446,6 +449,10 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
+#if defined (K15_GUI_DEBUG_STORE_ELEMENT_IDENTIFIER)
+	const char* identifier;
+#endif //(K15_GUI_DEBUG_STORE_ELEMENT_IDENTIFIER)
+
 	K15_GUIRect clipRect;
 	K15_GUIElementType type;
 	kg_u32 identifierHash;
@@ -2009,7 +2016,7 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 	kg_result result = K15_GUIReserveMemoryChunk(guiContextMemory, (void**)&element, sizeof(K15_GUIElement));
 
 	element->type = p_ElementType;
-	element->identifierHash = (~0);
+	element->identifierHash = (~0); 
 	element->clipRect = *p_ClipRect;
 	element->layoutIndex = p_GUIContext->layoutIndex;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
@@ -2039,7 +2046,7 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 /*********************************************************************************/
 kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUIContext,
 	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, const char* p_Identifier,
-	K15_GUIRect* p_ClipRect)
+	K15_GUIRect* p_ClipRect, kg_u32 p_Flags)
 {
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
 		return K15_GUI_RESULT_FRAME_NOT_STARTED;
@@ -2059,13 +2066,17 @@ kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUICont
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
 
+#if defined (K15_GUI_DEBUG_STORE_ELEMENT_IDENTIFIER)
+	element->identifier = p_Identifier;
+#endif //K15_GUI_DEBUG_STORE_ELEMENT_IDENTIFIER
+
 	element->type = p_ElementType;
 	element->identifierHash = identiferHash;
 	element->clipRect = *p_ClipRect;
 	element->layoutIndex = p_GUIContext->layoutIndex;
-	element->flags = 0;
+	element->flags = p_Flags;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
-
+	
 	//set flags
 	if (p_GUIContext->activatedElementIdHash == identiferHash)
 		element->flags |= K15_GUI_ELEMENT_ACTIVE;
@@ -2424,8 +2435,8 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext, const char* p_MenuText,
-	const char* p_Identifier, K15_GUIElement** p_GUIElement, K15_GUIButtonStyle* p_Style)
+kg_internal kg_result K15_GUIDefaultButtonBehaviorWithFlags(K15_GUIContext* p_GUIContext, const char* p_MenuText,
+	const char* p_Identifier, K15_GUIElement** p_GUIElement, K15_GUIButtonStyle* p_Style, kg_u32 p_Flags)
 {
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
@@ -2456,7 +2467,7 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 
 	K15_GUIElement* guiElement = 0;
 	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE,
-		p_Identifier, &textRect);
+		p_Identifier, &textRect, p_Flags);
 
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
@@ -2471,6 +2482,12 @@ kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext,
 
 functionEnd:
 	return result;
+}
+/*********************************************************************************/
+kg_internal kg_result K15_GUIDefaultButtonBehavior(K15_GUIContext* p_GUIContext, const char* p_MenuText,
+	const char* p_Identifier, K15_GUIElement** p_GUIElement, K15_GUIButtonStyle* p_Style)
+{
+	return K15_GUIDefaultButtonBehaviorWithFlags(p_GUIContext, p_MenuText, p_Identifier, p_GUIElement, p_Style, 0);
 }
 /*********************************************************************************/
 kg_def kg_result K15_CreateGUIContext(K15_GUIContext* p_OutGUIContext, K15_GUIResourceDatabase* p_ContextResources,
@@ -2593,7 +2610,7 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 
 	K15_GUIElement* guiElement = 0;
 	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_TOOLBAR_ELEMENT_TYPE, 
-		p_Identifier, &clipRect);
+		p_Identifier, &clipRect, 0);
 
 	if (!guiElement || result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
@@ -2634,31 +2651,24 @@ kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_
 {
 	kg_result result;
 
-	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_MENU_FLAG) == 1)
+	if (p_GUIContext->numMenus == 0)
 	{
-		result = K15_GUI_RESULT_ELEMENT_NOT_FINISHED;
-		goto functionEnd;
+		if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_MENU_FLAG) == 1)
+		{
+			result = K15_GUI_RESULT_ELEMENT_NOT_FINISHED;
+			goto functionEnd;
+		}
+
+		p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_MENU_FLAG;
 	}
 
-	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_MENU_FLAG;
+	++p_GUIContext->numMenus;
 
 	K15_GUIElement* buttonElement = 0;
 	result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_MenuText, p_Identifier, &buttonElement, p_Style);
 
 	kg_b8 active = buttonElement->flags & K15_GUI_ELEMENT_MOUSE_DOWN ||
 		buttonElement->flags & K15_GUI_ELEMENT_ACTIVE;
-
-	if (active)
-	{
-		K15_GUIRect layoutRect = { 0 };
-		layoutRect.left = buttonElement->clipRect.left;
-		layoutRect.right = layoutRect.left + 200;
-		layoutRect.top = buttonElement->clipRect.bottom;
-		layoutRect.bottom = layoutRect.top + 200;
-
-		K15_GUIPushLayout(p_GUIContext, K15_GUI_VERTICAL_LAYOUT_TYPE, 
-			K15_GUI_FLOW_LAYOUT_FLAG | K15_GUI_IGNORE_LAYOUTING_LAYOUT_FLAG, &layoutRect);
-	}
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
@@ -2677,7 +2687,7 @@ kg_def kg_b8 K15_GUICustomMenuItem(K15_GUIContext* p_GUIContext, const char* p_I
 	kg_result result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_ItemText, p_Identifier, &buttonElement, p_Style);
 
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
-	return buttonElement->flags & K15_GUI_ELEMENT_ACTIVE;;
+	return buttonElement && (buttonElement->flags & K15_GUI_ELEMENT_ACTIVE);
 }
 /*********************************************************************************/
 kg_def kg_b8 K15_GUIButton(K15_GUIContext* p_GUIContext, const char* p_ButtonText, const char* p_Identifier)
