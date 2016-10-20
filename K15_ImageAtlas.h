@@ -6,7 +6,8 @@ K15 Image Atlas v 1.0
 	Felix Klinge (fklinge dot deck13 dot com)
 
 # Version history
-	1.0 | 6/17/2016		-	Intial release 
+	1.0 | 06/17/2016	-	Intial release 
+	1.1 | 10/20/2016	-	Made the source code C89 (so it can be used by C89 only C compiler)
 
 # What problem is this library trying to solve? (ELI5)
 	This library can be used to generate a single image that contains
