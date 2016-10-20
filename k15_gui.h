@@ -3017,7 +3017,6 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 	kg_s16 posY = 0;
 	kg_s16 offsetY = 0;
 	kg_s16 leftSideBearing = 0;
-	kg_s16 advanceWidth = 0;
 	K15_GUIFontGlyph* glyphs = 0;
 	K15_GUIFontGlyph* glyph = 0;
 	K15_GUIGlyphRange glyphRanges[10];
@@ -3071,6 +3070,7 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 
 		if (glyph)
 		{
+			kg_s32 advanceWidth = glyph->advanceWidth;
 			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
 			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
 
