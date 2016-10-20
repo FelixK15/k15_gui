@@ -822,10 +822,13 @@ kg_internal kg_result K15_GUIConvertSTBIResult(const char* p_ResultSTBI)
 /*********************************************************************************/
 kg_def kg_result K15_GUICreateResourceDatabase(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
+	kg_byte* resourceDatabaseMemory = 0;
+
 	if (!p_GUIResourceDatabase)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	kg_byte* resourceDatabaseMemory = (kg_byte*)K15_GUI_MALLOC(K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE);
+	resourceDatabaseMemory = 
+		(kg_byte*)K15_GUI_MALLOC(K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE);
 
 	if (!resourceDatabaseMemory)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
@@ -899,14 +902,15 @@ kg_internal kg_result K15_GUICreateResourceTableEntry(K15_GUIResourceDatabase* p
 {
 	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
 	kg_u32 sizeResourceMemoryInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
+	kg_u32 nameLength = 0;
+
+	K15_GUIResourceTableEntry* tableEntry = 0;
 
 	if (!K15_GUIFitsIntoResourceTableMemory(p_GUIResourceDatabase, sizeof(K15_GUIResourceTableEntry)))
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	kg_u32 nameLength = K15_GUI_MIN(K15_GUI_STRLEN(p_Name), K15_GUI_MAX_RESOURCE_NAME_LENGTH);
-
-	K15_GUIResourceTableEntry* tableEntry = 
-		(K15_GUIResourceTableEntry*)(resourceMemory + sizeResourceMemoryInBytes);
+	nameLength = K15_GUI_MIN(K15_GUI_STRLEN(p_Name), K15_GUI_MAX_RESOURCE_NAME_LENGTH);
+	tableEntry = (K15_GUIResourceTableEntry*)(resourceMemory + sizeResourceMemoryInBytes);
 
 	K15_GUI_MEMCPY(tableEntry->name, p_Name, nameLength);
 	tableEntry->name[nameLength] = 0;
@@ -972,13 +976,16 @@ kg_internal kg_result K15_GUIRemoveResourceTableEntryByName(K15_GUIResourceDatab
 kg_internal kg_result K15_GUIFindResourceTableEntry(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	void** p_OutMemory, const char* p_ResourceName, K15_GUIResourceType p_ResourceType)
 {
+	K15_GUIResourceTableEntry* tableEntry = 0;
+	kg_byte* resourceMemory = 0;
+	kg_u32 resourceMemorySizeInBytes = 0; 
+	kg_u32 resourceMemoryPosition = 0;
+
 	if (!p_GUIResourceDatabase || !p_OutMemory || !p_ResourceName)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	K15_GUIResourceTableEntry* tableEntry = 0;
-	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
-	kg_u32 resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
-	kg_u32 resourceMemoryPosition = 0;
+	resourceMemory = p_GUIResourceDatabase->resourceMemory;
+	resourceMemorySizeInBytes = p_GUIResourceDatabase->resourceMemorySizeInBytes;
 
 	while (resourceMemoryPosition < resourceMemorySizeInBytes)
 	{
@@ -1005,7 +1012,36 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	kg_s32 ascent = 0;
 	kg_s32 descent = 0;
 	kg_s32 lineGap = 0;
+	kg_u32 numGlyphs = 0;
+	kg_u32 glyphRangeArraySize = 0;
+	kg_u32 glyphIndex = 0;
+	kg_u32 glyphRangeIndex = 0;
+
+	kg_u32 startCodePoint = 0;
+	kg_u32 codepoint = 0;
+	kg_u32 endCodepoint = 0;
+	kg_u32 glyphArrayIndex = 0;
+	kg_u32 texturePixelDataSizeInBytes = 0;
+
+	int textureWidth = 0;
+	int textureHeight = 0;
+	unsigned char* texturePixelData = 0;
+
+	void* copyTexturePixelDataMemory = 0;
+
 	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	K15_ImageAtlas textureAtlas = {0};
+	kia_result taResult;
+	stbtt_fontinfo fontInfo = {0};
+	int resultSTBTT = 0;
+	float scaleFac = 0.f;
+
+	K15_GUIFont* guiFont = 0;
+	K15_GUIFontGlyph* guiFontGlyphs = 0;
+	K15_GUIGlyphRange glyphRanges[K15_GUI_MAX_GLYPH_RANGES] = { 0 };
+	K15_GUIGlyphRange* glyphRangesPtr = 0;
+	K15_GUIGlyphRange* glyphRange = 0;
 
 	if (K15_GUIFindResourceTableEntry(p_GUIResourceDatabase, 0, p_FontName,
 		K15_GUI_FONT_RESOURCE_TYPE) == K15_GUI_RESULT_SUCCESS)
@@ -1013,13 +1049,12 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		return K15_GUI_RESULT_NAME_ALREADY_IN_USE;
 	}
 
-	stbtt_fontinfo fontInfo = {0};
-	int resultSTBTT = stbtt_InitFont(&fontInfo, p_TrueTypeFontBuffer, 0);
+	resultSTBTT = stbtt_InitFont(&fontInfo, p_TrueTypeFontBuffer, 0);
 
 	if (resultSTBTT == 0)
 		return K15_GUI_RESULT_FONT_DATA_ERROR;
 
-	float scaleFac = stbtt_ScaleForPixelHeight(&fontInfo, (float)p_FontSize);
+	scaleFac = stbtt_ScaleForPixelHeight(&fontInfo, (float)p_FontSize);
 
 	stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
@@ -1027,10 +1062,8 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	descent = (kg_s32)((float)descent * scaleFac);
 	lineGap = (kg_s32)((float)lineGap * scaleFac);
 
-	kg_u32 numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
-
-	K15_ImageAtlas textureAtlas = {0};
-	kia_result taResult = K15_IACreateAtlas(&textureAtlas, numGlyphs);
+	numGlyphs = K15_GUIGetGlyphCountForGlyphRanges(p_GlyphRangeFlags);
+	taResult = K15_IACreateAtlas(&textureAtlas, numGlyphs);
 
 	if (taResult != K15_IA_RESULT_SUCCESS)
 	{
@@ -1044,38 +1077,33 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIFont* guiFont = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&guiFont, sizeof(K15_GUIFont));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIFontGlyph* guiFontGlyphs = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&guiFontGlyphs, sizeof(K15_GUIFontGlyph) * numGlyphs);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIGlyphRange glyphRanges[K15_GUI_MAX_GLYPH_RANGES] = { 0 };
-	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+	glyphRangesPtr = glyphRanges;
 
-	kg_u32 glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRangesPtr, 
+	glyphRangeArraySize = K15_GUIGetGlyphRanges(p_GlyphRangeFlags, &glyphRangesPtr, 
 		K15_GUI_MAX_GLYPH_RANGES);
 
-	kg_u32 glyphIndex = 0;
-
-	for (kg_u32 glyphRangeIndex = 0;
+	for (glyphRangeIndex = 0;
 		glyphRangeIndex < glyphRangeArraySize;
 		++glyphRangeIndex)
 	{
-		K15_GUIGlyphRange* glyphRange = glyphRanges + glyphRangeIndex;
+		glyphRange = glyphRanges + glyphRangeIndex;
 
-		kg_u32 startCodePoint = glyphRange->from;
-		kg_u32 codepoint = glyphRange->from;
-		kg_u32 endCodepoint = glyphRange->to;
-		kg_u32 glyphArrayIndex = 0;
+		startCodePoint = glyphRange->from;
+		codepoint = glyphRange->from;
+		endCodepoint = glyphRange->to;
+		glyphArrayIndex = 0;
 
 		while (codepoint < endCodepoint)
 		{
@@ -1099,12 +1127,15 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 				int glyphBitmapPosX = 0;
 				int glyphBitmapPosY = 0;
 
+				kg_s32 leftSideBearing = 0;
+				kg_s32 advanceWidth = 0;
+
+				K15_GUIFontGlyph* fontGlyph = 0;
+
 				taResult = K15_IAAddImageToAtlas(&textureAtlas, KIA_PIXEL_FORMAT_R8, 
 					glyphBitmap, glyphBitmapWidth, glyphBitmapHeight, 
 					&glyphBitmapPosX, &glyphBitmapPosY);
 
-				kg_s32 leftSideBearing = 0;
-				kg_s32 advanceWidth = 0;
 
 				stbtt_GetGlyphHMetrics(&fontInfo, glyphIndex, &advanceWidth, &leftSideBearing);
 
@@ -1119,7 +1150,7 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 					goto functionEnd;
 				}
 
-				K15_GUIFontGlyph* fontGlyph = guiFontGlyphs + (codepoint - startCodePoint);
+				fontGlyph = guiFontGlyphs + (codepoint - startCodePoint);
 				fontGlyph->codepoint = codepoint;
 				fontGlyph->glyphRect = glyphRect;
 				fontGlyph->offsetX = glyphXOff;
@@ -1133,14 +1164,9 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		}
 	}
 
-	int textureWidth = 0;
-	int textureHeight = 0;
-	unsigned char* texturePixelData = 0;
-
-	kg_u32 texturePixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&textureAtlas, 
+	texturePixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&textureAtlas, 
 		KIA_PIXEL_FORMAT_R8);
 
-	void* copyTexturePixelDataMemory = 0;
 
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry, &copyTexturePixelDataMemory,
 		texturePixelDataSizeInBytes);
@@ -1221,15 +1247,17 @@ kg_def kg_result K15_GUICreateIconResourceFromFile(K15_GUIResourceDatabase* p_GU
 kg_def kg_result K15_GUICreateIconResourceFromMemory(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	kg_byte* p_IconFileDataBuffer, kg_u32 p_IconFileDataBufferSizeInBytes, const char* p_IconName)
 {
-	if (!p_GUIResourceDatabase || !p_IconFileDataBuffer || !p_IconName)
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-
 	kg_s32 pixelWidth = 0;
 	kg_s32 pixelHeight = 0;
 	kg_s32 numColorComponents = 0;
 	kg_result result = K15_GUI_RESULT_SUCCESS;
+	kg_byte* pixelDataMemory = 0;
 
-	kg_byte* pixelDataMemory = stbi_load_from_memory((const kg_byte*)p_IconFileDataBuffer, 
+	if (!p_GUIResourceDatabase || !p_IconFileDataBuffer || !p_IconName)
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+
+
+	pixelDataMemory = stbi_load_from_memory((const kg_byte*)p_IconFileDataBuffer, 
 		p_IconFileDataBufferSizeInBytes, &pixelWidth, &pixelHeight, &numColorComponents, 0);
 
 	if (!pixelDataMemory)
@@ -1248,6 +1276,11 @@ kg_def kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase*
 	kg_byte* p_IconPixelDataBuffer, kg_u32 p_PixelWidth, kg_u32 p_PixelHeight, 
 	kg_u8 p_ColorComponents, const char* p_IconName)
 {
+	K15_GUIResourceTableEntry* tableEntry = 0;
+	K15_GUIIcon* guiIcon = 0;
+
+	kg_result result;
+
 	if (!p_GUIResourceDatabase || !p_IconPixelDataBuffer || p_PixelHeight == 0 ||
 		p_PixelWidth == 0 || p_ColorComponents == 0 || p_ColorComponents > 4 ||
 		!p_IconName)
@@ -1255,15 +1288,12 @@ kg_def kg_result K15_GUICreateIconResourceFromMemoryRaw(K15_GUIResourceDatabase*
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	K15_GUIResourceTableEntry* tableEntry = 0;
-
-	kg_result result = K15_GUICreateResourceTableEntry(p_GUIResourceDatabase, &tableEntry,
+	result = K15_GUICreateResourceTableEntry(p_GUIResourceDatabase, &tableEntry,
 		p_IconName, K15_GUI_ICON_RESOURCE_TYPE);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIIcon* guiIcon = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&guiIcon, sizeof(K15_GUIIcon));
 
@@ -1322,19 +1352,23 @@ kg_def kg_result K15_GUIGetIconSetResource(K15_GUIResourceDatabase* p_GUIResourc
 /*********************************************************************************/
 kg_def int K15_GUIConvertToFontGlyphIndex(K15_GUIFont* p_Font, unsigned char p_Character)
 {
-	if (!p_Font)
-		return 0;
-
 	K15_GUIGlyphRange glyphRanges[K15_GUI_MAX_GLYPH_RANGES];
 	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
 	kg_u32 glyphRangeMask = p_Font->glyphRangeMask;
 	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(glyphRangeMask, &glyphRangesPtr, K15_GUI_MAX_GLYPH_RANGES);
 	kg_u32 glyphIndex = 0;
 	kg_u32 numGlyphs = 0;
+	kg_u32 rangeIndex = 0;
 
 	K15_GUIGlyphRange* glyphRangeContainingCharacter = 0;
 
-	for (kg_u32 rangeIndex = 0;
+	if (!p_Font)
+		return 0;
+
+	glyphRangeMask = p_Font->glyphRangeMask;
+	numGlyphRanges = K15_GUIGetGlyphRanges(glyphRangeMask, &glyphRangesPtr, K15_GUI_MAX_GLYPH_RANGES);
+
+	for (rangeIndex = 0;
 		rangeIndex < numGlyphRanges;
 		++rangeIndex)
 	{
@@ -1369,7 +1403,8 @@ kg_internal void K15_GUIConvertPixel(kg_byte* p_SourcePixel, K15_GUIPixelFormat 
 {
 	if (p_SourcePixelFormat == K15_GUI_PIXEL_FORMAT_R8)
 	{
-		for (kg_s32 colorIndex = 0;
+		kg_s32 colorIndex = 0;
+		for (colorIndex = 0;
 			colorIndex < p_DestinationPixelFormat;
 			++colorIndex)
 		{
@@ -1447,8 +1482,9 @@ kg_internal void K15_GUIConvertPixelStride(kg_byte* p_SourcePixelStride, K15_GUI
 {
 	kg_u32 sourcePixelOffset = 0;
 	kg_u32 destinationPixelOffset = 0;
+	kg_u32 pixelIndex = 0;
 
-	for (kg_u32 pixelIndex = 0;
+	for (pixelIndex = 0;
 		pixelIndex < p_StrideWidth;
 		++pixelIndex)
 	{
@@ -1471,10 +1507,10 @@ kg_internal kg_result K15_GUICopyTextureIntoPixelBuffer(K15_GUITexture* p_Textur
 	kg_u32 textureHeight = p_Texture->pixelHeight;
 	kg_u32 textureOffsetInBytes = 0;
 	kg_u32 pixelBufferOffsetInBytes = 0;
-
+	kg_u32 textureRow = 0;
 	if (texturePixelFormat != p_PixelFormat)
 	{
-		for (kg_u32 textureRow = 0;
+		for (textureRow = 0;
 			textureRow < textureHeight;
 			++textureRow)
 		{
@@ -1563,17 +1599,33 @@ kg_def kg_result K15_GUICopyIconSetTextureIntoPixelBuffer(K15_GUIIconSet* p_Icon
 kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResourceDatabase,
 	K15_GUIIconSet** p_OutIconSet, const char* p_IconSetName)
 {
+	kia_result resultTA;
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+	K15_ImageAtlas iconTextureAtlas = {0};
+	K15_GUIResourceTableEntry* tableEntry = 0;
+	K15_GUIResourceTableEntry* currentTableEntry = 0;
+	K15_GUIIconSet* iconSet = 0;
+	kg_byte* resourceMemory = 0;
+	kg_u32 resourceMemorySize = 0;
+	
+	int atlasPixelHeight = 0;
+	int atlasPixelWidth = 0;
+	kg_u32 atlasPixelDataSizeInBytes = 0;
+	
+	kg_byte* copyAtlasPixelData = 0;
+
+	kg_u32 numIcons = 0;
+	kg_u32 resourceMemoryPosition = 0;
+	kg_u32 iconIndex = 0;
 	if (!p_GUIResourceDatabase || !p_OutIconSet || !p_IconSetName)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	kg_u32 numIcons = K15_GUIGetNumIconResources(p_GUIResourceDatabase);
+	numIcons = K15_GUIGetNumIconResources(p_GUIResourceDatabase);
 
 	if (numIcons == 0)
 		return K15_GUI_RESULT_NO_ICONS;
 
-	K15_ImageAtlas iconTextureAtlas = {0};
-	kg_result result = K15_GUI_RESULT_SUCCESS;
-	kia_result resultTA = K15_IACreateAtlas(&iconTextureAtlas, numIcons);
+	resultTA = K15_IACreateAtlas(&iconTextureAtlas, numIcons);
 
 	if (resultTA != K15_IA_RESULT_SUCCESS)
 	{
@@ -1581,15 +1633,11 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 		goto functionEnd;
 	}
 
-	K15_GUIResourceTableEntry* tableEntry = 0;
-
 	result = K15_GUICreateResourceTableEntry(p_GUIResourceDatabase, &tableEntry,
 		p_IconSetName, K15_GUI_ICONSET_RESOURCE_TYPE);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
-
-	K15_GUIIconSet* iconSet = 0;
 
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&iconSet, sizeof(K15_GUIIconSet));
@@ -1597,11 +1645,10 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 	if (result != K15_GUI_RESULT_SUCCESS)
 		goto functionEnd;
 
-	K15_GUIResourceTableEntry* currentTableEntry = 0;
-	kg_byte* resourceMemory = p_GUIResourceDatabase->resourceMemory;
-	kg_u32 resourceMemorySize = p_GUIResourceDatabase->resourceMemorySizeInBytes;
-	kg_u32 resourceMemoryPosition = 0;
-	kg_u32 iconIndex = 0;
+	resourceMemory = p_GUIResourceDatabase->resourceMemory;
+	resourceMemorySize = p_GUIResourceDatabase->resourceMemorySizeInBytes;
+	resourceMemoryPosition = 0;
+	iconIndex = 0;
 
 	while (resourceMemoryPosition < resourceMemorySize)
 	{
@@ -1612,8 +1659,10 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 
 		if (currentTableEntry->type == K15_GUI_ICON_RESOURCE_TYPE)
 		{
-			K15_GUIIcon* icon =
-				(K15_GUIIcon*)(resourceMemory + resourceMemoryPosition + sizeof(K15_GUIResourceTableEntry));
+			K15_GUIIconMarker* iconMarker = 0;
+
+			K15_GUIIcon* icon = (K15_GUIIcon*)(resourceMemory + resourceMemoryPosition + 
+				sizeof(K15_GUIResourceTableEntry));
 			
 			kg_byte* pixelData = icon->pixelData;
 			kg_u32 pixelHeight = icon->pixelHeight;
@@ -1632,7 +1681,7 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 				goto functionEnd;
 			}
 
-			K15_GUIIconMarker* iconMarker = iconSet->iconMarker + iconIndex;
+			iconMarker = iconSet->iconMarker + iconIndex;
 			iconMarker->atlasClipRect.left = iconAtlasPosX;
 			iconMarker->atlasClipRect.top = iconAtlasPosY;
 			iconMarker->atlasClipRect.right = iconAtlasPosX + pixelWidth;
@@ -1654,12 +1703,12 @@ kg_def kg_result K15_GUIBakeIconResources(K15_GUIResourceDatabase* p_GUIResource
 
 	iconSet->numIconMarker = iconIndex;
 	
-	int atlasPixelHeight = 0;
-	int atlasPixelWidth = 0;
-	kg_u32 atlasPixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&iconTextureAtlas, 
+	atlasPixelHeight = 0;
+	atlasPixelWidth = 0;
+	atlasPixelDataSizeInBytes = K15_IACalculateAtlasPixelDataSizeInBytes(&iconTextureAtlas, 
 		KIA_PIXEL_FORMAT_R8G8B8A8);
 	
-	kg_byte* copyAtlasPixelData = 0;
+	copyAtlasPixelData = 0;
 	result = K15_GUIGetResourceTableEntryMemory(p_GUIResourceDatabase, tableEntry,
 		(void**)&copyAtlasPixelData, atlasPixelDataSizeInBytes);
 
@@ -1750,12 +1799,11 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 	kg_u32* p_ClickedElementID, kg_u32* p_MouseDownElementID, kg_u32 p_NumMouseEvents, 
 	K15_GUIMouseInput* p_MouseEvents, kg_u16* p_MousePosInOutX, kg_u16* p_MousePosInOutY)
 {
-	if (p_NumMouseEvents == 0)
-		return;
+	kg_u32 memorySize = 0;
+	kg_byte* memory = 0;
 
-	kg_u32 memorySize = p_ContextMemory->memoryBufferSizeInBytes;
-	kg_byte* memory = p_ContextMemory->memoryBuffer;
-
+	kg_u32 elementIdentifier = 0;
+	kg_u32 eventIndex = 0;
 	kg_u32 memoryPosition = 0;
 	kg_u16 mousePosX = *p_MousePosInOutX;
 	kg_u16 mousePosY = *p_MousePosInOutY;
@@ -1764,7 +1812,13 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 
 	kg_b8 leftMouseDown = K15_GUI_FALSE;
 
-	for (kg_u32 eventIndex = 0;
+	if (p_NumMouseEvents == 0)
+		return;
+
+	memorySize = p_ContextMemory->memoryBufferSizeInBytes;
+	memory = p_ContextMemory->memoryBuffer;
+
+	for (eventIndex = 0;
 		eventIndex < p_NumMouseEvents;
 		++eventIndex)
 	{
@@ -1792,7 +1846,6 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 	if (leftMouseDown)
 		*p_MouseDownElementID = 0;
 
-	kg_u32 elementIdentifier = 0;
 	while (memoryPosition < memorySize)
 	{
 		element = (K15_GUIElement*)(memory + memoryPosition);
@@ -1818,15 +1871,16 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContextMemory* p_ContextMemory, kg_u32 p_NumKeyboardEvents,
 	K15_GUIKeyboardInput* p_KeyboardEvents)
 {
+	kg_u32 memorySize = 0;
+	kg_u32 memoryPosition = 0;
+	K15_GUIElement* element = 0;
+	kg_byte* memory = 0;
+
 	if (p_NumKeyboardEvents == 0)
 		return;
 
-	kg_u32 memorySize = p_ContextMemory->memoryBufferSizeInBytes;
-	kg_byte* memory = p_ContextMemory->memoryBuffer;
-
-	kg_u32 memoryPosition = 0;
-
-	K15_GUIElement* element = 0;
+	memorySize = p_ContextMemory->memoryBufferSizeInBytes;
+	memory = p_ContextMemory->memoryBuffer;
 
 	while (memoryPosition < memorySize)
 	{
@@ -1838,14 +1892,17 @@ kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContextMemory* p_ContextMemor
 kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, kg_u32 p_NumSystemEvents, 
 	K15_GUISystemEvent* p_SystemEvents)
 {
+	kg_u32 eventIndex = 0;
+	K15_GUISystemEvent* event = 0;
+
 	if (p_NumSystemEvents == 0)
 		return;
 
-	for (kg_u32 eventIndex = 0;
+	for (eventIndex = 0;
 		eventIndex < p_NumSystemEvents;
 		++eventIndex)
 	{ 
-		K15_GUISystemEvent* event = p_SystemEvents + eventIndex;
+		event = p_SystemEvents + eventIndex;
 
 		if (event->type == K15_GUI_WINDOW_RESIZED)
 		{
@@ -1963,8 +2020,8 @@ kg_internal kg_result K15_GUIGetElementData(K15_GUIContextMemory* p_GUIContextMe
 kg_internal kg_u32 K15_GUICreateHash(const char* p_String, kg_u32 p_StringLength)
 {
 	kg_u32 hash = 0;
-
-	for (kg_u32 i = 0; i < p_StringLength; i++)
+	kg_u32 i = 0;
+	for (i = 0; i < p_StringLength; i++)
 		hash = 33 * hash + 720 + p_String[i];
 
 	return hash;
@@ -1982,21 +2039,26 @@ kg_internal kg_result K15_GUIPerformClipping(K15_GUIRect* p_ClipRectToClip, K15_
 /*********************************************************************************/
 kg_internal K15_GUIRect K15_GUIGetTopMostClipRect(K15_GUIContext* p_GUIContext)
 {
+	kg_u32 layoutIndex = 0;
+	K15_GUIElement* layoutElement = 0;
+
 	if (p_GUIContext->numLayouts == 0)
 		return p_GUIContext->clipRect;
 
-	kg_u32 layoutIndex = p_GUIContext->numLayouts - 1;
-	K15_GUIElement* layoutElement = p_GUIContext->layoutTable[layoutIndex];
+	layoutIndex = p_GUIContext->numLayouts - 1;
+	layoutElement = p_GUIContext->layoutTable[layoutIndex];
 
 	return layoutElement->clipRect;
 }
 /*********************************************************************************/
 kg_internal K15_GUIElement* K15_GUIGetTopLayoutElement(K15_GUIContext* p_GUIContext)
 {
+	kg_u32 layoutIndex = 0;
+
 	if (!p_GUIContext)
 		return 0;
 
-	kg_u32 layoutIndex = p_GUIContext->numLayouts;
+	layoutIndex = p_GUIContext->numLayouts;
 
 	if (layoutIndex == 0)
 		return 0;
@@ -2007,13 +2069,17 @@ kg_internal K15_GUIElement* K15_GUIGetTopLayoutElement(K15_GUIContext* p_GUICont
 kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUIContext,
 	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, K15_GUIRect* p_ClipRect)
 {
+	K15_GUIElement* topLayout = 0;
+	K15_GUIElement* element = 0;
+	K15_GUIContextMemory* guiContextMemory = 0;
+	kg_result result;
+
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
 		return K15_GUI_RESULT_FRAME_NOT_STARTED;
 
-	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+	guiContextMemory = &p_GUIContext->memory;
 
-	K15_GUIElement* element = 0;
-	kg_result result = K15_GUIReserveMemoryChunk(guiContextMemory, (void**)&element, sizeof(K15_GUIElement));
+	result = K15_GUIReserveMemoryChunk(guiContextMemory, (void**)&element, sizeof(K15_GUIElement));
 
 	element->type = p_ElementType;
 	element->identifierHash = (~0); 
@@ -2021,11 +2087,13 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 	element->layoutIndex = p_GUIContext->layoutIndex;
 	element->offsetNextElementInBytes = sizeof(K15_GUIElement);
 
-	K15_GUIElement* topLayout = K15_GUIGetTopLayoutElement(p_GUIContext);
+	topLayout = K15_GUIGetTopLayoutElement(p_GUIContext);
 
 	if (topLayout)
 	{
 		K15_GUILayoutData* layoutData = 0;
+		kg_u32 elementIndex = 0;
+
 		result = K15_GUIGetElementDataRaw(guiContextMemory, topLayout, (void**)&layoutData, 0);
 
 		if (result != K15_GUI_RESULT_SUCCESS)
@@ -2034,7 +2102,7 @@ kg_internal kg_result K15_GUIRegisterUnidentifiedElement(K15_GUIContext* p_GUICo
 		if (layoutData->numElements == K15_GUI_MAX_ELEMENT_PTR_PER_LAYOUT)
 			return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-		kg_u32 elementIndex = layoutData->numElements++;
+		elementIndex = layoutData->numElements++;
 		layoutData->layoutedElements[elementIndex] = element;
 	}
 
@@ -2048,20 +2116,26 @@ kg_internal kg_result K15_GUIRegisterIdentifiedElement(K15_GUIContext* p_GUICont
 	K15_GUIElement** p_GUIElementPtr, K15_GUIElementType p_ElementType, const char* p_Identifier,
 	K15_GUIRect* p_ClipRect, kg_u32 p_Flags)
 {
+	K15_GUIElement** guiElementHashTable = 0;
+	K15_GUIElement* element = 0;
+
+	kg_u32 identifierLength = 0;
+	kg_u32 identiferHash = 0;
+	kg_result result;
+
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
 		return K15_GUI_RESULT_FRAME_NOT_STARTED;
 
-	K15_GUIElement** guiElementHashTable = p_GUIContext->elementHashTable;
+	guiElementHashTable = p_GUIContext->elementHashTable;
 
-	kg_u32 identifierLength = (kg_u32)K15_GUI_STRLEN(p_Identifier);
-	kg_u32 identiferHash = K15_GUICreateHash(p_Identifier, identifierLength);
+	identifierLength = (kg_u32)K15_GUI_STRLEN(p_Identifier);
+	identiferHash = K15_GUICreateHash(p_Identifier, identifierLength);
 	identiferHash %= K15_GUI_ELEMENT_HASH_TABLE_SIZE;
 
 	if (guiElementHashTable[identiferHash])
 		return K15_GUI_RESULT_HASH_CONFLICT;
 
-	K15_GUIElement* element = 0;
-	kg_result result = K15_GUIRegisterUnidentifiedElement(p_GUIContext, &element, p_ElementType, p_ClipRect);
+	result = K15_GUIRegisterUnidentifiedElement(p_GUIContext, &element, p_ElementType, p_ClipRect);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
@@ -2122,13 +2196,14 @@ kg_internal kg_result K15_GUIAddVertex(kg_byte* p_VertexBuffer, kg_u32* p_InOutV
 	float p_PositionX, float p_PositionY, float p_TexCoordU, float p_TexCoordV, kg_color32 p_Color)
 {
 	kg_u32 vertexBufferSizeInBytes = *p_InOutVertexBufferSizeInBytes;
+	kg_u32 vertexIndex = 0;
+	float red = 0.f, green = 0.f, blue = 0.f, alpha = 0.f;
 
 	if (vertexBufferSizeInBytes + K15_GUI_VERTEX_SIZE_IN_BYTES > K15_GUI_DRAW_VERTEX_BUFFER_SIZE)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	kg_u32 vertexIndex = K15_GUICalculateVertexCount(vertexBufferSizeInBytes);
+	vertexIndex = K15_GUICalculateVertexCount(vertexBufferSizeInBytes);
 
-	float red = 0.f, green = 0.f, blue = 0.f, alpha = 0.f;
 	K15_GUIUnpackColor32(p_Color, &red, &green, &blue, &alpha);
 
 	K15_GUI_MEMCPY(p_VertexBuffer + vertexBufferSizeInBytes + 0, &p_PositionX, sizeof(float));
@@ -2279,18 +2354,22 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
 	K15_GUIGlyphRange* glyphRange = 0;
 
-	for (kg_u32 textIndex = 0; textIndex < p_TextLength; ++textIndex)
+	kg_u32 textIndex = 0;
+	
+	for (textIndex = 0; 
+		textIndex < p_TextLength; 
+		++textIndex)
 	{
 		kg_u32 codePoint = p_Text[textIndex];
-		kg_u32 glyphIndex = -1;
-
+		kg_u32 glyphIndex = (~0);
+		kg_u32 glyphRangeIndex = 0;
 		if (codePoint == '\n')
 		{
 			posTop += verticalOffset;
 			posLeft = p_ClipRect->left + p_HorizontalPadding;
 		}
 
-		for (kg_u32 glyphRangeIndex = 0;
+		for (glyphRangeIndex = 0;
 			glyphRangeIndex < numGlyphRanges;
 			++glyphRangeIndex)
 		{
@@ -2312,15 +2391,13 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 
 		if (glyph)
 		{
-			leftSideBearing = glyph->leftSideBearing;
-
 			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
 			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
 			
 			kg_s16 offsetX = glyph->offsetX;
 			kg_s16 offsetY = glyph->offsetY;
 			
-			float textPosLeft = (float)(posLeft + leftSideBearing);
+			float textPosLeft = (float)(posLeft + glyph->leftSideBearing);
 			float textPosTop = (float)(posTop + ascent + offsetY);
 			float textPosRight = (float)(textPosLeft + glyphWidth);
 			float textPosBottom = (float)(textPosTop + glyphHeight);
@@ -2330,19 +2407,19 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 			float rightExtend = (textPosRight - p_HorizontalPadding - p_ClipRect->right);
 			float bottomExtend = (textPosBottom - p_VerticalPadding - p_ClipRect->bottom);
 
+			float glyphTexcoordU1 = (float)glyph->glyphRect.left / fontTextureWidth;
+			float glyphTexcoordU2 = (float)glyph->glyphRect.right / fontTextureWidth;
+			float glyphTexcoordV1 = (float)glyph->glyphRect.top / fontTextureHeight;
+			float glyphTexcoordV2 = (float)glyph->glyphRect.bottom / fontTextureHeight;
+
+			// vertex indices
+			kg_u32 v1, v2, v3, v4;
+
 			if (leftExtend > glyphWidth || rightExtend > glyphWidth ||
 				topExtend > glyphHeight || bottomExtend > glyphHeight)
 			{
 				continue;
 			}
-
-			// vertex indices
-			kg_u32 v1, v2, v3, v4;
-
-			float glyphTexcoordU1 = (float)glyph->glyphRect.left / fontTextureWidth;
-			float glyphTexcoordU2 = (float)glyph->glyphRect.right / fontTextureWidth;
-			float glyphTexcoordV1 = (float)glyph->glyphRect.top / fontTextureHeight;
-			float glyphTexcoordV2 = (float)glyph->glyphRect.bottom / fontTextureHeight;
 
 			// or'ing together for nicer code.
 			// works as K15_GUIAddVertex and GUIAddTriangleIndices only return
@@ -2392,22 +2469,28 @@ kg_internal void K15_GUISetLastResult(kg_result* p_ResultOut, kg_result p_Result
 kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILayoutType p_LayoutType,
 	kg_u32 p_LayoutFlags, K15_GUIRect* p_ClipRect)
 {
+	K15_GUILayoutData layoutData = { 0 };
+	K15_GUILayoutData* elementLayoutData = 0;
+
+	K15_GUIContextMemory* contextMemory = 0;
+	K15_GUIElement* layoutElement = 0;
+	kg_result result;
+	kg_u32 layoutIndex = 0;
+
 	if (!p_GUIContext || !p_ClipRect)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	if (p_GUIContext->numLayouts == K15_GUI_MAX_LAYOUTS)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	K15_GUIContextMemory* contextMemory = &p_GUIContext->memory;
+	contextMemory = &p_GUIContext->memory;
 
-	K15_GUIElement* layoutElement = 0;
-	kg_result result = K15_GUIRegisterUnidentifiedElement(p_GUIContext, &layoutElement,
+	result = K15_GUIRegisterUnidentifiedElement(p_GUIContext, &layoutElement,
 		K15_GUI_LAYOUT_ELEMENT_TYPE, p_ClipRect);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
 
-	K15_GUILayoutData layoutData = { 0 };
 	layoutData.type = p_LayoutType;
 	layoutData.flagMask = p_LayoutFlags;
 
@@ -2419,13 +2502,12 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
 
-	K15_GUILayoutData* elementLayoutData = 0;
 	result = K15_GUIGetElementDataRaw(contextMemory, layoutElement, (void**)&elementLayoutData, 0);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 		return result;
 
-	kg_u32 layoutIndex = p_GUIContext->numLayouts;
+	layoutIndex = p_GUIContext->numLayouts;
 
 	p_GUIContext->layoutTable[layoutIndex] = layoutElement;
 	++p_GUIContext->numLayouts;
@@ -2445,10 +2527,13 @@ kg_internal kg_result K15_GUIDefaultButtonBehaviorWithFlags(K15_GUIContext* p_GU
 
 	kg_u16 horizontalPadding = p_Style->horizontalPixelPadding;
 	kg_u16 verticalPadding = p_Style->verticalPixelPadding;
+	kg_u32 textLength = 0;
 
 	K15_GUIFont* font = p_Style->font;
 	K15_GUIRect textRect = { 0 };
 	K15_GUIButtonData buttonData = { 0 };
+	K15_GUIContextMemory* guiContextMemory = 0;
+	K15_GUIElement* guiElement = 0;
 
 	K15_GUICalculateTextRect(p_MenuText, font, &textRect);
 
@@ -2462,10 +2547,9 @@ kg_internal kg_result K15_GUIDefaultButtonBehaviorWithFlags(K15_GUIContext* p_GU
 		textRect.bottom += verticalPadding * 2;
 	}
 
-	kg_u32 textLength = K15_GUI_STRLEN(p_MenuText);
-	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+	textLength = K15_GUI_STRLEN(p_MenuText);
+	guiContextMemory = &p_GUIContext->memory;
 
-	K15_GUIElement* guiElement = 0;
 	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_BUTTON_ELEMENT_TYPE,
 		p_Identifier, &textRect, p_Flags);
 
@@ -2507,27 +2591,29 @@ kg_def kg_result K15_CreateGUIContextWithCustomMemory(K15_GUIContext* p_OutGUICo
 	K15_GUIResourceDatabase* p_ContextResources, kg_s16 p_ClipPosLeft, kg_s16 p_ClipPosTop,
 	kg_s16 p_ClipPosRight, kg_s16 p_ClipPosBottom, kg_byte* p_Memory, kg_u32 p_MemorySizeInBytes)
 {
-	if (!p_Memory || p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-
 	K15_GUIRect clipRect = {0};
-	clipRect.left = p_ClipPosLeft;
-	clipRect.top = p_ClipPosTop;
-	clipRect.right = p_ClipPosRight;
-	clipRect.bottom = p_ClipPosBottom;
-
-	kg_result clipRectValidationResult = K15_GUIValidateClipRect(&clipRect);
-
-	if (clipRectValidationResult != K15_GUI_RESULT_SUCCESS)
-		return clipRectValidationResult;
-
 	kg_byte* guiMemory = p_Memory;
 	kg_byte* vertexBufferMemory = 0;
 	kg_byte* indexBufferMemory = 0;
 
 	kg_u32 guiMemorySizeInBytes = p_MemorySizeInBytes;
+	K15_GUIContext* guiContext = 0;
+	kg_result clipRectValidationResult;
 
-	K15_GUIContext* guiContext = (K15_GUIContext*)guiMemory;
+	if (!p_Memory || p_MemorySizeInBytes < K15_GUI_MIN_MEMORY_SIZE_IN_BYTES)
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+
+	clipRect.left = p_ClipPosLeft;
+	clipRect.top = p_ClipPosTop;
+	clipRect.right = p_ClipPosRight;
+	clipRect.bottom = p_ClipPosBottom;
+
+	clipRectValidationResult = K15_GUIValidateClipRect(&clipRect);
+
+	if (clipRectValidationResult != K15_GUI_RESULT_SUCCESS)
+		return clipRectValidationResult;
+
+	guiContext = (K15_GUIContext*)guiMemory;
 	guiMemory += sizeof(K15_GUIContext);
 	guiMemorySizeInBytes -= sizeof(K15_GUIContext);
 
@@ -2586,6 +2672,13 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 	K15_GUIToolBarStyle* p_Style)
 {
 	kg_result result;
+	K15_GUIRect clipRect;
+	K15_GUIContextMemory* guiContextMemory = 0;
+	K15_GUIElement* guiElement = 0;
+
+	kg_s16 toolbarHeight = 0;
+	kg_color32 upperBackgroundColor = 0;
+	kg_color32 lowerBackgroundColor = 0;
 
 	if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG) == 1)
 	{
@@ -2595,20 +2688,18 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 
 	p_GUIContext->flagMask |= K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
 
-	kg_s16 toolbarHeight = p_Style->pixelHeight;
-	kg_color32 upperBackgroundColor = p_Style->upperBackgroundColor;
-	kg_color32 lowerBackgroundColor = p_Style->lowerBackgroundColor;
+	toolbarHeight = p_Style->pixelHeight;
+	upperBackgroundColor = p_Style->upperBackgroundColor;
+	lowerBackgroundColor = p_Style->lowerBackgroundColor;
 
-	K15_GUIContextMemory* guiContextMemory = &p_GUIContext->memory;
+	guiContextMemory = &p_GUIContext->memory;
 	toolbarHeight = K15_GUI_MIN(p_GUIContext->clipRect.bottom, toolbarHeight);
 
-	K15_GUIRect clipRect;
 	clipRect.left = p_GUIContext->clipRect.left;
 	clipRect.top = p_GUIContext->clipRect.top;
 	clipRect.right = p_GUIContext->clipRect.right;
 	clipRect.bottom = toolbarHeight;
 
-	K15_GUIElement* guiElement = 0;
 	result = K15_GUIRegisterIdentifiedElement(p_GUIContext, &guiElement, K15_GUI_TOOLBAR_ELEMENT_TYPE, 
 		p_Identifier, &clipRect, 0);
 
@@ -2650,7 +2741,8 @@ kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_
 	K15_GUIButtonStyle* p_Style)
 {
 	kg_result result;
-
+	K15_GUIElement* buttonElement = 0;
+	kg_b8 active = K15_GUI_FALSE;
 	if (p_GUIContext->numMenus == 0)
 	{
 		if ((p_GUIContext->flagMask & K15_GUI_CONTEXT_INSIDE_MENU_FLAG) == 1)
@@ -2664,10 +2756,9 @@ kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_
 
 	++p_GUIContext->numMenus;
 
-	K15_GUIElement* buttonElement = 0;
 	result = K15_GUIDefaultButtonBehavior(p_GUIContext, p_MenuText, p_Identifier, &buttonElement, p_Style);
 
-	kg_b8 active = buttonElement->flags & K15_GUI_ELEMENT_MOUSE_DOWN ||
+	active = buttonElement->flags & K15_GUI_ELEMENT_MOUSE_DOWN ||
 		buttonElement->flags & K15_GUI_ELEMENT_ACTIVE;
 
 functionEnd:
@@ -2772,8 +2863,9 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 		kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
 		kg_u32 posRight = 0;
 		kg_u32 posY = p_LayoutClipRect->top;
+		kg_u32 elementIndex = 0;
 
-		for (kg_u32 elementIndex = 0;
+		for (elementIndex = 0;
 			elementIndex < numElements;
 			++elementIndex)
 		{
@@ -2812,9 +2904,10 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 	else
 	{
 		kg_u32 widthPerElement = layoutWidth / numElements;
+		kg_u32 elementIndex = 0;
 
-		for (kg_u32 elementIndex = 0;
-		elementIndex < numElements;
+		for (elementIndex = 0;
+			elementIndex < numElements;
 			++elementIndex)
 		{
 			guiElement = layoutedElements[elementIndex];
@@ -2846,8 +2939,8 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 	if ((layoutFlagMask & K15_GUI_FLOW_LAYOUT_FLAG) > 0)
 	{
 		kg_u32 posBottom = 0;
-
-		for (kg_u32 elementIndex = 0;
+		kg_u32 elementIndex = 0;
+		for (elementIndex = 0;
 			elementIndex < numElements;
 			++elementIndex)
 		{
@@ -2887,8 +2980,8 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 	{
 		//Thinks about size hints per element
 		kg_u32 heightPerElement = layoutHeight / numElements;
-
-		for (kg_u32 elementIndex = 0;
+		kg_u32 elementIndex = 0;
+		for (elementIndex = 0;
 			elementIndex < numElements;
 			++elementIndex)
 		{
@@ -2919,35 +3012,37 @@ kg_internal void K15_GUIArrangeLayoutElements(K15_GUIElement* p_GUIElement)
 /*********************************************************************************/
 kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
 {
-	if (!p_Text || !p_Font || !p_OutRect)
-		return;
-
-	kg_s16 ascent = p_Font->ascent;
-	kg_s16 descent = p_Font->descent;
-	kg_s16 lineGap = p_Font->lineGap;
-	kg_u16 verticalOffset = (ascent - descent + lineGap);
-
+	kg_u16 verticalOffset = 0;
 	kg_s16 posX = 0;
 	kg_s16 posY = 0;
 	kg_s16 offsetY = 0;
 	kg_s16 leftSideBearing = 0;
 	kg_s16 advanceWidth = 0;
-	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
+	K15_GUIFontGlyph* glyphs = 0;
 	K15_GUIFontGlyph* glyph = 0;
-
 	K15_GUIGlyphRange glyphRanges[10];
 	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
-
-	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
+	kg_u32 numGlyphRanges = 0;
 	K15_GUIGlyphRange* glyphRange = 0;
+
+	if (!p_Text || !p_Font || !p_OutRect)
+		return;
+
+	verticalOffset = (p_Font->ascent - p_Font->descent + p_Font->lineGap);
+	glyphs = p_Font->glyphs;
+
+	numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
 
 	while (1)
 	{
+		kg_u32 codePoint = 0;
+		kg_u32 glyphIndex = (~0);
+		kg_u32 glyphRangeIndex = 0;
+
 		if (*p_Text == 0)
 			break;
 
-		kg_u32 codePoint = (int)(*p_Text++);
-		kg_u32 glyphIndex = -1;
+		codePoint = (int)(*p_Text++);
 
 		if (codePoint == '\n')
 		{
@@ -2955,8 +3050,8 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 			posX = 0;
 		}
 
-		for (kg_u32 glyphRangeIndex = 0;
-		glyphRangeIndex < numGlyphRanges;
+		for (glyphRangeIndex = 0;
+			glyphRangeIndex < numGlyphRanges;
 			++glyphRangeIndex)
 		{
 			glyphRange = glyphRanges + glyphRangeIndex;
@@ -2976,15 +3071,11 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 
 		if (glyph)
 		{
-			advanceWidth = glyph->advanceWidth;
-			leftSideBearing = glyph->leftSideBearing;
-			offsetY = glyph->offsetY;
-			
 			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
 			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
 
-			kg_s16 textPosLeft = posX + leftSideBearing;
-			kg_s16 textPosTop = posY + ascent + offsetY;
+			kg_s16 textPosLeft = posX + glyph->leftSideBearing;
+			kg_s16 textPosTop = posY + p_Font->ascent + glyph->offsetY;
 			kg_s16 textPosRight = textPosLeft + glyphWidth;
 			kg_s16 textPosBottom = textPosTop + glyphHeight;
 
@@ -3039,6 +3130,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 	kg_color32 lowerBackgroundColor = 0;
 	kg_color32 textColor = 0;
 	K15_GUIFont* font = 0;
+	char* text = 0;
 
 	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, &buttonData,
 		sizeof(buttonData), offset);
@@ -3048,7 +3140,7 @@ kg_internal kg_result K15_GUICreateButtonDrawCommands(K15_GUIContextMemory* p_GU
 
 	offset += sizeof(buttonData);
 
-	char* text = (char*)alloca(buttonData.textLength);
+	text = (char*)alloca(buttonData.textLength);
 	result = K15_GUIGetElementData(p_GUIContextMemory, p_Element, text,
 		buttonData.textLength, offset);
 
@@ -3292,13 +3384,15 @@ kg_def kg_u32 K15_GUIConvertResultToMessage(kg_result p_Result, char** p_OutMess
 /*********************************************************************************/
 kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIMouseInput p_MouseInput)
 {
+	kg_u32 mouseInputIndex = 0;
+
 	if (!p_GUIContextEvents)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	
 	if (p_GUIContextEvents->numBufferedMouseInputs == K15_GUI_MAX_BUFFERED_MOUSE_INPUTS)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	kg_u32 mouseInputIndex = p_GUIContextEvents->numBufferedMouseInputs++;
+	mouseInputIndex = p_GUIContextEvents->numBufferedMouseInputs++;
 	p_GUIContextEvents->bufferedMouseInput[mouseInputIndex] = p_MouseInput;
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -3306,13 +3400,15 @@ kg_def kg_result K15_GUIAddMouseInput(K15_GUIContextEvents* p_GUIContextEvents, 
 /*********************************************************************************/
 kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvents, K15_GUIKeyboardInput p_KeyboardInput)
 {
+	kg_u32 keyInputIndex = 0;
+
 	if (!p_GUIContextEvents)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	if (p_GUIContextEvents->numBufferedKeyboardInputs == K15_GUI_MAX_BUFFERED_KEYBOARD_INPUTS)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 
-	kg_u32 keyInputIndex = p_GUIContextEvents->numBufferedKeyboardInputs++;
+	keyInputIndex = p_GUIContextEvents->numBufferedKeyboardInputs++;
 	p_GUIContextEvents->bufferedKeyboardInput[keyInputIndex] = p_KeyboardInput;
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -3320,13 +3416,15 @@ kg_def kg_result K15_GUIAddKeyboardInput(K15_GUIContextEvents* p_GUIContextEvent
 /*********************************************************************************/
 kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents, K15_GUISystemEvent p_SystemEvent)
 {
+	kg_u32 systemEventIndex = 0;
+
 	if (!p_GUIContextEvents)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
 	if (p_GUIContextEvents->numBufferedSystemEvents == K15_GUI_MAX_BUFFERED_SYSTEM_EVENTS)
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	
-	kg_u32 systemEventIndex = p_GUIContextEvents->numBufferedSystemEvents;
+	systemEventIndex = p_GUIContextEvents->numBufferedSystemEvents;
 
 	//Window resize hack (event gets usually hammered)
 	if (systemEventIndex > 0 &&
@@ -3346,12 +3444,13 @@ kg_def kg_result K15_GUIAddSystemEvent(K15_GUIContextEvents* p_GUIContextEvents,
 kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMatrix,
 	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags)
 {
+	kg_b8 invertYAxis = (p_Flags & K15_GUI_INVERT_Y_AXIS) > 0;
+	float yw = invertYAxis ? 1.f : -1.f;
+
 	if (p_ScreenWidth == 0 || p_ScreenHeight == 0 || p_ProjectionMatrix == 0)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	kg_b8 invertYAxis = (p_Flags & K15_GUI_INVERT_Y_AXIS) > 0;
 	p_ScreenHeight = invertYAxis ? -p_ScreenHeight : p_ScreenHeight;
-	float yw = invertYAxis ? 1.f : -1.f;
 
 	p_ProjectionMatrix[ 0] = 2.f / p_ScreenWidth;
 	p_ProjectionMatrix[ 1] = 0.f;
@@ -3379,12 +3478,13 @@ kg_def kg_result K15_GUICalculateRowMajorProjectionMatrix(float* p_ProjectionMat
 kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_ProjectionMatrix,
 	kg_s32 p_ScreenWidth, kg_s32 p_ScreenHeight, kg_u32 p_Flags)
 {
+	kg_b8 invertYAxis = (p_Flags & K15_GUI_INVERT_Y_AXIS) > 0;
+	float yw = invertYAxis ? 1.f : -1.f;
+
 	if (p_ScreenWidth == 0 || p_ScreenHeight == 0 || p_ProjectionMatrix == 0)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 
-	kg_b8 invertYAxis = (p_Flags & K15_GUI_INVERT_Y_AXIS) > 0;
 	p_ScreenHeight = invertYAxis ? -p_ScreenHeight : p_ScreenHeight;
-	float yw = invertYAxis ? 1.f : -1.f;
 
 	p_ProjectionMatrix[ 0] = 2.f / p_ScreenWidth;
 	p_ProjectionMatrix[ 1] = 0.f;
