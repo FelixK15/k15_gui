@@ -621,8 +621,6 @@ kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_Projection
 
 #ifdef K15_GUI_IMPLEMENTATION
 
-void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect);
-
 #ifndef kg_internal
 # define kg_internal static
 #endif //kg_internal
@@ -1065,8 +1063,8 @@ kg_def kg_result K15_GUICreateFontResourceFromMemory(K15_GUIResourceDatabase* p_
 		K15_GUI_MAX_GLYPH_RANGES);
 
 	kg_u32 glyphIndex = 0;
-
-	for (kg_u32 glyphRangeIndex = 0;
+	kg_u32 glyphRangeIndex = 0;
+	for (glyphRangeIndex = 0;
 		glyphRangeIndex < glyphRangeArraySize;
 		++glyphRangeIndex)
 	{
@@ -1331,11 +1329,10 @@ kg_def int K15_GUIConvertToFontGlyphIndex(K15_GUIFont* p_Font, unsigned char p_C
 	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(glyphRangeMask, &glyphRangesPtr, K15_GUI_MAX_GLYPH_RANGES);
 	kg_u32 glyphIndex = 0;
 	kg_u32 numGlyphs = 0;
-
+	kg_u32 rangeIndex = 0;
 	K15_GUIGlyphRange* glyphRangeContainingCharacter = 0;
 
-	for (kg_u32 rangeIndex = 0;
-		rangeIndex < numGlyphRanges;
+	for (;rangeIndex < numGlyphRanges;
 		++rangeIndex)
 	{
 		numGlyphs = glyphRanges->to - glyphRanges->from;
@@ -1369,8 +1366,8 @@ kg_internal void K15_GUIConvertPixel(kg_byte* p_SourcePixel, K15_GUIPixelFormat 
 {
 	if (p_SourcePixelFormat == K15_GUI_PIXEL_FORMAT_R8)
 	{
-		for (kg_s32 colorIndex = 0;
-			colorIndex < p_DestinationPixelFormat;
+		kg_s32 colorIndex = 0;
+		for (;colorIndex < p_DestinationPixelFormat;
 			++colorIndex)
 		{
 			p_DestinationPixel[colorIndex] = *p_SourcePixel;
@@ -1447,9 +1444,8 @@ kg_internal void K15_GUIConvertPixelStride(kg_byte* p_SourcePixelStride, K15_GUI
 {
 	kg_u32 sourcePixelOffset = 0;
 	kg_u32 destinationPixelOffset = 0;
-
-	for (kg_u32 pixelIndex = 0;
-		pixelIndex < p_StrideWidth;
+	kg_u32 pixelIndex = 0;
+	for (;pixelIndex < p_StrideWidth;
 		++pixelIndex)
 	{
 		K15_GUIConvertPixel(p_SourcePixelStride + sourcePixelOffset, p_SourcePixelFormat,
@@ -1471,11 +1467,11 @@ kg_internal kg_result K15_GUICopyTextureIntoPixelBuffer(K15_GUITexture* p_Textur
 	kg_u32 textureHeight = p_Texture->pixelHeight;
 	kg_u32 textureOffsetInBytes = 0;
 	kg_u32 pixelBufferOffsetInBytes = 0;
+	kg_u32 textureRow = 0;
 
 	if (texturePixelFormat != p_PixelFormat)
 	{
-		for (kg_u32 textureRow = 0;
-			textureRow < textureHeight;
+		for (;textureRow < textureHeight;
 			++textureRow)
 		{
 			K15_GUIConvertPixelStride(texturePixelData + textureOffsetInBytes, texturePixelFormat,
@@ -1756,6 +1752,7 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 	kg_u32 memorySize = p_ContextMemory->memoryBufferSizeInBytes;
 	kg_byte* memory = p_ContextMemory->memoryBuffer;
 
+	kg_u32 eventIndex = 0;
 	kg_u32 memoryPosition = 0;
 	kg_u16 mousePosX = *p_MousePosInOutX;
 	kg_u16 mousePosY = *p_MousePosInOutY;
@@ -1764,8 +1761,7 @@ kg_internal void K15_GUIHandleMouseInput(K15_GUIContextMemory* p_ContextMemory, 
 
 	kg_b8 leftMouseDown = K15_GUI_FALSE;
 
-	for (kg_u32 eventIndex = 0;
-		eventIndex < p_NumMouseEvents;
+	for (;eventIndex < p_NumMouseEvents;
 		++eventIndex)
 	{
 		K15_GUIMouseInput* mouseInputEvent = p_MouseEvents + eventIndex;
@@ -1838,11 +1834,12 @@ kg_internal void K15_GUIHandleKeyboardInput(K15_GUIContextMemory* p_ContextMemor
 kg_internal void K15_GUIHandleSystemEvents(K15_GUIContext* p_GUIContext, kg_u32 p_NumSystemEvents, 
 	K15_GUISystemEvent* p_SystemEvents)
 {
+	kg_u32 eventIndex = 0;
+
 	if (p_NumSystemEvents == 0)
 		return;
 
-	for (kg_u32 eventIndex = 0;
-		eventIndex < p_NumSystemEvents;
+	for (;eventIndex < p_NumSystemEvents;
 		++eventIndex)
 	{ 
 		K15_GUISystemEvent* event = p_SystemEvents + eventIndex;
@@ -1963,8 +1960,8 @@ kg_internal kg_result K15_GUIGetElementData(K15_GUIContextMemory* p_GUIContextMe
 kg_internal kg_u32 K15_GUICreateHash(const char* p_String, kg_u32 p_StringLength)
 {
 	kg_u32 hash = 0;
-
-	for (kg_u32 i = 0; i < p_StringLength; i++)
+	kg_u32 i = 0;
+	for (; i < p_StringLength; i++)
 		hash = 33 * hash + 720 + p_String[i];
 
 	return hash;
@@ -2279,19 +2276,19 @@ kg_internal kg_result K15_GUIAddColoredTextDrawCommand(K15_GUIDrawInformation* p
 	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
 	K15_GUIGlyphRange* glyphRange = 0;
 
-	for (kg_u32 textIndex = 0; textIndex < p_TextLength; ++textIndex)
+	kg_u32 textIndex = 0; 
+	for (;textIndex < p_TextLength; ++textIndex)
 	{
 		kg_u32 codePoint = p_Text[textIndex];
 		kg_u32 glyphIndex = -1;
-
+		kg_u32 glyphRangeIndex = 0;
 		if (codePoint == '\n')
 		{
 			posTop += verticalOffset;
 			posLeft = p_ClipRect->left + p_HorizontalPadding;
 		}
 
-		for (kg_u32 glyphRangeIndex = 0;
-			glyphRangeIndex < numGlyphRanges;
+		for (;glyphRangeIndex < numGlyphRanges;
 			++glyphRangeIndex)
 		{
 			glyphRange = glyphRanges + glyphRangeIndex;
@@ -2433,6 +2430,86 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	p_GUIContext->layoutIndex = layoutIndex;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
+{
+	if (!p_Text || !p_Font || !p_OutRect)
+		return;
+
+	kg_s16 ascent = p_Font->ascent;
+	kg_s16 descent = p_Font->descent;
+	kg_s16 lineGap = p_Font->lineGap;
+	kg_u16 verticalOffset = (ascent - descent + lineGap);
+
+	kg_s16 posX = 0;
+	kg_s16 posY = 0;
+	kg_s16 offsetY = 0;
+	kg_s16 leftSideBearing = 0;
+	kg_s16 advanceWidth = 0;
+	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
+	K15_GUIFontGlyph* glyph = 0;
+
+	K15_GUIGlyphRange glyphRanges[10];
+	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
+
+	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
+	K15_GUIGlyphRange* glyphRange = 0;
+
+	while (1)
+	{
+		if (*p_Text == 0)
+			break;
+
+		kg_u32 codePoint = (int)(*p_Text++);
+		kg_u32 glyphIndex = -1;
+		kg_u32 glyphRangeIndex = 0;
+
+		if (codePoint == '\n')
+		{
+			posY += verticalOffset;
+			posX = 0;
+		}
+
+		for (glyphRangeIndex = 0;
+			glyphRangeIndex < numGlyphRanges;
+			++glyphRangeIndex)
+		{
+			glyphRange = glyphRanges + glyphRangeIndex;
+
+			if (codePoint >= glyphRange->from ||
+				codePoint <= glyphRange->to)
+			{
+				glyphIndex = codePoint - glyphRange->from;
+				break;
+			}
+		}
+
+		if (glyphIndex > glyphRange->to)
+			continue;
+
+		glyph = glyphs + glyphIndex;
+
+		if (glyph)
+		{
+			advanceWidth = glyph->advanceWidth;
+			leftSideBearing = glyph->leftSideBearing;
+			offsetY = glyph->offsetY;
+			
+			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
+			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
+
+			kg_s16 textPosLeft = posX + leftSideBearing;
+			kg_s16 textPosTop = posY + ascent + offsetY;
+			kg_s16 textPosRight = textPosLeft + glyphWidth;
+			kg_s16 textPosBottom = textPosTop + glyphHeight;
+
+			p_OutRect->right = K15_GUI_MAX(p_OutRect->right, textPosRight);
+			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, textPosBottom);
+
+			posX += advanceWidth;
+		}
+	}
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUIDefaultButtonBehaviorWithFlags(K15_GUIContext* p_GUIContext, const char* p_MenuText,
@@ -2772,9 +2849,8 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 		kg_u32 layoutWidth = p_LayoutClipRect->right - p_LayoutClipRect->left;
 		kg_u32 posRight = 0;
 		kg_u32 posY = p_LayoutClipRect->top;
-
-		for (kg_u32 elementIndex = 0;
-			elementIndex < numElements;
+		kg_u32 elementIndex = 0;
+		for (; elementIndex < numElements;
 			++elementIndex)
 		{
 			guiElement = layoutedElements[elementIndex];
@@ -2811,10 +2887,10 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 	}
 	else
 	{
+		kg_u32 elementIndex = 0;
 		kg_u32 widthPerElement = layoutWidth / numElements;
 
-		for (kg_u32 elementIndex = 0;
-		elementIndex < numElements;
+		for (; elementIndex < numElements;
 			++elementIndex)
 		{
 			guiElement = layoutedElements[elementIndex];
@@ -2846,9 +2922,8 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 	if ((layoutFlagMask & K15_GUI_FLOW_LAYOUT_FLAG) > 0)
 	{
 		kg_u32 posBottom = 0;
-
-		for (kg_u32 elementIndex = 0;
-			elementIndex < numElements;
+		kg_u32 elementIndex = 0;
+		for (; elementIndex < numElements;
 			++elementIndex)
 		{
 			guiElement = layoutedElements[elementIndex];
@@ -2887,8 +2962,8 @@ kg_internal void K15_GUIArrangeElementsVertically(K15_GUILayoutData* p_LayoutDat
 	{
 		//Thinks about size hints per element
 		kg_u32 heightPerElement = layoutHeight / numElements;
-
-		for (kg_u32 elementIndex = 0;
+		kg_u32 elementIndex;
+		for (elementIndex = 0;
 			elementIndex < numElements;
 			++elementIndex)
 		{
@@ -2915,85 +2990,6 @@ kg_internal void K15_GUIArrangeLayoutElements(K15_GUIElement* p_GUIElement)
 		K15_GUIArrangeElementsHorizontally(layoutData, &p_GUIElement->clipRect);
 	else if (layoutData->type == K15_GUI_VERTICAL_LAYOUT_TYPE)
 		K15_GUIArrangeElementsVertically(layoutData, &p_GUIElement->clipRect);
-}
-/*********************************************************************************/
-kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
-{
-	if (!p_Text || !p_Font || !p_OutRect)
-		return;
-
-	kg_s16 ascent = p_Font->ascent;
-	kg_s16 descent = p_Font->descent;
-	kg_s16 lineGap = p_Font->lineGap;
-	kg_u16 verticalOffset = (ascent - descent + lineGap);
-
-	kg_s16 posX = 0;
-	kg_s16 posY = 0;
-	kg_s16 offsetY = 0;
-	kg_s16 leftSideBearing = 0;
-	kg_s16 advanceWidth = 0;
-	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
-	K15_GUIFontGlyph* glyph = 0;
-
-	K15_GUIGlyphRange glyphRanges[10];
-	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
-
-	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
-	K15_GUIGlyphRange* glyphRange = 0;
-
-	while (1)
-	{
-		if (*p_Text == 0)
-			break;
-
-		kg_u32 codePoint = (int)(*p_Text++);
-		kg_u32 glyphIndex = -1;
-
-		if (codePoint == '\n')
-		{
-			posY += verticalOffset;
-			posX = 0;
-		}
-
-		for (kg_u32 glyphRangeIndex = 0;
-		glyphRangeIndex < numGlyphRanges;
-			++glyphRangeIndex)
-		{
-			glyphRange = glyphRanges + glyphRangeIndex;
-
-			if (codePoint >= glyphRange->from ||
-				codePoint <= glyphRange->to)
-			{
-				glyphIndex = codePoint - glyphRange->from;
-				break;
-			}
-		}
-
-		if (glyphIndex > glyphRange->to)
-			continue;
-
-		glyph = glyphs + glyphIndex;
-
-		if (glyph)
-		{
-			advanceWidth = glyph->advanceWidth;
-			leftSideBearing = glyph->leftSideBearing;
-			offsetY = glyph->offsetY;
-			
-			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
-			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
-
-			kg_s16 textPosLeft = posX + leftSideBearing;
-			kg_s16 textPosTop = posY + ascent + offsetY;
-			kg_s16 textPosRight = textPosLeft + glyphWidth;
-			kg_s16 textPosBottom = textPosTop + glyphHeight;
-
-			p_OutRect->right = K15_GUI_MAX(p_OutRect->right, textPosRight);
-			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, textPosBottom);
-
-			posX += advanceWidth;
-		}
-	}
 }
 /*********************************************************************************/
 kg_internal kg_result K15_GUICreateToolBarDrawCommands(K15_GUIContextMemory* p_GUIContextMemory,
