@@ -64,26 +64,32 @@ GLuint fontTextureHandle;
 
 void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
-	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "accept.png", "load");
-	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "add.png", "load2");
-	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "anchor.png", "load3");
-
 	K15_GUIIconSet* icons = 0;
-	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
-
 	K15_GUIFont* font = 0;
-	K15_GUIGetFontResource(p_GUIResourceDatabase, &font, "default_font");
-	
-	uint32 fontPixelBufferSize = K15_GUICalculateFontPixelBufferSizeInBytes(font, K15_GUI_PIXEL_FORMAT_R8G8B8);
-	void* fontPixelBuffer = malloc(fontPixelBufferSize);
-
-	uint32 iconPixelBufferSize = K15_GUICalculateIconSetPixelBufferSizeInBytes(icons, K15_GUI_PIXEL_FORMAT_R8G8B8);
-	void* iconPixelBuffer= malloc(fontPixelBufferSize);
 
 	int iconTextureWidth = 0;
 	int iconTextureHeight = 0;
 	int fontTextureWidth = 0;
 	int fontTextureHeight = 0;
+
+	void* iconPixelBuffer = 0;
+	void* fontPixelBuffer = 0;
+	uint32 fontPixelBufferSize = 0;
+	uint32 iconPixelBufferSize = 0;
+
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "accept.png", "load");
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "add.png", "load2");
+	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "anchor.png", "load3");
+
+	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
+
+	K15_GUIGetFontResource(p_GUIResourceDatabase, &font, "default_font");
+	
+	fontPixelBufferSize = K15_GUICalculateFontPixelBufferSizeInBytes(font, K15_GUI_PIXEL_FORMAT_R8G8B8);
+	fontPixelBuffer = malloc(fontPixelBufferSize);
+
+	iconPixelBufferSize = K15_GUICalculateIconSetPixelBufferSizeInBytes(icons, K15_GUI_PIXEL_FORMAT_R8G8B8);
+	iconPixelBuffer= malloc(fontPixelBufferSize);
 
 	K15_GUICopyIconSetTextureIntoPixelBuffer(icons, iconPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &iconTextureWidth, &iconTextureHeight);
 	K15_GUICopyFontTextureIntoPixelBuffer(font, fontPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &fontTextureWidth, &fontTextureHeight);
@@ -186,13 +192,16 @@ void updateGUI(K15_GUIContext* p_GUIContext)
 		}
 	}
 
-	kg_result lastResult = K15_GUIGetLastResult(p_GUIContext);
-	if (lastResult != K15_GUI_RESULT_SUCCESS)
 	{
-		kg_u32 bytesWritten = K15_GUIConvertResultToMessage(lastResult, &message, 512);
-		message[bytesWritten] = 0;
-		printf("Error: %s\n", message);
+		kg_result lastResult = K15_GUIGetLastResult(p_GUIContext);
+		if (lastResult != K15_GUI_RESULT_SUCCESS)
+		{
+			kg_u32 bytesWritten = K15_GUIConvertResultToMessage(lastResult, &message, 512);
+			message[bytesWritten] = 0;
+			printf("Error: %s\n", message);
+		}
 	}
+
 	K15_GUIFinishFrame(p_GUIContext);
 }
 
@@ -200,13 +209,13 @@ void drawGUI(K15_GUIContext* p_GUIContext)
 {
 	K15_GUIDrawInformation* drawInformation = &p_GUIContext->drawInformation;
 	int indexSizeInBytes = drawInformation->indexSizeInBytes;
-
+	uint32 drawCommandIndex = 0;
 	if (drawInformation->numDrawCommands > 0)
 	{
 		K15_OPENGL_CALL(kglBufferData(GL_ARRAY_BUFFER, drawInformation->vertexBufferDataSizeInBytes, drawInformation->vertexBufferData, GL_DYNAMIC_DRAW));
 		K15_OPENGL_CALL(kglBufferData(GL_ELEMENT_ARRAY_BUFFER, drawInformation->indexBufferDataSizeInBytes, drawInformation->indexBufferData, GL_DYNAMIC_DRAW));
 
-		for (uint32 drawCommandIndex = 0;
+		for (drawCommandIndex = 0;
 			drawCommandIndex < drawInformation->numDrawCommands;
 			++drawCommandIndex)
 		{
@@ -236,15 +245,15 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 {
 	WORD newWidth = (WORD)(p_lParam);
 	WORD newHeight = (WORD)(p_lParam >> 16);
+	K15_GUISystemEvent systemEvent;
+	float projMatrix[16];
 
 	resizeBackbuffer(p_HWND, newWidth, newHeight);
 
-	K15_GUISystemEvent systemEvent;
 	systemEvent.type = K15_GUI_WINDOW_RESIZED;
 	systemEvent.params.size.height = newHeight;
 	systemEvent.params.size.width = newWidth;
 
-	float projMatrix[16];
 	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, 
 		newWidth, newHeight, K15_GUI_INVERT_Y_AXIS);
 
@@ -342,6 +351,7 @@ LRESULT CALLBACK K15_WNDPROC(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARA
 
 HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 {
+	HWND hwnd = INVALID_HANDLE_VALUE;
 	WNDCLASS wndClass = {0};
 	wndClass.style = CS_HREDRAW | CS_OWNDC | CS_VREDRAW;
 	wndClass.hInstance = p_Instance;
@@ -350,7 +360,7 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 	wndClass.hCursor = LoadCursor(NULL, IDC_ARROW);
 	RegisterClass(&wndClass);
 
-	HWND hwnd = CreateWindowA("K15_Win32Template", "Win32 Template",
+	hwnd = CreateWindowA("K15_Win32Template", "Win32 Template",
 		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
 		p_Width, p_Height, 0, 0, p_Instance, 0);
 
@@ -383,8 +393,9 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 char* getInfoLogForShader(GLuint p_Shader)
 {
 	GLint infoLogLength = 0;
-	K15_OPENGL_CALL(kglGetShaderiv(p_Shader, GL_INFO_LOG_LENGTH, &infoLogLength));
 	char* infoLog = 0;
+
+	K15_OPENGL_CALL(kglGetShaderiv(p_Shader, GL_INFO_LOG_LENGTH, &infoLogLength));
 
 	if (infoLogLength > 0)
 	{
@@ -429,6 +440,20 @@ void setup(HWND p_HWND)
 
 	kg_u32 vertexShaderSourceLength = strlen(vertexShaderSource);
 	kg_u32 fragmentShaderSourceLenght = strlen(fragmentShaderSource);
+	kg_u32 sizeVertexStrideInBytes = K15_GUI_VERTEX_SIZE_IN_BYTES;
+
+	GLuint vertexShader = 0;
+	GLuint fragmentShader = 0;
+
+	GLint vertexShaderCompileStatus = 0;
+	GLint fragmentShaderCompileStatus = 0;
+	GLint posAttribLocation = 0;
+	GLint uvAttribLocation = 0;
+	GLint colorAttribLocation = 0;
+	GLint linkStatus = 0;
+	GLint programLogLength = 0;
+
+	int attribArrayIndex = 0;
 
 	K15_OPENGL_CALL(kglGenBuffers(1, &vbo));
 	K15_OPENGL_CALL(kglGenBuffers(1, &ibo));
@@ -441,12 +466,7 @@ void setup(HWND p_HWND)
 	K15_OPENGL_CALL(kglBindBuffer(GL_ARRAY_BUFFER, vbo));
 	K15_OPENGL_CALL(kglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));
 
-	kg_u32 sizeVertexStrideInBytes = K15_GUI_VERTEX_SIZE_IN_BYTES;
-
 	K15_OPENGL_CALL(shaderProgram = kglCreateProgram());
-
-	GLuint vertexShader = 0;
-	GLuint fragmentShader = 0;
 
 	K15_OPENGL_CALL(vertexShader = kglCreateShader(GL_VERTEX_SHADER));
 	K15_OPENGL_CALL(fragmentShader = kglCreateShader(GL_FRAGMENT_SHADER));
@@ -457,8 +477,6 @@ void setup(HWND p_HWND)
 	K15_OPENGL_CALL(kglCompileShader(vertexShader));
 	K15_OPENGL_CALL(kglCompileShader(fragmentShader));
 
-	GLint vertexShaderCompileStatus = 0;
-	GLint fragmentShaderCompileStatus = 0;
 	K15_OPENGL_CALL(kglGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexShaderCompileStatus));
 	K15_OPENGL_CALL(kglGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentShaderCompileStatus));
 
@@ -478,12 +496,10 @@ void setup(HWND p_HWND)
 	K15_OPENGL_CALL(kglAttachShader(shaderProgram, fragmentShader));
 	K15_OPENGL_CALL(kglLinkProgram(shaderProgram));
 
-	GLint linkStatus = 0;
 	K15_OPENGL_CALL(kglGetProgramiv(shaderProgram, GL_LINK_STATUS, &linkStatus));
 
 	if (linkStatus == GL_FALSE)
 	{
-		GLint programLogLength = 0;
 		K15_OPENGL_CALL(kglGetProgramiv(shaderProgram, GL_INFO_LOG_LENGTH, &programLogLength));
 
 		if (programLogLength > 0)
@@ -494,16 +510,10 @@ void setup(HWND p_HWND)
 		}
 	}
 
-	GLint posAttribLocation = 0;
-	GLint uvAttribLocation = 0;
-	GLint colorAttribLocation = 0;
-
 	//get register location using attribute name
 	K15_OPENGL_CALL(posAttribLocation = kglGetAttribLocation(shaderProgram, "position"));
  	K15_OPENGL_CALL(uvAttribLocation = kglGetAttribLocation(shaderProgram, "uv"));
  	K15_OPENGL_CALL(colorAttribLocation = kglGetAttribLocation(shaderProgram, "color"));
-
-	int attribArrayIndex = 0;
 
 	if (posAttribLocation >= 0)
 	{
@@ -560,19 +570,27 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 	LPSTR lpCmdLine, int nShowCmd)
 {
 	const uint32 msPerFrame = 16;
-
+	HWND hwnd = INVALID_HANDLE_VALUE;
 	LARGE_INTEGER performanceFrequency;
-	QueryPerformanceFrequency(&performanceFrequency);
 
-	HWND hwnd = setupWindow(hInstance, screenWidth, screenHeight);
+	uint32 timeFrameStarted = 0;
+	uint32 timeFrameEnded = 0;
+	uint32 deltaMs = 0;
+
+	bool8 loopRunning = K15_TRUE;
+	MSG msg = {0};
+	K15_GUIResourceDatabase guiResourceDatabase = { 0 };			
+	kg_result result;
+	
+	QueryPerformanceFrequency(&performanceFrequency);
+	hwnd = setupWindow(hInstance, screenWidth, screenHeight);
 
 	if (hwnd == INVALID_HANDLE_VALUE)
 		return -1;
 
 	setup(hwnd);
 
-	K15_GUIResourceDatabase guiResourceDatabase = { 0 };
-	kg_result result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
+	result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -593,13 +611,6 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 	}
 
 	setupResources(&guiResourceDatabase);
-
-	uint32 timeFrameStarted = 0;
-	uint32 timeFrameEnded = 0;
-	uint32 deltaMs = 0;
-
-	bool8 loopRunning = K15_TRUE;
-	MSG msg = {0};
 
 	while (loopRunning)
 	{

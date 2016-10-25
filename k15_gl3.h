@@ -41,7 +41,13 @@
 #define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
 #define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
 
-#define K15_GL3_CHECK_ASSIGNMENT(variable, value) {if (value) variable = (void*)value; else printf( "Could not assign to variable \'%s\'.", #variable);}
+#define K15_GL3_CHECK_ASSIGNMENT(variable, value) \
+	{ \
+		if (value) \
+			variable = (void*)value; \
+		else \
+			printf( "Could not assign to variable \'%s\'.", #variable);\
+	}
 
 void K15_GL3RegisterGLFunctions();
 
@@ -59,6 +65,7 @@ void APIENTRY K15_DebugProcARB(GLenum source, GLenum type, GLuint id, GLenum sev
 {
 	const char* sourceName = 0;
 	const char* typeName = 0;
+	char buffer[512];
 
 	switch (source)
 	{
@@ -97,9 +104,7 @@ void APIENTRY K15_DebugProcARB(GLenum source, GLenum type, GLuint id, GLenum sev
 	if (typeName == 0 || sourceName == 0)
 		return;
 
-	char buffer[512];
 	sprintf(buffer, "OpenGL %s Warning. Category: %s Message: %s\n", typeName, sourceName, (const char*)message);
-
 	OutputDebugStringA(buffer);
 }
 
@@ -162,8 +167,9 @@ void APIENTRY K15_DebugProcARB(GLenum source, GLenum type, GLuint id, GLenum sev
 }
 # define K15_OPENGL_CALL(x) \
 	{ \
+		GLenum errorEnum = GL_NO_ERROR; \
 		x; \
-		GLenum errorEnum = kglGetError(); \
+		errorEnum = kglGetError(); \
 		if(errorEnum != GL_NO_ERROR){\
 			char buffer[512]; \
 			sprintf(buffer, "OpenGL Error on calling '%s' (Error: %s)\n", #x, K15_GLConvertErrorCode(errorEnum)); \
@@ -234,6 +240,57 @@ PFNWGLGETCURRENTDCPROC					kwglGetCurrentDC;
 void K15_GL3RegisterWGLFunctions(HWND p_HWND)
 {
 	HMODULE openglModule = GetModuleHandleA("opengl32.dll");
+	HDC deviceContext = GetDC(p_HWND);
+
+	unsigned int formatCount = 1;
+	int pixelFormatIndex = 0;
+	int pixelFormat = 0;
+	HGLRC glContext = 0;
+	HGLRC context = 0;
+
+	//int contextFlags = WGL_CONTEXT_CORE_PROFILE_BIT_ARB | WGL_CONTEXT_DEBUG_BIT_ARB;
+	int majorVersion = 3;
+	int minorVersion = 3;
+
+	const int contextAttributes[] = {
+		WGL_CONTEXT_MAJOR_VERSION_ARB, majorVersion,
+		WGL_CONTEXT_MINOR_VERSION_ARB, minorVersion,
+		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+		0 //END
+	};
+
+	PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR),
+		1,
+		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
+		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
+		32,                        //Colordepth of the framebuffer.
+		0, 0, 0, 0, 0, 0,
+		0,
+		0,
+		0,
+		0, 0, 0, 0,
+		24,                        //Number of bits for the depthbuffer
+		8,                        //Number of bits for the stencilbuffer
+		0,                        //Number of Aux buffers in the framebuffer.
+		PFD_MAIN_PLANE,
+		0,
+		0, 0, 0
+	};
+
+	const int pixelFormatAttributes[] = {
+		WGL_DRAW_TO_WINDOW_ARB,				GL_TRUE,
+		WGL_DOUBLE_BUFFER_ARB,				GL_TRUE,
+		WGL_SUPPORT_OPENGL_ARB,				GL_TRUE,
+		WGL_ACCELERATION_ARB,				WGL_FULL_ACCELERATION_ARB,
+		WGL_PIXEL_TYPE_ARB,					WGL_TYPE_RGBA_ARB,
+		WGL_COLOR_BITS_ARB,					24,
+		WGL_DEPTH_BITS_ARB,					24,
+		WGL_STENCIL_BITS_ARB,				8,
+		0
+	};
+
 
 	if (!openglModule)
 		openglModule = LoadLibraryA("opengl32.dll");
@@ -269,68 +326,19 @@ void K15_GL3RegisterWGLFunctions(HWND p_HWND)
 	K15_GL3_CHECK_ASSIGNMENT(kglTexParameteri, GetProcAddress(openglModule, "glTexParameteri"));
 	K15_GL3_CHECK_ASSIGNMENT(kglDrawArrays, GetProcAddress(openglModule, "glDrawArrays"));
 
-	HDC deviceContext = GetDC(p_HWND);
-
-	PIXELFORMATDESCRIPTOR pfd =
-	{
-		sizeof(PIXELFORMATDESCRIPTOR),
-		1,
-		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-		32,                        //Colordepth of the framebuffer.
-		0, 0, 0, 0, 0, 0,
-		0,
-		0,
-		0,
-		0, 0, 0, 0,
-		24,                        //Number of bits for the depthbuffer
-		8,                        //Number of bits for the stencilbuffer
-		0,                        //Number of Aux buffers in the framebuffer.
-		PFD_MAIN_PLANE,
-		0,
-		0, 0, 0
-	};
-
-	int pixelFormat = ChoosePixelFormat(deviceContext, &pfd);
+	pixelFormat = ChoosePixelFormat(deviceContext, &pfd);
 	SetPixelFormat(deviceContext, pixelFormat, &pfd);
 
-	HGLRC glContext = kwglCreateContext(deviceContext);
+	glContext = kwglCreateContext(deviceContext);
 	kwglMakeCurrent(deviceContext, glContext);
 
 	K15_GL3_CHECK_ASSIGNMENT(kwglChoosePixelFormatARB, kwglGetProcAddress("wglChoosePixelFormatARB"));
 	K15_GL3_CHECK_ASSIGNMENT(kwglCreateContextAttribsARB, kwglGetProcAddress("wglCreateContextAttribsARB"));
 
 	//create real context
-	const int pixelFormatAttributes[] = {
-		WGL_DRAW_TO_WINDOW_ARB,				GL_TRUE,
-		WGL_DOUBLE_BUFFER_ARB,				GL_TRUE,
-		WGL_SUPPORT_OPENGL_ARB,				GL_TRUE,
-		WGL_ACCELERATION_ARB,				WGL_FULL_ACCELERATION_ARB,
-		WGL_PIXEL_TYPE_ARB,					WGL_TYPE_RGBA_ARB,
-		WGL_COLOR_BITS_ARB,					24,
-		WGL_DEPTH_BITS_ARB,					24,
-		WGL_STENCIL_BITS_ARB,				8,
-		0
-	};
-
-	int pixelFormatIndex = 0;
-	unsigned int formatCount = 1;
-
 	K15_OPENGL_CALL(kwglChoosePixelFormatARB(deviceContext, pixelFormatAttributes, 0, 1, &pixelFormatIndex, &formatCount));
 	SetPixelFormat(deviceContext, pixelFormatIndex, 0);
 
-	//int contextFlags = WGL_CONTEXT_CORE_PROFILE_BIT_ARB | WGL_CONTEXT_DEBUG_BIT_ARB;
-	int majorVersion = 3;
-	int minorVersion = 3;
-
-	const int contextAttributes[] = {
-		WGL_CONTEXT_MAJOR_VERSION_ARB, majorVersion,
-		WGL_CONTEXT_MINOR_VERSION_ARB, minorVersion,
-		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-		0 //END
-	};
-
-	HGLRC context = 0;
 	K15_OPENGL_CALL(context = kwglCreateContextAttribsARB(deviceContext, 0, contextAttributes));
 	K15_OPENGL_CALL(kwglMakeCurrent(deviceContext, context));
 
