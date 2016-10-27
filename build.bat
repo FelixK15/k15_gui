@@ -2,6 +2,9 @@
 echo Searching for Visual Studio installation...
 setlocal enableextensions enabledelayedexpansion
 
+set SOURCE_FILE=win32_example.c
+set EXECUTABLE_NAME=win32_example.exe
+
 set FOUND_PATH=0
 set VS_PATH=
 ::check whether this is 64bit windows or not
@@ -41,8 +44,8 @@ IF !FOUND_PATH!==0 (
 	echo Starting build process...
 	set VCVARS_PATH="!VS_PATH!..\..\VC\vcvarsall.bat"
 	set CL_PATH="!VS_PATH!..\..\VC\bin\cl.exe"
-	set CL_OPTIONS=/nologo /Feexample.exe /MD /TC /W3 /Od /Zi
-	set BUILD_COMMAND=!CL_PATH! example.c !CL_OPTIONS!
+	set CL_OPTIONS=/nologo /Fe!EXECUTABLE_NAME! /MD /TC /W3 /Od /Zi
+	set BUILD_COMMAND=!CL_PATH! !SOURCE_FILE! !CL_OPTIONS!
 	call !VCVARS_PATH!
 	call !BUILD_COMMAND!
 ) 
