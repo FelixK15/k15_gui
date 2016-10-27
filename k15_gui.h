@@ -2511,36 +2511,46 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 /*********************************************************************************/
 kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Font, K15_GUIRect* p_OutRect)
 {
-	if (!p_Text || !p_Font || !p_OutRect)
-		return;
-
-	kg_s16 ascent = p_Font->ascent;
-	kg_s16 descent = p_Font->descent;
-	kg_s16 lineGap = p_Font->lineGap;
-	kg_u16 verticalOffset = (ascent - descent + lineGap);
+	kg_s16 ascent = 0;
+	kg_s16 descent = 0;
+	kg_s16 lineGap = 0;
+	kg_u16 verticalOffset = 0;
 
 	kg_s16 posX = 0;
 	kg_s16 posY = 0;
 	kg_s16 offsetY = 0;
 	kg_s16 leftSideBearing = 0;
 	kg_s16 advanceWidth = 0;
-	K15_GUIFontGlyph* glyphs = p_Font->glyphs;
+	K15_GUIFontGlyph* glyphs = 0;
 	K15_GUIFontGlyph* glyph = 0;
 
 	K15_GUIGlyphRange glyphRanges[10];
 	K15_GUIGlyphRange* glyphRangesPtr = glyphRanges;
 
-	kg_u32 numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
+	kg_u32 numGlyphRanges = 0;
 	K15_GUIGlyphRange* glyphRange = 0;
+
+	if (!p_Text || !p_Font || !p_OutRect)
+		return;
+
+	ascent = p_Font->ascent;
+	descent = p_Font->descent;
+	lineGap = p_Font->lineGap;
+	verticalOffset = (ascent - descent + lineGap);
+
+	glyphs = p_Font->glyphs;
+	numGlyphRanges = K15_GUIGetGlyphRanges(p_Font->glyphRangeMask, &glyphRangesPtr, 10);
 
 	while (1)
 	{
+		kg_u32 codePoint = 0;
+		kg_u32 glyphIndex = -1;
+		kg_u32 glyphRangeIndex = 0;
+
 		if (*p_Text == 0)
 			break;
 
-		kg_u32 codePoint = (int)(*p_Text++);
-		kg_u32 glyphIndex = -1;
-		kg_u32 glyphRangeIndex = 0;
+		codePoint = (int)(*p_Text++);
 
 		if (codePoint == '\n')
 		{
@@ -2548,7 +2558,7 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 			posX = 0;
 		}
 
-		for (glyphRangeIndex = 0;
+		for (glyphRangeIndex;
 			glyphRangeIndex < numGlyphRanges;
 			++glyphRangeIndex)
 		{
@@ -2569,22 +2579,18 @@ kg_internal void K15_GUICalculateTextRect(const char* p_Text, K15_GUIFont* p_Fon
 
 		if (glyph)
 		{
-			advanceWidth = glyph->advanceWidth;
-			leftSideBearing = glyph->leftSideBearing;
-			offsetY = glyph->offsetY;
-			
 			kg_s16 glyphHeight = glyph->glyphRect.bottom - glyph->glyphRect.top;
 			kg_s16 glyphWidth = glyph->glyphRect.right - glyph->glyphRect.left;
 
-			kg_s16 textPosLeft = posX + leftSideBearing;
-			kg_s16 textPosTop = posY + ascent + offsetY;
+			kg_s16 textPosLeft = posX + glyph->leftSideBearing;
+			kg_s16 textPosTop = posY + ascent + glyph->offsetY;
 			kg_s16 textPosRight = textPosLeft + glyphWidth;
 			kg_s16 textPosBottom = textPosTop + glyphHeight;
 
 			p_OutRect->right = K15_GUI_MAX(p_OutRect->right, textPosRight);
 			p_OutRect->bottom = K15_GUI_MAX(p_OutRect->bottom, textPosBottom);
 
-			posX += advanceWidth;
+			posX += glyph->advanceWidth;
 		}
 	}
 }
