@@ -32,7 +32,7 @@
 #define kg_size_kilo_bytes(n) (n*1024)
 #define kg_size_mega_bytes(n) (n*1024*1024)
 #define K15_GUI_CONTEXT_MEMORY_SIZE kg_size_kilo_bytes(5)
-#define K15_GUI_DRAW_VERTEX_BUFFER_SIZE kg_size_kilo_bytes(5)
+#define K15_GUI_DRAW_VERTEX_BUFFER_SIZE kg_size_mega_bytes(5)
 #define K15_GUI_DRAW_INDEX_BUFFER_SIZE kg_size_kilo_bytes(5)
 #define K15_GUI_MIN_MEMORY_SIZE_IN_BYTES sizeof(K15_GUIContext) + K15_GUI_CONTEXT_MEMORY_SIZE + K15_GUI_DRAW_VERTEX_BUFFER_SIZE + K15_GUI_DRAW_INDEX_BUFFER_SIZE
 #define K15_GUI_DEFAULT_RESOURCE_DATABASE_MEMORY_SIZE kg_size_mega_bytes(5)
@@ -208,8 +208,7 @@ typedef enum
 typedef enum
 {
 	K15_GUI_FLOW_LAYOUT_FLAG = 0x01,
-	K15_GUI_STRETCH_LAYOUT_FLAG = 0x02,
-	K15_GUI_IGNORE_LAYOUTING_LAYOUT_FLAG = 0x04
+	K15_GUI_T_FLAG = 0x02
 } K15_GUILayoutFlags;
 /*********************************************************************************/
 typedef enum 
@@ -701,6 +700,28 @@ kg_def kg_result K15_GUICalculateColumnMajorProjectionMatrix(float* p_Projection
 #define STBI_FREE K15_GUI_FREE
 #define STBI_REALLOC realloc
 #include "stb_image.h"
+
+
+//TODO-LIST:
+//	1. Proper layouting (currently broken as PopLayout pops layouts from the stack that
+//						later get references via the layoutIndex in the K15_GUIElement
+//						struct).
+//	2. Provide OS specific wrapper functions for input handling
+//	3. Provide Render API specific wrapper functions for rendering
+//	4. Somewhere store a white pixel in pre-baked texture (including default-font) to
+//	   overcome the need for more than one vertex-/ fragmentshader pair.
+//	5. Proper clipping of elements (Keep vertex count low)
+//  6. Text processing (all those comfy keybindings)
+//  7. UTF-8 support
+//  8. More gui elements (slider, combobox, checkbox, proper window, scrollareas, etc)
+//  9. custom gui elements (probably set of predetermined functions that together form
+//							some form of new control element).
+//	10. replace stb_truetype? Probably just going to strip the stuff that I need from 
+//		stb_truetype
+//	11. replace stb_image (I guess that is definitely doable. 
+//							Only need JPEG, PNG and maybe TIFF support).
+//  12. provide more style options other than just different colors.
+//		Imagesets and icons come to mind.
 
 /*********************************************************************************/
 #ifndef K15_GUI_STRIP_STANDARD_IO
@@ -2486,9 +2507,6 @@ kg_internal kg_result K15_GUIPushLayout(K15_GUIContext* p_GUIContext, K15_GUILay
 	layoutData.type = p_LayoutType;
 	layoutData.flagMask = p_LayoutFlags;
 
-	if ((p_LayoutFlags & K15_GUI_IGNORE_LAYOUTING_LAYOUT_FLAG) > 0)
-		layoutElement->flags |= K15_GUI_ELEMENT_IGNORE_LAYOUTING;
-
 	result = K15_GUIAddElementData(contextMemory, layoutElement, &layoutData, sizeof(layoutData));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2789,7 +2807,7 @@ kg_def void K15_GUICustomBeginToolBar(K15_GUIContext* p_GUIContext, const char* 
 
 	if (result == K15_GUI_RESULT_SUCCESS)
 		result = K15_GUIPushLayout(p_GUIContext, K15_GUI_HORIZONTAL_LAYOUT_TYPE, 
-			K15_GUI_FLOW_LAYOUT_FLAG, &clipRect);
+			K15_GUI_FLOW_LAYOUT_FLAG | K15_GUI_T_FLAG, &clipRect);
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
@@ -2838,6 +2856,20 @@ kg_def kg_b8 K15_GUICustomBeginMenu(K15_GUIContext* p_GUIContext, const char* p_
 
 	active = buttonElement->flags & K15_GUI_ELEMENT_MOUSE_DOWN ||
 		buttonElement->flags & K15_GUI_ELEMENT_ACTIVE;
+
+	if (active)
+	{
+		kg_u32 buttonWidth = buttonElement->clipRect.right - buttonElement->clipRect.left;
+		kg_u32 buttonHeight = buttonElement->clipRect.bottom - buttonElement->clipRect.top;
+
+		K15_GUIRect layoutRect;
+		layoutRect.left = buttonElement->clipRect.left + buttonWidth/2;
+		layoutRect.top = buttonElement->clipRect.top + buttonHeight;
+		layoutRect.right = 200;
+		layoutRect.bottom = 400;
+		K15_GUIPushLayout(p_GUIContext, K15_GUI_VERTICAL_LAYOUT_TYPE, 
+			K15_GUI_FLOW_LAYOUT_FLAG, &layoutRect);
+	}
 
 functionEnd:
 	K15_GUISetLastResult(&p_GUIContext->lastResult, result);
@@ -2947,10 +2979,14 @@ kg_internal void K15_GUIArrangeElementsHorizontally(K15_GUILayoutData* p_LayoutD
 			++elementIndex)
 		{
 			guiElement = layoutedElements[elementIndex];
-			elementFlags = guiElement->flags;
 
-			if ((elementFlags & K15_GUI_ELEMENT_IGNORE_LAYOUTING) > 0)
+			if (guiElement->type ==	K15_GUI_LAYOUT_ELEMENT_TYPE &&
+				p_LayoutData->flagMask & K15_GUI_T_FLAG)
+			{
 				continue;
+			}
+
+			elementFlags = guiElement->flags;
 
 			elementWidth = guiElement->clipRect.right - guiElement->clipRect.left;
 			elementHeight = guiElement->clipRect.bottom - guiElement->clipRect.top;
@@ -3225,7 +3261,7 @@ kg_internal void K15_GUIClipElements(K15_GUIContext* p_GUIContext)
 		else
 			clipRectUsedForClipping = contextClipRect;
 
-		//if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
+		if (K15_GUIPerformClipping(guiElementClipRect, clipRectUsedForClipping) != K15_GUI_RESULT_EMPTY_CLIP_RECT)
 		{
 			if (guiElement->type == K15_GUI_LAYOUT_ELEMENT_TYPE)
 				K15_GUIArrangeLayoutElements(guiElement);

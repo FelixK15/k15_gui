@@ -273,9 +273,18 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 
 void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
+	K15_GUIMouseInputType inputType = K15_GUI_MOUSE_BUTTON_PRESSED;
+
+	if (p_Message == WM_LBUTTONUP ||
+		p_Message == WM_MBUTTONUP ||
+		p_Message == WM_RBUTTONUP ||
+		p_Message == WM_XBUTTONUP)
+	{
+		inputType = K15_GUI_MOUSE_BUTTON_RELEASED;
+	}
 	K15_GUIMouseInput mouseInput = { 0 };
 	mouseInput.data.mouseButton = K15_GUI_MOUSE_BUTTON_LEFT;
-	mouseInput.type = K15_GUI_MOUSE_BUTTON_PRESSED;
+	mouseInput.type = inputType;
 
 	K15_GUIAddMouseInput(&guiContext.events, mouseInput);
 }
@@ -353,6 +362,13 @@ LRESULT CALLBACK K15_WNDPROC(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARA
 	return 0;
 }
 
+void allocateDebugConsole()
+{
+	AllocConsole();
+	AttachConsole(ATTACH_PARENT_PROCESS);
+	freopen("CONOUT$", "w", stdout);
+}
+
 HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 {
 	WNDCLASS wndClass = {0};
@@ -374,7 +390,10 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 	if (hwnd == INVALID_HANDLE_VALUE)
 		MessageBox(0, "Error creating Window.\n", "Error!", 0);
 	else
+	{
+		allocateDebugConsole();
 		ShowWindow(hwnd, SW_SHOW);
+	}
 	return hwnd;
 }
 
