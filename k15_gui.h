@@ -30,7 +30,7 @@ typedef unsigned int 		kg_crc32;
 typedef unsigned int 		kg_color32;
 typedef unsigned char 		kg_byte;
 typedef unsigned char 		kg_bool;
-typedef const char 			kg_utf8;
+typedef unsigned char 		kg_utf8;
 
 /*********************************************************************************/
 typedef enum 
@@ -132,6 +132,13 @@ typedef enum
 	K15_GUI_SYSTEM_EVENT_COUNT
 } kg_system_event_type;
 /*********************************************************************************/
+typedef enum 
+{
+	K15_GUI_MOUSE_INPUT_TYPE = 0,
+	K15_GUI_KEYBOARD_INPUT_TYPE,
+	K15_GUI_GAMEPAD_INPUT_TYPE
+} kg_input_event_type;
+/*********************************************************************************/
 
 typedef struct 
 {
@@ -194,10 +201,12 @@ typedef struct
 #ifdef K15_GUI_STORE_IDENTIFIER_STRING
 	const char* pIdentifier;
 #endif
+	kg_u32 		childCount;
 	kg_u32 		frameUseCounter;
 	kg_crc32 	identifier;
 	kg_float2	position;
 	kg_float2	size;
+	kg_float2	fixedSize;
 } kg_element;
 /*********************************************************************************/
 typedef struct _kg_hash_map_bucket
@@ -224,28 +233,11 @@ typedef struct
 	kg_u32 bla;
 } kg_resource_database;
 /*********************************************************************************/
-typedef struct
-{
-	kg_u32 bla;
-} kg_input_buffer;
-/*********************************************************************************/
 typedef struct 
 {
 	kg_float2 position;
 	kg_float2 size;
 } kg_rect;
-/*********************************************************************************/
-typedef struct 
-{
-	kg_hash_map*				pElements;
-	kg_error* 					pErrorStack;
-	kg_resource_database* 		pResourceDatabase;
-	kg_input_buffer*			pInputBuffer;
-
-	kg_rect 					clipRect;
-	kg_u32						errorCount;
-	kg_u32 						frameCounter;
-} kg_context;
 /*********************************************************************************/
 typedef struct
 {
@@ -261,6 +253,33 @@ typedef struct
 {
 	kg_u32 bla;
 } kg_context_events;
+/*********************************************************************************/
+typedef struct
+{
+	kg_u32 bla;
+	kg_input_event_type type;
+} kg_input_event;
+/*********************************************************************************/
+typedef struct
+{
+	kg_u32 			inputCount;
+	kg_input_event* pInputEvents;
+} kg_input_buffer;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_hash_map*				pElements;
+	kg_element*					pRootElement;
+	kg_error* 					pErrorStack;
+	kg_resource_database* 		pResourceDatabase;
+	kg_input_buffer*			pInputBuffer;
+
+	kg_rect 					clipRect;
+	kg_u32						errorCount;
+	kg_u32 						frameCounter;
+} kg_context;
+/*********************************************************************************/
+
 //how this should work:
 // - Call gui logic (K15_GUIButton, K15_GUIBeginWindow, K15_GUIPushHorizontalLayout etc.)
 // - Store elements internally in the gui context (just rects?) <-- headache
@@ -316,7 +335,7 @@ kg_def kg_result 	kg_add_system_event(kg_context_events* pContextEvents, kg_syst
 kg_def unsigned int kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
 kg_def kg_result 	kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
 kg_def kg_result 	kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def kg_bool 		kg_pop_error(kg_context* pContext);
+kg_def kg_bool 		kg_pop_error(kg_context* pContext, kg_error** pOutError);
 
 
 //*****************DEBUG*****************//
@@ -330,14 +349,58 @@ kg_def kg_bool 		kg_pop_error(kg_context* pContext);
 # define K15_GUI_STRIP_DEBUG_RENDERING 0
 #endif //K15_STRIP_DEBUG_RENDERING
 
+#ifndef K15_GUI_CUSTOM_ASSERT
+# include "assert.h"
+# define kg_assert(x) assert(x)
+#else
+# define kg_assert(x) K15_GUI_CUSTOM_ASSERT(x)
+#endif //K15_GUI_CUSTOM_ASSERT
+
+#ifndef K15_GUI_CUSTOM_MALLOC
+# include "malloc.h"
+# define kg_malloc(x, u) (u); malloc(x)
+#else
+# ifndef K15_GUI_CUSTOM_FREE
+#  error "K15_GUI_CUSTOM_MALLOC defined without matching K15_GUI_CUSTOM_FREE"
+# endif
+# define kg_malloc(x, u) K15_GUI_CUSTOM_MALLOC(x, u)
+#endif //K15_GUI_CUSTOM_MALLOC
+
+#ifndef K15_GUI_CUSTOM_FREE
+# include "malloc.h"
+# define kg_free(x, u) (u); free(x)
+#else
+# ifndef K15_GUI_CUSTOM_MALLOC
+#  error "K15_GUI_CUSTOM_FREE defined without matching K15_GUI_CUSTOM_MALLOC"
+# endif
+# define kg_free(x, u) K15_GUI_CUSTOM_FREE(x, u);
+#endif //K15_GUI_CUSTOM_FREE
+
 #define kg_size_kilo_bytes(n) (n*1024)
 #define kg_size_mega_bytes(n) (n*1024*1024)
+
+#define kg_default_context_size kg_size_kilo_bytes(128)
 
 typedef struct
 {
 	kg_u32 offset;
 	kg_u32 sizeInBytes;
 } kg_data_handle;
+
+typedef struct
+{
+	kg_bool 		isOpen;
+	kg_bool 		isMaximized;
+	kg_bool 		isMinimized;
+	kg_float2		originalSize;
+	const kg_utf8* 	pText;
+} kg_window_component;
+
+kg_internal kg_float2 kg_f2_zero()
+{
+	static const kg_float2 zero = {0.f, 0.f};
+	return zero;
+}
 
 kg_internal kg_data_handle kg_allocate_from_buffer(kg_buffer* pBuffer, kg_u32 sizeInBytes)
 {
@@ -407,7 +470,7 @@ kg_internal kg_element* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 i
 
 	if (pHashMap->pBuckets[hashIndex] != 0)
 	{
-		pBucket = kg_find_hash_element_bucket(pHashMap, hashIndex);
+		pBucket = kg_find_hash_element_bucket(pHashMap, hashIndex, pOutIsNew);
 	}
 
 	if (pBucket)
@@ -424,7 +487,7 @@ kg_internal kg_element* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 i
 	return &pBucket->element;
 }
 
-kg_internal kg_crc32 kg_calculate_crc32(const char* pIdentifier)
+kg_internal kg_crc32 kg_generate_crc32(const char* pIdentifier)
 {	
 	static const kg_u32 crc_table[] = {
 		25524, 30093, 15731, 4958, 22260, 4510, 4365, 1390, 3442, 20063, 10074, 5395, 15899, 6103, 18904, 32038, 12922, 25399, 25476, 23810, 11145, 20575, 11339, 1582, 2247, 1188, 10433, 19772, 25994, 8913, 21013, 25072, 8343, 1131, 31301, 29349, 496, 6202, 16526, 7917, 29421, 2564, 10791, 32120, 31886, 6044, 13102, 14647, 16, 14108, 27619, 2496, 23998, 29294, 30228, 2805, 32266, 7185, 30424, 14304, 28892, 16665, 20608, 3298, 5930, 
@@ -442,10 +505,10 @@ kg_internal kg_crc32 kg_calculate_crc32(const char* pIdentifier)
 		unsigned char byte = (unsigned char)*pIdentifier++;
 		crcIndex = (crc | byte) & 0xFF;
 
-		crc = (crc << 8u) |  crc_table[crcIndex];
+		crc = (crc << 8u) ^ crc_table[crcIndex];
 	}
 
-	crc = crc | 0xFFFFFFFF
+	crc = crc ^ 0xFFFFFFFF;
 
 	return crc;
 }
@@ -454,14 +517,14 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 {
 	kg_crc32 identifierHash = kg_generate_crc32(pIdentifier);
 
-	kg_bool isNew = 0u:
-	kg_element* pElement = kg_insert_hash_element(pContext->elementHashMap, identifierHash, &isNew);
+	kg_bool isNew = 0u;
+	kg_element* pElement = kg_insert_hash_element(pContext->pElements, identifierHash, &isNew);
 
 	if (isNew)
 	{
 		pElement->size 				= kg_f2_zero();
 		pElement->position 			= kg_f2_zero();
-		pElement->identifier 		= kg_calculate_crc32(pIdentifier);
+		pElement->identifier 		= kg_generate_crc32(pIdentifier);
 #ifdef K15_GUI_STORE_IDENTIFIER_STRING
 		pElement->p_Identifier		= pIdentifier;
 #endif
@@ -516,10 +579,20 @@ kg_internal void kg_process_input_events(kg_context* pContext)
 		kg_process_input_event(pContext, pInputEvent);
 	}
 
-	pInputBuffer->inputCount = 0u
+	pInputBuffer->inputCount = 0u;
+}
+
+kg_internal void kg_process_input(kg_input_buffer* pInputBuffer)
+{
+
 }
 
 kg_internal void kg_input_pass(kg_element* pElement)
+{
+
+}
+
+kg_internal void kg_layout_element(kg_element* pElement)
 {
 
 }
@@ -530,19 +603,39 @@ kg_internal void kg_layout_pass(kg_element* pElement)
 
 	for(kg_u32 childIndex = 0u; childIndex < pElement->childCount; ++childIndex)
 	{
-		kg_element* pChildElement = pElement;
-		kg_layout_element(pChildElement);
 	}
+}
+
+kg_internal void kg_render_element(kg_element* pElement)
+{
+
 }
 
 kg_internal void kg_render_pass(kg_element* pElement)
 {
-	kg_render_element(pRootElement)
+	kg_render_element(pElement);
+
+	for (kg_u32 childIndex = 0u; childIndex < pElement->childCount; ++childIndex)
+	{
+	}
 }
+
+/*********************************************************************************/
+/*****************************RESOURCE LOGIC**************************************/
+/*********************************************************************************/
+kg_internal const kg_utf8* kg_find_text(kg_context* pContext, const char* pTextID)
+{
+	return 0;
+}
+
 
 /*********************************************************************************/
 /*****************************CONTROL LOGIC***************************************/
 /*********************************************************************************/
+kg_window_component* kg_allocate_window_component(kg_context* pContext, kg_element* pElement)
+{
+	return 0;
+}
 
 kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, kg_window_component* pComponent)
 {
@@ -581,19 +674,19 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 //  12. provide more style options other than just different colors.
 //		Imagesets and icons come to mind.
 
-kg_result kg_create_context(kg_context* pContext, kg_resource_database* pContextResources)
+kg_result kg_create_context(kg_context** pContext, kg_resource_database* pContextResources)
 {
-	kg_byte* pMemory = kg_malloc(K15_GUI_DEFAULT_CONTEXT_SIZE);
+	kg_byte* pMemory = kg_malloc(kg_default_context_size, 0u);
 
 	if (!pMemory)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}	
 
-	return kg_create_context_with_custom_memory( pContext, pContextResources, pMemory, memorySizeInBytes );
+	return kg_create_context_with_custom_memory( pContext, pContextResources, pMemory, kg_default_context_size );
 }
 
-kg_result kg_create_context_with_custom_memory(K15_GUIContext* pContext, kg_resource_database* pContextResources, const char* pMemory, unsigned int memorySizeInBytes)
+kg_result kg_create_context_with_custom_memory(kg_context** pContext, kg_resource_database* pContextResources, const char* pMemory, unsigned int memorySizeInBytes)
 {
 	if (!pMemory)
 	{
@@ -628,19 +721,19 @@ kg_bool kg_begin_window(kg_context* pContext, const char* pTextID, const char* p
 
 	if (!pElement)
 	{
-		return false;
+		return K15_GUI_FALSE;
 	}
 
 	kg_window_component* pWindowComponent = kg_allocate_window_component(pContext, pElement);
 
 	if (!pWindowComponent)
 	{
-		return false;
+		return K15_GUI_FALSE;
 	}
 
 	pWindowComponent->pText = pText;
 		
-	return kg_window_logic(pWindowComponent);
+	return kg_window_logic(pContext, pElement, pWindowComponent);
 }
 
 kg_bool kg_begin_menu(kg_context* pContext, const char* pTextID, const char* pIdentifier)
@@ -681,9 +774,9 @@ void kg_end_toolbar(kg_context* pContext)
 kg_result kg_end_frame(kg_context* pContext)
 {
 	kg_process_input(pContext->pInputBuffer);
-	kg_input_pass(pContext->pTopElement);
-	kg_layout_pass(pContext->pTopElement);
-	kg_render_pass(pContext->pTopElement);
+	kg_input_pass(pContext->pRootElement);
+	kg_layout_pass(pContext->pRootElement);
+	kg_render_pass(pContext->pRootElement);
 	++pContext->frameCounter;
 }
 
@@ -691,11 +784,12 @@ kg_bool kg_pop_error(kg_context* pContext, kg_error** pOutError)
 {
 	if (pContext->errorCount > 0u)
 	{
-		*pOutError = pContext->errorStack[--pContext->errorCount]
+		*pOutError = pContext->pErrorStack + ( --pContext->errorCount );
 		return K15_GUI_TRUE;
 	}
 
 	return K15_GUI_FALSE;
 }
 
-#endif
+#endif //K15_GUI_IMPLEMENTATION
+#endif //_K15_GUILayer_Context_h_
