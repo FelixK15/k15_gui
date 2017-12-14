@@ -35,7 +35,7 @@ GLint vao = 0;
 GLint shaderProgram = 0;
 GLint projUniform = 0;
 GLint textureUniform = 0;
-K15_GUIContext guiContext;
+kg_context guiContext;
 
 uint32 convertColor(kg_color32 p_Color)
 {
@@ -64,148 +64,26 @@ GLuint fontTextureHandle;
 
 void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
 {
-	int bla = 0;
-	int bla2 = 0;
-	int bla3 = 0;
 
-	K15_GUIIconSet* icons = 0;
-	K15_GUIFont* font = 0;
-
-	uint32 fontPixelBufferSize = 0;
-	void* fontPixelBuffer = 0;
-
-	uint32 iconPixelBufferSize = 0;
-	void* iconPixelBuffer= 0;
-
-	int iconTextureWidth = 0;
-	int iconTextureHeight = 0;
-	int fontTextureWidth = 0;
-	int fontTextureHeight = 0;
-
-	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "accept.png", "load");
-	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "add.png", "load2");
-	K15_GUICreateIconResourceFromFile(p_GUIResourceDatabase, "anchor.png", "load3");
-
-	K15_GUIBakeIconResources(p_GUIResourceDatabase, &icons, "default_iconset");
-	K15_GUIGetFontResource(p_GUIResourceDatabase, &font, "default_font");
-	
-	fontPixelBufferSize = K15_GUICalculateFontPixelBufferSizeInBytes(font, K15_GUI_PIXEL_FORMAT_R8G8B8);
-	fontPixelBuffer = malloc(fontPixelBufferSize);
-
-	iconPixelBufferSize = K15_GUICalculateIconSetPixelBufferSizeInBytes(icons, K15_GUI_PIXEL_FORMAT_R8G8B8);
-	iconPixelBuffer= malloc(fontPixelBufferSize);
-
-	K15_GUICopyIconSetTextureIntoPixelBuffer(icons, iconPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &iconTextureWidth, &iconTextureHeight);
-	K15_GUICopyFontTextureIntoPixelBuffer(font, fontPixelBuffer, K15_GUI_PIXEL_FORMAT_R8G8B8, &fontTextureWidth, &fontTextureHeight);
-
-	K15_OPENGL_CALL(kglGenTextures(1, &iconTextureHandle));
-	K15_OPENGL_CALL(kglGenTextures(1, &fontTextureHandle));
-
-	K15_OPENGL_CALL(kglBindTexture(GL_TEXTURE_2D, iconTextureHandle));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0));
-	K15_OPENGL_CALL(kglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, iconTextureWidth, iconTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, iconPixelBuffer));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
-	
-	K15_OPENGL_CALL(kglBindTexture(GL_TEXTURE_2D, fontTextureHandle));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0));
-	K15_OPENGL_CALL(kglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, fontTextureWidth, fontTextureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, fontPixelBuffer));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
-	K15_OPENGL_CALL(kglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
-
-	K15_GUISetIconSetTextureUserData(icons, iconTextureHandle);
-	K15_GUISetFontTextureUserData(font, fontTextureHandle);
 }
 
-void updateGUI(K15_GUIContext* p_GUIContext)
+void updateGUI()
 {
-	static kg_b8 showWindow = 0;
-	static kg_s16 windowPosX = 0;
-	static kg_s16 windowPosY = 0;
-	static kg_u16 windowWidth = 200;
-	static kg_u16 windowHeight = 100;
-	static float sliderValue = 0.f;
-	char* message = (char*)alloca(512);
+	kg_context* pContext = &guiContext;
+	kg_begin_frame(pContext);
 
-	K15_GUIBeginFrame(p_GUIContext);
-	K15_GUIBeginToolBar(p_GUIContext, "toolbar_1");
-
-	if (K15_GUIBeginMenu(p_GUIContext, "File", "file"))
+	if (kg_begin_window(pContext, "TestWindow", "window_0"))
 	{
-		if (K15_GUIMenuItem(p_GUIContext, "Open...", "open_1"))
-		{
-			printf("Open pressed...\n");
-		}
-
-		if (K15_GUIMenuItem(p_GUIContext, "Close", "close_1"))
-		{
-			exit(0);
-		}
-
-		K15_GUISeparator(p_GUIContext);
-
-		if (K15_GUIBeginMenu(p_GUIContext, "Even More", "more_1"))
-		{
-			if (K15_GUIMenuItem(p_GUIContext, "Open Window", "open_window_1"))
-			{
-				showWindow = !showWindow;
-			}
-
-			K15_GUIEndMenu(p_GUIContext);
-		}
-		K15_GUIEndMenu(p_GUIContext);
+		kg_end_window(pContext);
 	}
 
-	if (K15_GUIBeginMenu(p_GUIContext, "Edit", "edit"))
+	kg_end_frame(pContext);
+
+	kg_error* pError = 0;
+	while( kg_pop_error(pContext, &pError) )
 	{
-		if (K15_GUIMenuItem(p_GUIContext, "Whales", "open_2"))
-		{
-			printf("Open pressed...\n");
-		}
-
-		K15_GUIEndMenu(p_GUIContext);
+		printf("Error occured: %s\n", pError->pErrorString);
 	}
-
-	if (K15_GUIBeginMenu(p_GUIContext, "View", "view"))
-	{
-		if (K15_GUIMenuItem(p_GUIContext, "Cambridge", "open_3"))
-		{
-			printf("Open pressed...\n");
-		}
-
-		K15_GUIEndMenu(p_GUIContext);
-	}
-
-	K15_GUIEndToolBar(p_GUIContext);
-
-	if (showWindow)
-	{
-		if (K15_GUIBeginWindow(p_GUIContext, &windowPosY, &windowPosY, &windowHeight, &windowHeight,
-			"Test Window", "test_window_1"))
-		{
-			K15_GUILabel(p_GUIContext, "Print float:", "label_1");
-			//				K15_GUINextLine(p_GUIContext);
-			//				K15_GUIFloatSlider(p_GUIContext, &sliderValue, 0.f, 10.f, "slider_1");
-			if (K15_GUIButton(p_GUIContext, "Print float", "print_1"))
-			{
-				printf("Float: %.3f\n", sliderValue);
-			}
-			K15_GUIEndWindow(p_GUIContext);
-		}
-	}
-
-	{
-		kg_result lastResult = K15_GUIGetLastResult(p_GUIContext);
-		if (lastResult != K15_GUI_RESULT_SUCCESS)
-		{
-			kg_u32 bytesWritten = K15_GUIConvertResultToMessage(lastResult, &message, 512);
-			message[bytesWritten] = 0;
-			printf("Error: %s\n", message);
-		}
-	}
-	K15_GUIFinishFrame(p_GUIContext);
 }
 
 void drawGUI(K15_GUIContext* p_GUIContext)
