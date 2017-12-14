@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <stdio.h>
+#include <math.h>
 
 #define K15_OPENGL_ENABLE_ERROR_CHECK_CALLS
 #include "k15_gl3.h"
@@ -62,10 +63,6 @@ uint32 convertColor(kg_color32 p_Color)
 GLuint iconTextureHandle;
 GLuint fontTextureHandle;
 
-void setupResources(K15_GUIResourceDatabase* p_GUIResourceDatabase)
-{
-
-}
 
 void updateGUI()
 {
@@ -86,33 +83,6 @@ void updateGUI()
 	}
 }
 
-void drawGUI(K15_GUIContext* p_GUIContext)
-{
-	K15_GUIDrawInformation* drawInformation = &p_GUIContext->drawInformation;
-	int indexSizeInBytes = drawInformation->indexSizeInBytes;
-
-	if (drawInformation->numDrawCommands > 0)
-	{
-		uint32 drawCommandIndex = 0;
-		K15_OPENGL_CALL(kglBufferData(GL_ARRAY_BUFFER, drawInformation->vertexBufferDataSizeInBytes, drawInformation->vertexBufferData, GL_DYNAMIC_DRAW));
-		K15_OPENGL_CALL(kglBufferData(GL_ELEMENT_ARRAY_BUFFER, drawInformation->indexBufferDataSizeInBytes, drawInformation->indexBufferData, GL_DYNAMIC_DRAW));
-
-		for (drawCommandIndex;
-			drawCommandIndex < drawInformation->numDrawCommands;
-			++drawCommandIndex)
-		{
-			K15_GUIDrawCommand* drawCommand = drawInformation->drawCommands + drawCommandIndex;
-			kg_u64 textureUserData = drawCommand->textureUserData;
-			kg_u32 numTriangles = drawCommand->numTriangles;
-			kg_u32 vertexOffset = drawCommand->vertexOffset;
-			kg_u32 indexOffset = drawCommand->indexOffset;
-
-			K15_OPENGL_CALL(kglBindTexture(GL_TEXTURE_2D, (GLuint)textureUserData));
-			K15_OPENGL_CALL(kglDrawElements(GL_TRIANGLES, numTriangles * 3, indexSizeInBytes == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (const void*)(indexOffset * indexSizeInBytes)));
-		}
-	}
-}
-
 void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
 	
@@ -125,23 +95,7 @@ void K15_WindowClosed(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lPa
 
 void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
-	WORD newWidth = (WORD)(p_lParam);
-	WORD newHeight = (WORD)(p_lParam >> 16);
-	K15_GUISystemEvent systemEvent;
-	float projMatrix[16];
 
-	resizeBackbuffer(p_HWND, newWidth, newHeight);
-
-	systemEvent.type = K15_GUI_WINDOW_RESIZED;
-	systemEvent.params.size.height = newHeight;
-	systemEvent.params.size.width = newWidth;
-
-	K15_GUICalculateColumnMajorProjectionMatrix(projMatrix, 
-		newWidth, newHeight, K15_GUI_INVERT_Y_AXIS);
-
-	K15_OPENGL_CALL(kglUniformMatrix4fv(projUniform, 1, GL_FALSE, projMatrix));
-
-	K15_GUIAddSystemEvent(&guiContext.events, systemEvent);
 }
 
 void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
@@ -151,33 +105,12 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 
 void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
-	K15_GUIMouseInputType inputType = K15_GUI_MOUSE_BUTTON_PRESSED;
 
-	if (p_Message == WM_LBUTTONUP ||
-		p_Message == WM_MBUTTONUP ||
-		p_Message == WM_RBUTTONUP ||
-		p_Message == WM_XBUTTONUP)
-	{
-		inputType = K15_GUI_MOUSE_BUTTON_RELEASED;
-	}
-	K15_GUIMouseInput mouseInput = { 0 };
-	mouseInput.data.mouseButton = K15_GUI_MOUSE_BUTTON_LEFT;
-	mouseInput.type = inputType;
-
-	K15_GUIAddMouseInput(&guiContext.events, mouseInput);
 }
 
 void K15_MouseMove(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
-	WORD posX = (WORD)(p_lParam);
-	WORD posY = (WORD)(p_lParam >> 16);
 
-	K15_GUIMouseInput mouseInput = { 0 };
-	mouseInput.data.mousePos.x = posX;
-	mouseInput.data.mousePos.y = posY;
-	mouseInput.type = K15_GUI_MOUSE_MOVED;
-
-	K15_GUIAddMouseInput(&guiContext.events, mouseInput);
 }
 
 void K15_MouseWheel(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
@@ -309,140 +242,6 @@ char* getInfoLogForShader(GLuint p_Shader)
 
 void setup(HWND p_HWND)
 {
-	const char* vertexShaderSource = ""
-		"#version 330\n"
-		"uniform mat4 projMatrix;"
-		"in vec2 position;\n"
-		"in vec2 uv;\n"
-		"in vec4 color;\n"
-		"out vec4 fragColor;\n"
-		"out vec2 fragUV;\n"
-		"out gl_PerVertex{\n"
-		"vec4 gl_Position;\n"
-		"float gl_PointSize;\n"
-		"float gl_ClipDistance[];\n"
-		"};\n"
-		"void main()\n"
-		"{\n"
-		"	fragColor = color;\n"
-		"	fragUV = uv;\n"
-		"	vec4 pos = vec4(position.x, position.y, 1.f, 1.f);"
-		"	gl_Position = projMatrix * pos;\n"
-		"}";
-
-	const char* fragmentShaderSource = ""
-		"#version 330\n"
-		"in vec4 fragColor;\n"
-		"in vec2 fragUV;\n"
-		"uniform sampler2D textureSampler;\n"
-		"void main()\n"
-		"{\n"
-		"	gl_FragColor = texture(textureSampler, fragUV);\n"
-		"}";
-
-	kg_u32 vertexShaderSourceLength = strlen(vertexShaderSource);
-	kg_u32 fragmentShaderSourceLenght = strlen(fragmentShaderSource);
-	kg_u32 sizeVertexStrideInBytes = K15_GUI_VERTEX_SIZE_IN_BYTES;
-
-	GLuint vertexShader = 0;
-	GLuint fragmentShader = 0;
-
-	GLint vertexShaderCompileStatus = 0;
-	GLint fragmentShaderCompileStatus = 0;
-
-	GLint linkStatus = 0;
-	GLint posAttribLocation = 0;
-	GLint uvAttribLocation = 0;
-	GLint colorAttribLocation = 0;
-
-	int attribArrayIndex = 0;
-
-	K15_OPENGL_CALL(kglGenBuffers(1, &vbo));
-	K15_OPENGL_CALL(kglGenBuffers(1, &ibo));
-	K15_OPENGL_CALL(kglGenVertexArrays(1, &vao));
-
-	K15_OPENGL_CALL(kglFrontFace(GL_CW));
-	K15_OPENGL_CALL(kglCullFace(GL_FRONT));
-
-	K15_OPENGL_CALL(kglBindVertexArray(vao));
-	K15_OPENGL_CALL(kglBindBuffer(GL_ARRAY_BUFFER, vbo));
-	K15_OPENGL_CALL(kglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));
-
-	K15_OPENGL_CALL(shaderProgram = kglCreateProgram());
-	K15_OPENGL_CALL(vertexShader = kglCreateShader(GL_VERTEX_SHADER));
-	K15_OPENGL_CALL(fragmentShader = kglCreateShader(GL_FRAGMENT_SHADER));
-
-	K15_OPENGL_CALL(kglShaderSource(vertexShader, 1, &vertexShaderSource, &vertexShaderSourceLength));
-	K15_OPENGL_CALL(kglShaderSource(fragmentShader, 1, &fragmentShaderSource, &fragmentShaderSourceLenght));
-
-	K15_OPENGL_CALL(kglCompileShader(vertexShader));
-	K15_OPENGL_CALL(kglCompileShader(fragmentShader));
-
-	K15_OPENGL_CALL(kglGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexShaderCompileStatus));
-	K15_OPENGL_CALL(kglGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentShaderCompileStatus));
-
-	if (vertexShaderCompileStatus == GL_FALSE)
-	{
-		const char* error = getInfoLogForShader(vertexShader);
-		MessageBoxA(p_HWND, error, "Vertex Shader Error!", 0);
-	}
-
-	if (fragmentShaderCompileStatus == GL_FALSE)
-	{
-		const char* error = getInfoLogForShader(fragmentShader);
-		MessageBoxA(p_HWND, error, "Fragment Shader Error!", 0);
-	}
-
-	K15_OPENGL_CALL(kglAttachShader(shaderProgram, vertexShader));
-	K15_OPENGL_CALL(kglAttachShader(shaderProgram, fragmentShader));
-	K15_OPENGL_CALL(kglLinkProgram(shaderProgram));
-
-	K15_OPENGL_CALL(kglGetProgramiv(shaderProgram, GL_LINK_STATUS, &linkStatus));
-
-	if (linkStatus == GL_FALSE)
-	{
-		GLint programLogLength = 0;
-		K15_OPENGL_CALL(kglGetProgramiv(shaderProgram, GL_INFO_LOG_LENGTH, &programLogLength));
-
-		if (programLogLength > 0)
-		{
-			char* programLog = (char*)malloc(programLogLength);
-			K15_OPENGL_CALL(kglGetProgramInfoLog(shaderProgram, programLogLength, 0, programLog));
-			MessageBoxA(p_HWND, programLog, "Shader Linker Error!", 0);
-		}
-	}
-
-	//get register location using attribute name
-	K15_OPENGL_CALL(posAttribLocation = kglGetAttribLocation(shaderProgram, "position"));
- 	K15_OPENGL_CALL(uvAttribLocation = kglGetAttribLocation(shaderProgram, "uv"));
- 	K15_OPENGL_CALL(colorAttribLocation = kglGetAttribLocation(shaderProgram, "color"));
-
-	if (posAttribLocation >= 0)
-	{
-		K15_OPENGL_CALL(kglEnableVertexAttribArray(attribArrayIndex++));
-		K15_OPENGL_CALL(kglVertexAttribPointer(posAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, 0));
-	}
-
-	if (uvAttribLocation >= 0)
-	{
-		K15_OPENGL_CALL(kglEnableVertexAttribArray(attribArrayIndex++));
-		K15_OPENGL_CALL(kglVertexAttribPointer(uvAttribLocation, 2, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 2)));
-	}
-
-	if (colorAttribLocation >= 0)
-	{
-		K15_OPENGL_CALL(kglEnableVertexAttribArray(attribArrayIndex));
-		K15_OPENGL_CALL(kglVertexAttribPointer(colorAttribLocation, 4, GL_FLOAT, GL_FALSE, sizeVertexStrideInBytes, (const void*)(sizeof(float) * 4)));
-	}
-
-	K15_OPENGL_CALL(projUniform = kglGetUniformLocation(shaderProgram, "projMatrix"));
-	K15_OPENGL_CALL(textureUniform = kglGetUniformLocation(shaderProgram, "textureSampler"));
-
-	K15_OPENGL_CALL(kglUseProgram(shaderProgram));
-
-	K15_OPENGL_CALL(kglUniform1i(textureUniform, 0));
-	K15_OPENGL_CALL(kglActiveTexture(GL_TEXTURE0))
-	K15_WindowResized(p_HWND, 0, 0, (LPARAM)(screenWidth | (screenHeight << 16)));
 }
 
 void swapBuffers(HWND p_HWND)
@@ -457,11 +256,9 @@ void drawDeltaTime(uint32 p_DeltaTimeInMS)
 
 }
 
-void doFrame(K15_GUIContext* p_GUIContext, uint32 p_DeltaTimeInMS, HWND p_HWND)
+void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 {
 	drawDeltaTime(p_DeltaTimeInMS);
-	updateGUI(p_GUIContext);
-	drawGUI(p_GUIContext);
 
 	swapBuffers(p_HWND);
 }
@@ -473,8 +270,6 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 	const uint32 msPerFrame = 16;
 	HWND hwnd = INVALID_HANDLE_VALUE;
 	LARGE_INTEGER performanceFrequency;
-	K15_GUIResourceDatabase guiResourceDatabase = { 0 };
-	kg_result result;
 
 	QueryPerformanceFrequency(&performanceFrequency);
 
@@ -484,28 +279,6 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 		return -1;
 
 	setup(hwnd);
-
-	result = K15_GUICreateResourceDatabase(&guiResourceDatabase);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		char* errorMsg = (char*)alloca(256);
-		K15_GUIConvertResultToMessage(result, &errorMsg, 256);
-
-		printf("Error during resource database creation: '%s'\n", errorMsg);
-	}
-
-	result = K15_CreateGUIContext(&guiContext, &guiResourceDatabase, 0, 0, screenWidth, screenHeight);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		char* errorMsg = (char*)alloca(256);
-		K15_GUIConvertResultToMessage(result, &errorMsg, 256);
-
-		printf("Error during context creation: '%s'\n", errorMsg);
-	}
-
-	setupResources(&guiResourceDatabase);
 
 	{
 		uint32 timeFrameStarted = 0;
@@ -528,7 +301,7 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 					loopRunning = K15_FALSE;
 			}
 
-			doFrame(&guiContext, deltaMs, hwnd);
+			doFrame(deltaMs, hwnd);
 
 	// 		StretchBlt(backbufferDC, 0, 0, iW, iH, iconDC, 0, 0, iW, iH, SRCCOPY);
 	// 		swapBuffers(hwnd);
