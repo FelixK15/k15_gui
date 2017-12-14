@@ -240,8 +240,12 @@ char* getInfoLogForShader(GLuint p_Shader)
 	return infoLog;
 }
 
+kg_context* pGUIContext;
+kg_resource_database* pResourceDatabase;
+
 void setup(HWND p_HWND)
 {
+	kg_create_context(&pGUIContext, 0);
 }
 
 void swapBuffers(HWND p_HWND)

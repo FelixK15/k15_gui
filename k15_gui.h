@@ -222,7 +222,7 @@ typedef struct
 {
 	kg_u32 					size;
 	kg_hash_map_bucket** 	pBuckets;
-	kg_buffer*				pBucketBuffer;
+	kg_buffer				bucketBuffer;
 } kg_hash_map;
 /*********************************************************************************/
 typedef struct 
@@ -361,7 +361,7 @@ kg_def kg_bool 		kg_pop_error(kg_context* pContext, kg_error** pOutError);
 
 #ifndef K15_GUI_CUSTOM_MALLOC
 # include "malloc.h"
-# define kg_malloc(x, u) (u); malloc(x)
+# define kg_malloc(x, u) malloc(x)
 #else
 # ifndef K15_GUI_CUSTOM_FREE
 #  error "K15_GUI_CUSTOM_MALLOC defined without matching K15_GUI_CUSTOM_FREE"
@@ -371,7 +371,7 @@ kg_def kg_bool 		kg_pop_error(kg_context* pContext, kg_error** pOutError);
 
 #ifndef K15_GUI_CUSTOM_FREE
 # include "malloc.h"
-# define kg_free(x, u) (u); free(x)
+# define kg_free(x, u) free(x)
 #else
 # ifndef K15_GUI_CUSTOM_MALLOC
 #  error "K15_GUI_CUSTOM_FREE defined without matching K15_GUI_CUSTOM_MALLOC"
@@ -435,6 +435,8 @@ kg_internal const kg_data_handle* kg_create_data_handle(kg_buffer* pBuffer, kg_u
 	pDataHandle->pNextHandle		= 0;
 	pDataHandle->pPreviousHandle 	= pBuffer->pLastHandle;
 
+	pBuffer->sizeInBytes += sizeInBytes + sizeof(kg_data_handle);
+
 	if (pBuffer->pFirstHandle == 0)
 	{
 		pBuffer->pFirstHandle = ( void* )pDataHandle;
@@ -465,6 +467,31 @@ kg_internal kg_bool kg_is_invalid_data_handle(const kg_data_handle* pHandle)
 	return K15_GUI_FALSE;
 }
 
+kg_internal kg_bool kg_is_invalid_buffer(const kg_buffer* pBuffer)
+{
+	if (!pBuffer)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	if (!pBuffer->pMemory)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	if (pBuffer->capacityInBytes == 0)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	if (pBuffer->sizeInBytes > pBuffer->capacityInBytes)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	return K15_GUI_FALSE;
+}
+
 kg_internal kg_buffer kg_create_buffer(void* pMemory, kg_u32 capacityInBytes)
 {
 	kg_buffer buffer;
@@ -472,7 +499,7 @@ kg_internal kg_buffer kg_create_buffer(void* pMemory, kg_u32 capacityInBytes)
 	buffer.sizeInBytes 		= 0u;
 	buffer.capacityInBytes 	= capacityInBytes;
 	buffer.pFirstHandle 	= 0;
-
+	buffer.pLastHandle 		= 0;
 	return buffer;
 }
 
@@ -520,9 +547,26 @@ kg_internal kg_byte* kg_get_memory_from_buffer(kg_buffer* pBuffer, const kg_data
 	return pBuffer->pMemory + pHandle->offset;
 }
 
-kg_internal kg_hash_map* kg_create_hash_map(kg_buffer* pBuffer)
+kg_internal kg_input_buffer* kg_create_input_buffer(void* pMemory, kg_u32 memorySizeInBytes)
 {
-	const kg_data_handle* pHashMapDataHandle = kg_allocate_from_buffer(pBuffer, sizeof(kg_hash_map));
+	kg_buffer inputBuffer = kg_create_buffer(pMemory, memorySizeInBytes);
+
+	if (kg_is_invalid_buffer(&inputBuffer))
+	{
+		return 0;
+	}
+}
+
+kg_internal kg_hash_map* kg_create_hash_map(void* pMemory, kg_u32 memorySizeInBytes)
+{
+	kg_buffer hashMapBuffer = kg_create_buffer(pMemory, memorySizeInBytes);
+
+	if (kg_is_invalid_buffer(&hashMapBuffer))
+	{
+		return 0;
+	}
+
+	const kg_data_handle* pHashMapDataHandle = kg_allocate_from_buffer(&hashMapBuffer, sizeof(kg_hash_map));
 
 	if (kg_is_invalid_data_handle(pHashMapDataHandle))
 	{
@@ -530,24 +574,24 @@ kg_internal kg_hash_map* kg_create_hash_map(kg_buffer* pBuffer)
 	}
 
 	const kg_u32 defaultBucketCount 			= 100u;
-	const kg_data_handle* pBucketArrayHandle 	= kg_allocate_from_buffer(pBuffer, kg_ptr_size_in_bytes * defaultBucketCount);
+	const kg_data_handle* pBucketArrayHandle 	= kg_allocate_from_buffer(&hashMapBuffer, kg_ptr_size_in_bytes * defaultBucketCount);
 
 	if (kg_is_invalid_data_handle(pBucketArrayHandle))
 	{
 		return 0;
 	}
 
-	kg_hash_map* pHashMap 	= (kg_hash_map*)kg_get_memory_from_buffer(pBuffer, pHashMapDataHandle);
+	kg_hash_map* pHashMap 	= (kg_hash_map*)kg_get_memory_from_buffer(&hashMapBuffer, pHashMapDataHandle);
 	pHashMap->size 			= 0u;
-	pHashMap->pBuckets  	= (kg_hash_map_bucket**)kg_get_memory_from_buffer(pBuffer, pBucketArrayHandle);
-	pHashMap->pBucketBuffer = pBuffer;
+	pHashMap->pBuckets  	= (kg_hash_map_bucket**)kg_get_memory_from_buffer(&hashMapBuffer, pBucketArrayHandle);
+	pHashMap->bucketBuffer 	= hashMapBuffer;
 
 	return pHashMap;
 }
 
 kg_internal kg_hash_map_bucket* kg_allocate_bucket(kg_hash_map* pHashMap, kg_crc32 identifier)
 {
-	kg_buffer* pBucketBuffer = pHashMap->pBucketBuffer;
+	kg_buffer* pBucketBuffer = &pHashMap->bucketBuffer;
 
 	const kg_data_handle* pBucketHandle = kg_allocate_from_buffer(pBucketBuffer, sizeof(kg_hash_map_bucket));
 
@@ -835,6 +879,16 @@ kg_result kg_create_context_with_custom_memory(kg_context** pContext, kg_resourc
 	const kg_data_handle* pErrorStackDataHandle 	= kg_allocate_from_buffer(&memoryBuffer, errorStackDataSize);
 	const kg_data_handle* pInputBufferDataHandle 	= kg_allocate_from_buffer(&memoryBuffer, inputBufferDataSize);
 
+	void* pHashMapMemory		= kg_get_memory_from_buffer(&memoryBuffer, pHashMapDataHandle);
+	void* pErrorStackMemory		= kg_get_memory_from_buffer(&memoryBuffer, pErrorStackDataHandle);
+	void* pInputBufferMemory	= kg_get_memory_from_buffer(&memoryBuffer, pInputBufferDataHandle);
+
+	pContext->pElements		= kg_create_hash_map(pHashMapMemory, hashMapDataSize);
+	pContext->pErrorStack	= kg_create_error_stack(pErrorStackMemory, errorStackDataSize);
+	pContext->pInputBuffer	= kg_create_input_buffer(pInputBufferMemory, inputBufferDataSize);
+
+
+	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_result kg_begin_frame(kg_context* pContext)
