@@ -30,13 +30,8 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
 
-GLint vbo = 0;
-GLint ibo = 0;
-GLint vao = 0;
-GLint shaderProgram = 0;
-GLint projUniform = 0;
-GLint textureUniform = 0;
-kg_context guiContext;
+kg_context_handle contextHandle;
+kg_resource_database_handle resourceDatabaseHandle;
 
 uint32 convertColor(kg_color32 p_Color)
 {
@@ -60,24 +55,19 @@ uint32 convertColor(kg_color32 p_Color)
 	return RGB(r, g, b);
 }
 
-GLuint iconTextureHandle;
-GLuint fontTextureHandle;
-
-
 void updateGUI()
 {
-	kg_context* pContext = &guiContext;
-	kg_begin_frame(pContext);
+	kg_begin_frame(contextHandle);
 
-	if (kg_begin_window(pContext, "TestWindow", "window_0"))
+	if (kg_begin_window(contextHandle, "TestWindow", "window_0"))
 	{
-		kg_end_window(pContext);
+		kg_end_window(contextHandle);
 	}
 
-	kg_end_frame(pContext);
+	kg_end_frame(contextHandle);
 
 	kg_error* pError = 0;
-	while( kg_pop_error(pContext, &pError) )
+	while( kg_pop_error(contextHandle, &pError) )
 	{
 		printf("Error occured: %s\n", pError->pErrorString);
 	}
@@ -240,12 +230,9 @@ char* getInfoLogForShader(GLuint p_Shader)
 	return infoLog;
 }
 
-kg_context* pGUIContext;
-kg_resource_database* pResourceDatabase;
-
 void setup(HWND p_HWND)
 {
-	kg_create_context(&pGUIContext, 0);
+	kg_create_context(&contextHandle, resourceDatabaseHandle);
 }
 
 void swapBuffers(HWND p_HWND)
