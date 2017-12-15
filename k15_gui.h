@@ -26,11 +26,11 @@ typedef int 				kg_s32;
 typedef short 				kg_s16;
 typedef char 				kg_s8;
 
+typedef char 				kg_utf8;
 typedef unsigned int 		kg_crc32;
 typedef unsigned int 		kg_color32;
 typedef unsigned char 		kg_byte;
 typedef unsigned char 		kg_bool;
-typedef unsigned char 		kg_utf8;
 
 /*********************************************************************************/
 typedef enum 
@@ -411,6 +411,8 @@ static const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 
 #define kg_default_context_size kg_size_kilo_bytes(128)
 
+typedef kg_u32 kg_code_point;
+
 typedef struct
 {
 	kg_u32 	offset;
@@ -427,6 +429,38 @@ typedef struct
 	kg_float2		originalSize;
 	const kg_utf8* 	pText;
 } kg_window_component;
+
+/*****************************UTF8-SUPPORT***************************************/
+kg_internal kg_u32 kg_read_code_point(const kg_utf8* pUtf8Text, kg_code_point* pOutCodepoint)
+{
+	if (*pUtf8Text == 0)
+	{
+		return 0;
+	}
+
+	if (( pUtf8Text[0u] & 0x80 ) == 0 )
+	{
+		*pOutCodepoint = pUtf8Text[ 0u ];
+		return 1u;
+	}
+	else if ((pUtf8Text[0u] & 0xF0 ) == 0xF0 )
+	{
+		*pOutCodepoint = ( ( pUtf8Text[ 0u ] & 0x1F ) << 18u ) | ( pUtf8Text[ 1u ] & 0x3F ) << 12u | ( pUtf8Text[ 2u ] & 0x3F ) << 6u | ( pUtf8Text[ 3u ] & 0x3F );
+		return 4u;
+	}
+	else if (( pUtf8Text[0u] & 0xE0 ) == 0xE0 )
+	{
+		*pOutCodepoint = ( ( pUtf8Text[ 0u ] & 0x1F ) << 12u ) | ( pUtf8Text[ 1u ] & 0x3F ) << 6u | ( pUtf8Text[ 2u ] & 0x3F );
+		return 3u;
+	}
+	else if (( pUtf8Text[0u] & 0xC0 ) == 0xC0 )
+	{
+		*pOutCodepoint = ( ( pUtf8Text[0u] & 0x1F ) << 6u ) | ( pUtf8Text[1u] & 0x3F );
+		return 2u;
+	}
+
+	return 0u;
+}
 
 kg_internal kg_float2 kg_float2_zero()
 {
