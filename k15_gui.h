@@ -421,11 +421,19 @@ typedef struct
 	void* 	pPreviousHandle;
 } kg_data_handle;
 
+typedef enum
+{
+	K15_GUI_WINDOW_FLAG_IS_OPEN 				= 0x001,
+	K15_GUI_WINDOW_FLAG_IS_MAXIMIZED 			= 0x002,
+	K15_GUI_WINDOW_FLAG_IS_MINIMIZED			= 0x004,
+	K15_GUI_WINDOW_FLAG_MAXIMIZE_BUTTON_CLICKED = 0x008,
+	K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED = 0x010,
+	K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED	= 0x020
+} kg_window_flag;
+
 typedef struct
 {
-	kg_bool 		isOpen;
-	kg_bool 		isMaximized;
-	kg_bool 		isMinimized;
+	kg_u32			flags;
 	kg_float2		originalSize;
 	const kg_utf8* 	pText;
 } kg_window_component;
@@ -948,15 +956,54 @@ kg_window_component* kg_allocate_window_component(kg_context* pContext, kg_eleme
 
 kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, kg_window_component* pComponent)
 {
-	if (pComponent->isMaximized)
+	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED ) != 0 )
 	{
-		pComponent->originalSize 	= pElement->size;
-		pElement->fixedSize 		= pContext->pRootElement->fixedSize;
+		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_OPEN;
+		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED;
 	}
 
-	if (pComponent->isMinimized)
+	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN ) == 0 )
 	{
+		return K15_GUI_FALSE;
+	}
 
+	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_MAXIMIZED_BUTTON_CLICKED ) != 0 )
+	{
+		if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_MAXIMIZED ) == 0 )
+		{
+			pComponent->originalPosition = pElement->position;
+			pComponent->originalSize = pElement->size;
+			pComponent->flags |= K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;	
+			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;
+		}
+		else
+		{
+			pElement->size = pComponent->originalSize;
+			pElement->position = pComponent->originalPosition;
+			
+			pComponent->flags &= ~K15-GUI_WINDOW_FLAG_IS_MAXIMIZED;
+		}
+
+		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_MAXIMIZED_BUTTON_CLICKED;
+	}
+
+	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED ) != 0 )
+	{
+		if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_MINIMIZED ) == 0)
+		{
+			pComponent->originalPosition = pElement->position;
+			pComponent->originalSize = pElement->size;
+			pComponent->flags |= K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
+		}
+		else
+		{
+			pElement->size = pComponent->originalSize;
+			pElement->position = pComponent->originalPosition;
+
+			pComponent->flags &= ~K15-GUI_WINDOW_FLAG_IS_MINIMIZED;	
+		}
+
+		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED;
 	}
 
 	return pComponent->isOpen;
@@ -1061,7 +1108,6 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, kg
 	pContext->pResourceDatabase = (kg_resource_database*)resourceDatabaseHandle.value;
 	pContext->memoryBuffer 		= memoryBuffer;
 	pContext->frameCounter 		= 0u;
-
 	pContext->pRootElement 		= kg_allocate_element(pContext, "ROOT_ELEMENT");
 
 	pOutHandle->value = (size_t)pContext;
