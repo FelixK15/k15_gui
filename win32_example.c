@@ -90,20 +90,51 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 
 void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
-
+	
 }
 
 void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
+	uint16 x = (uint16)p_lParam;
+	uint16 y = (uint16)(p_lParam >> 16u);
 
-}
+	kg_mouse_button_type buttonType = K15_GUI_MOUSE_BUTTON_LEFT;
+
+	switch(p_wParam)
+	{
+		case VK_LBUTTON:
+			buttonType = K15_GUI_MOUSE_BUTTON_LEFT;
+			break;
+
+		case VK_RBUTTON:
+			buttonType = K15_GUI_MOUSE_BUTTON_RIGHT;
+			break;
+
+		case VK_MBUTTON:
+			buttonType = K15_GUI_MOUSE_BUTTON_MIDDLE;
+			break;
+
+		default:
+			buttonType = K15_GUI_MOUSE_BUTTON_LEFT;
+			break;
+	}
+
+	if (p_Message == WM_MBUTTONDOWN || p_Message == WM_LBUTTONDOWN || p_Message == WM_RBUTTONDOWN)
+	{
+		kg_add_input_mouse_button_down(contextHandle, x, y, buttonType);
+	}
+	else if (p_Message == WM_MBUTTONUP || p_Message == WM_LBUTTONUP || p_Message == WM_RBUTTONUP)
+	{
+		kg_add_input_mouse_button_up(contextHandle, x, y, buttonType);
+	}
+}	
 
 void K15_MouseMove(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
 	uint16 x = (uint16)p_lParam;
 	uint16 y = (uint16)(p_lParam >> 16u);
 
-	kg_add_mouse_move_input(contextHandle, x, y);
+	kg_add_input_mouse_move(contextHandle, x, y);
 }
 
 void K15_MouseWheel(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)

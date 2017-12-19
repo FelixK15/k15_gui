@@ -134,6 +134,12 @@ typedef enum
 	K15_GUI_KEY_NORMAL
 } kg_keyboard_key_type;
 /*********************************************************************************/
+typedef enum
+{
+	K15_GUI_ACTION_BUTTON_DOWN = 0,
+	K15_GUI_ACTION_BUTTON_UP
+} kg_input_action_type;
+/*********************************************************************************/
 typedef struct 
 {
 	kg_byte* 	pMemory;
@@ -249,12 +255,14 @@ typedef struct
 			kg_u16 					x;
 			kg_u16 					y;
 			kg_mouse_button_type 	buttonType;
+			kg_input_action_type	actionType;
 		} mouse_button;
 
 		struct 
 		{
 			kg_keyboard_key_type		key;
 			kg_keyboard_modifier_type	modifier;
+			kg_input_action_type		actionType;
 		} keyboard_button;
 	} data;
 
@@ -335,7 +343,9 @@ kg_def kg_result 	kg_end_frame(kg_context_handle contextHandle);
 
 
 //*****************INPUT******************//
-kg_def kg_result	kg_add_mouse_move_input(kg_context_handle contextHandle, unsigned short x, unsigned short y);
+kg_def kg_result	kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y);
+kg_def kg_result 	kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
+kg_def kg_result 	kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
 
 //*****************UTIL******************//
 kg_def unsigned int kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
@@ -869,7 +879,7 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 		pElement->size 				= kg_float2_zero();
 		pElement->position 			= kg_float2_zero();
 		pElement->identifier 		= identifierHash;
-
+		pElement->childCount 		= 0u;
 		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
 		{
 			pElement->componentHandles[componentIndex] = kg_null_ptr;
@@ -908,12 +918,6 @@ kg_internal void kg_process_input_event(kg_context* pContext, kg_input_event* pI
 kg_internal void kg_process_input_events(kg_context* pContext)
 {
 	kg_input_queue* pInputQueue = pContext->pInputQueue;
-
-	if (kg_is_invalid_buffer(&pInputQueue->buffer))
-	{
-		return;
-	}
-
 	kg_input_event* pInputEvent = pInputQueue->pFirstEvent;
 
 	while (pInputEvent)
@@ -1299,7 +1303,7 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_result kg_add_mouse_move_input(kg_context_handle contextHandle, unsigned short x, unsigned short y)
+kg_result kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y)
 {
 	kg_context* 	 	pContext 		= (kg_context*)contextHandle.value;
 	kg_input_queue* 	pInputQueue 	= pContext->pInputQueue;
@@ -1315,6 +1319,48 @@ kg_result kg_add_mouse_move_input(kg_context_handle contextHandle, unsigned shor
 	pInputEvent->data.mouse_move.y = y;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_result kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType)
+{
+	kg_context* 	 	pContext 		= (kg_context*)contextHandle.value;
+	kg_input_queue* 	pInputQueue 	= pContext->pInputQueue;
+
+	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
+	
+	if (pInputEvent == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	pInputEvent->data.mouse_button.x 			= x;
+	pInputEvent->data.mouse_button.y 			= y;
+	pInputEvent->data.mouse_button.buttonType 	= mouseButtonType;
+	pInputEvent->data.mouse_button.actionType 	= K15_GUI_ACTION_BUTTON_DOWN;
+
+	return K15_GUI_RESULT_SUCCESS;
+
+}
+
+kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType)
+{
+	kg_context* 	 	pContext 		= (kg_context*)contextHandle.value;
+	kg_input_queue* 	pInputQueue 	= pContext->pInputQueue;
+
+	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
+	
+	if (pInputEvent == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	pInputEvent->data.mouse_button.x 			= x;
+	pInputEvent->data.mouse_button.y 			= y;
+	pInputEvent->data.mouse_button.buttonType 	= mouseButtonType;
+	pInputEvent->data.mouse_button.actionType	= K15_GUI_ACTION_BUTTON_UP;
+
+	return K15_GUI_RESULT_SUCCESS;
+
 }
 
 kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
