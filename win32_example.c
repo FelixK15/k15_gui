@@ -69,7 +69,7 @@ void updateGUI()
 	kg_error* pError = 0;
 	while( kg_pop_error(contextHandle, &pError) )
 	{
-		printf("Error occured: %s\n", pError->pErrorString);
+		printf("Error occured in function '%s' with element '%s' : '%s'\n", pError->pFunction, pError->pIdentifier, pError->pDescription );
 	}
 }
 
@@ -100,7 +100,10 @@ void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p
 
 void K15_MouseMove(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
+	uint16 x = (uint16)p_lParam;
+	uint16 y = (uint16)(p_lParam >> 16u);
 
+	kg_add_mouse_move_input(contextHandle, x, y);
 }
 
 void K15_MouseWheel(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
@@ -250,7 +253,7 @@ void drawDeltaTime(uint32 p_DeltaTimeInMS)
 void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 {
 	drawDeltaTime(p_DeltaTimeInMS);
-
+	updateGUI();
 	swapBuffers(p_HWND);
 }
 
