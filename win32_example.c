@@ -31,7 +31,6 @@ uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
 
 kg_context_handle contextHandle;
-kg_resource_database_handle resourceDatabaseHandle;
 
 uint32 convertColor(kg_color32 p_Color)
 {
@@ -266,7 +265,7 @@ char* getInfoLogForShader(GLuint p_Shader)
 
 void setup(HWND p_HWND)
 {
-	kg_create_context(&contextHandle, resourceDatabaseHandle);
+	kg_create_context(&contextHandle);
 }
 
 void swapBuffers(HWND p_HWND)
@@ -274,6 +273,18 @@ void swapBuffers(HWND p_HWND)
 	HDC deviceContext = GetDC(p_HWND);
 	SwapBuffers(deviceContext);
 	kglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void drawGUI()
+{
+	kg_render_queue_handle renderQueueHandle = kg_lock_render_queue(contextHandle);
+	kg_render_command renderCommand;
+
+	while (kg_pop_render_command(renderQueueHandle, &renderCommand))
+	{
+	}
+
+	kg_unlock_render_queue(contextHandle);
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
@@ -285,6 +296,7 @@ void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 {
 	drawDeltaTime(p_DeltaTimeInMS);
 	updateGUI();
+	drawGUI();
 	swapBuffers(p_HWND);
 }
 

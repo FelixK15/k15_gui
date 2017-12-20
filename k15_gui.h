@@ -219,26 +219,11 @@ typedef struct
 	kg_error* 	pLastError;
 } kg_error_stack;
 /*********************************************************************************/
-typedef struct
-{
-	kg_u32 bla;
-} kg_resource_database;
-/*********************************************************************************/
 typedef struct 
 {
 	kg_sint2 position;
 	kg_uint2 size;
 } kg_rect;
-/*********************************************************************************/
-typedef struct
-{
-	kg_u32 bla;
-} kg_font;
-/*********************************************************************************/
-typedef struct
-{
-	kg_u32 bla;
-} kg_icon;
 /*********************************************************************************/
 typedef struct
 {
@@ -277,15 +262,41 @@ typedef struct
 	kg_input_event* pLastEvent;
 } kg_input_queue;
 /*********************************************************************************/
+typedef struct
+{
+	int bla;
+} kg_render_command;
+/*********************************************************************************/
 typedef struct 
 {
-	kg_hash_map*				pElements;
-	kg_element*					pRootElement;
-	kg_error_stack* 			pErrorStack;
-	kg_resource_database* 		pResourceDatabase;
-	kg_input_queue*				pInputQueue;
-	kg_buffer 					memoryBuffer;
-	kg_u32 						frameCounter;
+	kg_render_command* 	pFirstCommand;
+	kg_render_command* 	pLastCommand;
+	kg_bool 			inUse;
+} kg_render_queue;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_buffer 			buffer;
+	kg_render_queue* 	pRenderQueues;
+	kg_u32				renderQueueCount;
+	kg_u32				activeRenderQueueIndex;	
+} kg_render_queue_chain;
+/*********************************************************************************/
+typedef struct
+{
+	
+} kg_element_stack;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_render_queue_chain*	pRenderQueueChain;
+	kg_hash_map*			pElements;
+	kg_element_stack*		pElementStack;
+	kg_element*				pRootElement;
+	kg_error_stack* 		pErrorStack;
+	kg_input_queue*			pInputQueue;
+	kg_buffer 				memoryBuffer;
+	kg_u32 					frameCounter;
 } kg_context;
 /*********************************************************************************/
 typedef struct 
@@ -296,7 +307,9 @@ typedef struct
 typedef struct
 {
 	size_t value;
-} kg_resource_database_handle;
+} kg_render_queue_handle;
+/*********************************************************************************/
+
 //how this should work:
 // - Call gui logic (K15_GUIButton, K15_GUIBeginWindow, K15_GUIPushHorizontalLayout etc.)
 // - Store elements internally in the gui context (just rects?) <-- headache
@@ -305,54 +318,39 @@ typedef struct
 // - iterate over elements (rendering)
 // - Call gui logic (next frame - retrieve results from last frame. Mainly results of the input)
 
-kg_def kg_result 	kg_create_context(kg_context_handle* pOutHandle, kg_resource_database_handle resourceDatabaseHandle);
-kg_def kg_result 	kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, kg_resource_database_handle resourceDatabaseHandle, void* pMemory, unsigned int memorySizeInBytes);
-
-//*****************RESOURCES******************//
-kg_def kg_result 	kg_create_resource_database(kg_resource_database_handle* pOutResourceDatabaseHandle);
-kg_def kg_result 	kg_create_resource_database_with_custom_memory(kg_resource_database_handle* pOutResourceDatabaseHandle, void* pDatabaseMemory, unsigned int databaseMemorySizeInBytes);
-
-
-//************FONTS*************//
-kg_def kg_result 	kg_create_font_resource_from_file(kg_resource_database_handle resourceDatabaseHandle, kg_font** pOutFont, const kg_utf8* pFontFilePath, unsigned short fontSizeInPixels, const char* pFontName);
-kg_def kg_result 	kg_create_font_resource_from_memory(kg_resource_database_handle resourceDatabaseHandle, kg_font** pOutFont, kg_byte* pFontBuffer, kg_u8 fontSizeInPixels, const char* pFontName);
-kg_def kg_result 	kg_get_font_resource(kg_resource_database_handle resourceDatabaseHandle, kg_font** pOutFont, const char* pFontName);
-
-
-//************ICONS*************//
-kg_def kg_result 	kg_create_icon_resource_from_file(kg_resource_database_handle resourceDatabaseHandle, const kg_utf8* pIconFilePath, const char* pIconName);
-kg_def kg_result 	kg_create_icon_resource_from_memory(kg_resource_database_handle resourceDatabaseHandle, kg_byte* pIconMemoryBuffer, kg_u32 iconFileDataBufferSizeInBytes, const char* pIconName);
-kg_def kg_result 	kg_create_icon_resource_from_memory_raw(kg_resource_database_handle resourceDatabaseHandle, kg_byte* pIconMemoryBuffer, kg_u32 width, kg_u32 geight, kg_u8 colorComponents, const char* pIconName);
-kg_def kg_result 	kg_get_icon_resource(kg_resource_database_handle resourceDatabaseHandle, kg_icon** pOutIcon, const char* pIconName);
-
+//******************CONTEXT******************//
+kg_def kg_result 				kg_create_context(kg_context_handle* pOutHandle);
+kg_def kg_result 				kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, void* pMemory, unsigned int memorySizeInBytes);
 
 //*****************CONTROLS******************//
-kg_def kg_result 	kg_begin_frame(kg_context_handle contextHandle);
-kg_def void 		kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier);
-
-kg_def kg_bool 		kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-
-kg_def kg_bool  	kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def kg_bool 		kg_button(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def void			kg_label(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def void			kg_separator(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def void			kg_end_menu(kg_context_handle contextHandle);
-kg_def void			kg_end_window(kg_context_handle contextHandle);
-kg_def void			kg_end_toolbar(kg_context_handle contextHandle);
-kg_def kg_result 	kg_end_frame(kg_context_handle contextHandle);
+kg_def kg_result 				kg_begin_frame(kg_context_handle contextHandle);
+kg_def void 					kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier);
+kg_def kg_bool 					kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def kg_bool  				kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def kg_bool 					kg_button(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def void						kg_label(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def void						kg_separator(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def void						kg_end_menu(kg_context_handle contextHandle);
+kg_def void						kg_end_window(kg_context_handle contextHandle);
+kg_def void						kg_end_toolbar(kg_context_handle contextHandle);
+kg_def kg_result 				kg_end_frame(kg_context_handle contextHandle);
 
 
 //*****************INPUT******************//
-kg_def kg_result	kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y);
-kg_def kg_result 	kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
-kg_def kg_result 	kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
+kg_def kg_result				kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y);
+kg_def kg_result 				kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
+kg_def kg_result 				kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type 			mouseButtonType);
 
 //*****************UTIL******************//
-kg_def unsigned int kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
-kg_def kg_result 	kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def kg_result 	kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def kg_bool 		kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
+kg_def unsigned int 			kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
+kg_def kg_result 				kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def kg_result 				kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def kg_bool 					kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
 
+
+kg_def kg_render_queue_handle	kg_lock_render_queue(kg_context_handle contextHandle);
+kg_def kg_result 				kg_unlock_render_queue(kg_context_handle contextHandle);
+kg_def kg_bool 					kg_pop_render_command(kg_context_handle contextHandle, kg_render_command* pOutRenderCommand);
 
 //*****************DEBUG*****************//
 
@@ -403,7 +401,7 @@ static const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 #define kg_size_mega_bytes(n) (n*1024*1024)
 
 #define kg_default_context_size kg_size_kilo_bytes(128)
-#define kg_null_ptr 0
+#define kg_null_ptr (void*)(0)
 
 typedef kg_u32 kg_code_point;
 
@@ -543,7 +541,7 @@ kg_internal void kg_clear_buffer(kg_buffer* pBuffer)
 	pBuffer->sizeInBytes = 0u;
 }
 
-kg_internal void* kg_reserve_memory_from_buffer_beginning(kg_buffer* pBuffer, kg_u32 sizeInBytes)
+kg_internal void* kg_reserve_memory_from_current_buffer_position(kg_buffer* pBuffer, kg_u32 sizeInBytes)
 {
 	if(kg_is_invalid_buffer(pBuffer))
 	{
@@ -659,11 +657,6 @@ kg_internal kg_byte* kg_get_memory_from_buffer(kg_buffer* pBuffer, const kg_data
 
 kg_internal kg_result kg_create_input_queue(kg_input_queue** pOutInputQueue, void* pMemory, kg_u32 memorySizeInBytes)
 {
-	if (pOutInputQueue == kg_null_ptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
 	if (memorySizeInBytes < sizeof(kg_input_queue))
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
@@ -683,13 +676,45 @@ kg_internal kg_result kg_create_input_queue(kg_input_queue** pOutInputQueue, voi
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_internal kg_result kg_create_error_stack(kg_error_stack** pOutErrorStack, void* pMemory, kg_u32 memorySizeInBytes)
+kg_internal kg_result kg_create_render_queue_chain(kg_render_queue_chain** pOutRenderQueueChain, void* pMemory, kg_u32 memorySizeInBytes)
 {
-	if (pOutErrorStack == kg_null_ptr)
+	if (memorySizeInBytes < sizeof(kg_render_queue_chain))
 	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
 
+	kg_byte* 	pRenderQueueChainMemory 			= (kg_byte*)pMemory + sizeof(kg_render_queue_chain);
+	kg_u32		renderQueueChainMemorySizeInBytes 	= memorySizeInBytes -= sizeof(kg_render_queue_chain);
+
+	kg_render_queue_chain* pRenderQueueChain = (kg_render_queue_chain*)pMemory;
+	kg_buffer renderQueueChainBuffer = kg_create_buffer(pRenderQueueChainMemory, renderQueueChainMemorySizeInBytes);
+
+	const kg_u32 renderQueueCount = 2u;
+
+	pRenderQueueChain->pRenderQueues = kg_reserve_memory_from_current_buffer_position(&renderQueueChainBuffer, kg_ptr_size_in_bytes * renderQueueCount);
+
+	if (pRenderQueueChain->pRenderQueues == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	for (kg_u32 renderQueueIndex = 0u; renderQueueIndex < renderQueueCount; ++renderQueueIndex)
+	{
+		pRenderQueueChain->pRenderQueues[renderQueueIndex].pFirstCommand 	= kg_null_ptr;
+		pRenderQueueChain->pRenderQueues[renderQueueIndex].pLastCommand 	= kg_null_ptr;
+		pRenderQueueChain->pRenderQueues[renderQueueIndex].inUse 			= K15_GUI_FALSE;
+	}
+
+	pRenderQueueChain->buffer 					= renderQueueChainBuffer;
+	pRenderQueueChain->renderQueueCount			= renderQueueCount;
+	pRenderQueueChain->activeRenderQueueIndex 	= 0u;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
+
+kg_internal kg_result kg_create_error_stack(kg_error_stack** pOutErrorStack, void* pMemory, kg_u32 memorySizeInBytes)
+{
 	if (memorySizeInBytes < sizeof(kg_error_stack))
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
@@ -716,11 +741,6 @@ kg_internal kg_result kg_create_error_stack(kg_error_stack** pOutErrorStack, voi
 
 kg_internal kg_result kg_create_hash_map(kg_hash_map** pOutHashMap, void* pMemory, kg_u32 memorySizeInBytes)
 {
-	if (pOutHashMap == kg_null_ptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
 	kg_buffer hashMapBuffer = kg_create_buffer(pMemory, memorySizeInBytes);
 
 	if (kg_is_invalid_buffer(&hashMapBuffer))
@@ -974,7 +994,7 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, cons
 	}
 
 	kg_error_stack* pErrorStack = pContext->pErrorStack;
-	kg_error* 		pError		= kg_reserve_memory_from_buffer_beginning(&pErrorStack->errorBuffer, sizeof(kg_error));
+	kg_error* 		pError		= kg_reserve_memory_from_current_buffer_position(&pErrorStack->errorBuffer, sizeof(kg_error));
 
 	if (pError == kg_null_ptr)
 	{
@@ -1001,7 +1021,7 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, cons
 /******************************INPUT LOGIC****************************************/
 kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue, kg_input_type inputType)
 {
-	kg_input_event* pInputEvent = (kg_input_event*)kg_reserve_memory_from_buffer_beginning(&pInputQueue->buffer, sizeof(kg_input_event));
+	kg_input_event* pInputEvent = (kg_input_event*)kg_reserve_memory_from_current_buffer_position(&pInputQueue->buffer, sizeof(kg_input_event));
 	
 	if( pInputEvent == kg_null_ptr)
 	{
@@ -1132,7 +1152,7 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 //  12. provide more style options other than just different colors.
 //		Imagesets and icons come to mind.
 
-kg_result kg_create_context(kg_context_handle* pOutHandle, kg_resource_database_handle resourceDatabaseHandle)
+kg_result kg_create_context(kg_context_handle* pOutHandle)
 {
 	kg_byte* pMemory = kg_malloc(kg_default_context_size, 0u);
 
@@ -1141,10 +1161,10 @@ kg_result kg_create_context(kg_context_handle* pOutHandle, kg_resource_database_
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}	
 
-	return kg_create_context_with_custom_memory( pOutHandle, resourceDatabaseHandle, pMemory, kg_default_context_size );
+	return kg_create_context_with_custom_memory( pOutHandle, pMemory, kg_default_context_size );
 }
 
-kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, kg_resource_database_handle resourceDatabaseHandle, void* pMemory, unsigned int memorySizeInBytes)
+kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, void* pMemory, unsigned int memorySizeInBytes)
 {
 	if (pOutHandle == kg_null_ptr)
 	{
@@ -1163,13 +1183,14 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, kg
 
 	kg_buffer memoryBuffer = kg_create_buffer(pMemory, memorySizeInBytes);
 
-	const kg_u32 hashMapDataSize 		= kg_size_kilo_bytes(64);
-	const kg_u32 errorStackDataSize 	= kg_size_kilo_bytes(16);
-	const kg_u32 inputBufferDataSize	= kg_size_kilo_bytes(16);
+	const kg_u32 hashMapDataSize 			= kg_size_kilo_bytes(64);
+	const kg_u32 errorStackDataSize 		= kg_size_kilo_bytes(16);
+	const kg_u32 inputBufferDataSize		= kg_size_kilo_bytes(16);
+	const kg_u32 renderQueueChainDataSize	= kg_size_kilo_bytes(32);
 
-	const kg_u32 totalDataSize = sizeof(kg_context) + hashMapDataSize + errorStackDataSize + inputBufferDataSize;
+	const kg_u32 totalDataSize = sizeof(kg_context) + hashMapDataSize + errorStackDataSize + inputBufferDataSize + renderQueeuDataSize;
 
-	kg_u8* pDataMemory = (kg_u8*)kg_reserve_memory_from_buffer_beginning(&memoryBuffer, totalDataSize);
+	kg_u8* pDataMemory = (kg_u8*)kg_reserve_memory_from_current_buffer_position(&memoryBuffer, totalDataSize);
 
 	if (pDataMemory == kg_null_ptr)
 	{
@@ -1179,10 +1200,11 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, kg
 
 	kg_u32 offset = 0u;
 
-	kg_context* pContext 			= (kg_context*)(pDataMemory + offset); offset += sizeof(kg_context);
-	void* 		pHashMapMemory		= pDataMemory + offset; offset += hashMapDataSize;
-	void* 		pErrorStackMemory	= pDataMemory + offset; offset += errorStackDataSize;
-	void* 		pInputBufferMemory	= pDataMemory + offset;
+	kg_context* pContext 				= (kg_context*)(pDataMemory + offset); offset += sizeof(kg_context);
+	void* 		pHashMapMemory			= pDataMemory + offset; offset += hashMapDataSize;
+	void* 		pErrorStackMemory		= pDataMemory + offset; offset += errorStackDataSize;
+	void* 		pInputBufferMemory		= pDataMemory + offset; offset += renderQueueDataSize;
+	void*		pRenderQueueChainMemory	= pDataMemory + offset;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
@@ -1206,8 +1228,14 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, kg
 	{
 		return result;
 	}
+	
+	result = kg_create_render_queue_chain(&pContext->pRenderQueueChain, pRenderQueueChainMemory, renderQueueChainDataSize);
 
-	pContext->pResourceDatabase = (kg_resource_database*)resourceDatabaseHandle.value;
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
 	pContext->memoryBuffer 		= memoryBuffer;
 	pContext->frameCounter 		= 0u;
 	pContext->pRootElement 		= kg_allocate_element(pContext, "ROOT_ELEMENT");
@@ -1250,7 +1278,7 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 	}
 
 	pWindowComponent->pText = pText;
-		
+	
 	return kg_window_logic(pContext, pElement, pWindowComponent);
 }
 
@@ -1378,6 +1406,13 @@ kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 	*pOutError = pLastError;
 
 	return K15_GUI_TRUE;
+}
+
+kg_render_queue_handle kg_lock_render_queue(kg_context_handle contextHandle)
+{
+	kg_context* pContext 						= (kg_context*)contextHandle.value;
+	kg_render_queue_chain* pRenderQueueChain 	= pContext->pRenderQueueChain;
+
 }
 
 #endif //K15_GUI_IMPLEMENTATION
