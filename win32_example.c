@@ -284,7 +284,7 @@ void drawGUI()
 	{
 	}
 
-	kg_unlock_render_queue(contextHandle);
+	kg_unlock_render_queue(contextHandle, renderQueueHandle);
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
