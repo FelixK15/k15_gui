@@ -79,7 +79,7 @@ typedef enum
 {
 	K15_GUI_WINDOW_COMPONENT = 0,
 	K15_GUI_COMPONENT_COUNT
-} kg_component;
+} kg_component_type;
 
 /*********************************************************************************/
 typedef enum 
@@ -140,6 +140,12 @@ typedef enum
 	K15_GUI_ACTION_BUTTON_UP
 } kg_input_action_type;
 /*********************************************************************************/
+typedef enum
+{
+	K15_GUI_LAYOUT_VERTICAL = 0,
+	K15_GUI_LAYOUT_HORIZONTAL
+} kg_layout_type;
+/*********************************************************************************/
 typedef struct 
 {
 	kg_byte* 	pMemory;
@@ -154,6 +160,14 @@ typedef struct
 	float x;
 	float y;
 } kg_float2;
+/*********************************************************************************/
+typedef struct
+{
+	float x;
+	float y;
+	float z;
+	float w;
+} kg_float4;
 /*********************************************************************************/
 typedef struct
 {
@@ -191,11 +205,18 @@ typedef struct
 #endif
 	kg_array 				childArray;
 	const kg_data_handle*	componentHandles[K15_GUI_COMPONENT_COUNT];
+	kg_layout_type			layout;
 	kg_u32 					frameUseCounter;
 	kg_crc32 				identifier;
 	kg_float2				position;
 	kg_float2				size;
-	kg_float2				fixedSize;
+	kg_float2				minSize;
+	kg_float2				maxSize;
+	kg_float2				prefSize;
+	kg_float2				offset;
+	kg_float4				margin;
+	kg_float4				padding;
+	kg_float4				border;
 } kg_element;
 /*********************************************************************************/
 typedef struct 
@@ -313,6 +334,13 @@ typedef struct
 	size_t value;
 } kg_render_queue_handle;
 /*********************************************************************************/
+typedef struct 
+{
+	kg_float2 origin;
+	kg_float2 position;
+	kg_float2 accumulatedSize;
+	kg_float2 maxSize;
+} kg_layout_state;
 
 //how this should work:
 // - Call gui logic (K15_GUIButton, K15_GUIBeginWindow, K15_GUIPushHorizontalLayout etc.)
@@ -408,6 +436,24 @@ kg_def kg_bool 					kg_pop_render_command(kg_render_queue_handle renderQueueHand
 # define kg_memcpy(d, s, si) K15_GUI_MEMCPY(d, s, si)
 #endif //K15_GUI_MEMCPY
 
+#ifndef K15_GUI_CLAMP
+# define kg_clamp(v, min, max) ((v)>(max)?(max):(v)<(min)?(min):(v))
+#else
+# define kg_clamp(v, min, max) K15_GUI_CLAMP(v, min, max)
+#endif //K15_GUI_CLAMP
+
+#ifndef K15_GUI_MIN
+# define kg_min(a, b) ((a)<(b)?(a):(b))
+#else
+# define kg_min(a, b) K15_GUI_MIN(a, b)
+#endif //K15_GUI_MIN
+
+#ifndef K15_GUI_MAX
+# define kg_max(a, b) ((a)>(b)?(a):(b))
+#else
+# define kg_max(a, b) K15_GUI_MAX(a, b)
+#endif //K15_GUI_MAX
+
 kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 
 #define kg_size_kilo_bytes(n) ((n)*1024)
@@ -417,6 +463,8 @@ kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 #define kg_null_ptr (void*)(0)
 
 typedef kg_u32 kg_code_point;
+
+void kg_layout_pass(kg_element*);
 
 typedef enum
 {
@@ -468,9 +516,53 @@ kg_internal kg_u32 kg_read_code_point(const kg_utf8* pUtf8Text, kg_code_point* p
 	return 0u;
 }
 
+kg_internal kg_float2 kg_float2_load(float x, float y)
+{
+	kg_float2 f2 = {x, y};
+	return f2;
+}
+
 kg_internal kg_float2 kg_float2_zero()
 {
 	static const kg_float2 zero = {0.f, 0.f};
+	return zero;
+}
+
+kg_internal kg_bool kg_float2_gt(const kg_float2* pA, const kg_float2* pB)
+{
+	return ( pA->x > pB->x && pA->y > pB->y );
+}
+
+kg_internal kg_float2 kg_float2_clamp(const kg_float2* pValue, const kg_float2* pMin, const kg_float2* pMax)
+{
+	kg_float2 clamped = kg_float2_zero();
+	clamped.x = kg_clamp(pValue->x, pMin->x, pMax->x);
+	clamped.y = kg_clamp(pValue->y, pMin->y, pMax->y);
+
+	return clamped;
+}
+
+kg_internal kg_float2 kg_float2_max_individual(const kg_float2* pA, const kg_float2* pB)
+{
+	kg_float2 maxValue = kg_float2_zero();
+	maxValue.x = kg_max(pA->x, pB->x);
+	maxValue.y = kg_max(pA->y, pB->y);
+
+	return maxValue;
+}
+
+kg_internal kg_float2 kg_float2_add(const kg_float2* pA, const kg_float2* pB)
+{
+	kg_float2 sum = *pA;
+	sum.x += pB->x;
+	sum.y += pB->y;
+
+	return sum;
+}
+
+kg_internal kg_float4 kg_float4_zero()
+{
+	static const kg_float4 zero = {0.f, 0.f, 0.f, 0.f};
 	return zero;
 }
 
@@ -1108,6 +1200,11 @@ kg_internal void kg_add_child(kg_context* pContext, kg_element* pParent, kg_elem
 	kg_array_push_back(&pParent->childArray, &pChild);
 }
 
+kg_internal kg_bool kg_element_has_component(kg_element* pElement, kg_component_type componentType)
+{
+	return !kg_is_invalid_data_handle(pElement->componentHandles[componentType]);
+}
+
 kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pIdentifier)
 {
 	kg_crc32 identifierHash = kg_generate_crc32(pIdentifier);
@@ -1126,6 +1223,9 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 
 		pElement->size 				= kg_float2_zero();
 		pElement->position 			= kg_float2_zero();
+		pElement->padding			= kg_float4_zero();
+		pElement->margin			= kg_float4_zero();
+		pElement->border			= kg_float4_zero();
 		pElement->identifier 		= identifierHash;
 		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
 		{
@@ -1194,14 +1294,168 @@ kg_internal void kg_input_pass(kg_element* pElement)
 
 }
 
-kg_internal void kg_layout_element(kg_element* pElement)
+kg_internal kg_float2 kg_calculate_element_layout_start_position(kg_element* pElement)
 {
+	kg_float2 position = pElement->position;
 
+	position.x += pElement->padding.x;
+	position.y += pElement->padding.y;
+
+	return position;
+}
+
+kg_internal kg_layout_state kg_create_layout_state(kg_element* pElement)
+{
+	//FK: Calculate position from where to start layouting.
+	kg_float2 layoutPosition = pElement->position;
+	layoutPosition.x += pElement->padding.x;
+	layoutPosition.y += pElement->padding.y;
+
+	kg_float2 layoutSize = pElement->size;
+	layoutSize.x -= (pElement->padding.x + pElement->padding.z);
+	layoutSize.y -= (pElement->padding.y + pElement->padding.w);
+
+	kg_layout_state layoutState;	
+	layoutState.origin 			= layoutPosition;
+	layoutState.maxSize 		= layoutSize;
+	layoutState.position 		= layoutPosition;
+	layoutState.accumulatedSize = kg_float2_zero();
+	layoutState.maxSize			= kg_float2_zero();
+
+
+	return layoutState;
+}
+
+kg_internal kg_float2 kg_calculate_element_position(kg_layout_state* pLayoutState, kg_element* pElement)
+{
+	kg_float2 position = pLayoutState->position;
+	position.x += pElement->margin.x;
+	position.y += pElement->margin.y;
+
+	return position;
+}
+
+kg_internal kg_float2 kg_calculate_element_size_with_margin(kg_element* pElement)
+{
+	kg_float2 size = pElement->size;
+	size.x += (pElement->margin.x + pElement->margin.z);
+	size.y += (pElement->margin.y + pElement->margin.w);
+
+	return size;
+}
+
+kg_internal void kg_advance_layout_vertical(kg_layout_state* pLayoutState, kg_element* pElement)
+{
+	pElement->position = kg_calculate_element_position(pLayoutState, pElement);
+
+	const kg_float2 elementSize = kg_calculate_element_size_with_margin(pElement);
+	pLayoutState->maxSize = kg_float2_max_individual(&pLayoutState->maxSize, &elementSize);
+
+	if (pLayoutState->accumulatedSize.y + elementSize.y > pLayoutState->maxSize.y)
+	{
+		pLayoutState->position.x += pLayoutState->maxSize.x;
+		pLayoutState->position.y = pLayoutState->origin.y;
+	}
+
+	if (kg_float2_gt(&elementSize, &pLayoutState->maxSize))
+	{
+		//FK: Don't set element - too big
+		return;
+	}
+
+	pLayoutState->accumulatedSize.x = kg_max( (pLayoutState->position.x - pLayoutState->origin.x) + pLayoutState->accumulatedSize.x, pLayoutState->maxSize.x);
+	pLayoutState->accumulatedSize.y = kg_max( (pLayoutState->position.y - pLayoutState->origin.y) + pLayoutState->accumulatedSize.y, pLayoutState->maxSize.y);
+
+	pLayoutState->position.y += elementSize.y;
+}
+
+kg_internal void kg_layout_vertical(kg_element* pElement)
+{
+	kg_layout_state layoutState = kg_create_layout_state(pElement);
+
+	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
+	{
+		kg_element* pChild = kg_null_ptr;
+		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
+
+		kg_advance_layout_vertical(&layoutState, pChild);
+	}
+
+	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
+	{
+		kg_element* pChild = kg_null_ptr;
+		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
+		kg_layout_pass(pChild);
+	}
+}
+
+kg_internal void kg_advance_layout_horizontal(kg_layout_state* pLayoutState, kg_element* pElement)
+{
+	pElement->position = kg_calculate_element_position(pLayoutState, pElement);
+
+	const kg_float2 elementSize = kg_calculate_element_size_with_margin(pElement);
+	pLayoutState->maxSize = kg_float2_max_individual(&pLayoutState->maxSize, &elementSize);
+
+	if (pLayoutState->accumulatedSize.x + elementSize.x > pLayoutState->maxSize.x)
+	{
+		pLayoutState->position.y += pLayoutState->maxSize.y;
+		pLayoutState->position.x = pLayoutState->origin.x;
+	}
+
+	if (kg_float2_gt(&elementSize, &pLayoutState->maxSize))
+	{
+		//FK: Don't set element - too big
+		return;
+	}
+
+	pLayoutState->accumulatedSize.x = kg_max( (pLayoutState->position.x - pLayoutState->origin.x) + pLayoutState->accumulatedSize.x, pLayoutState->maxSize.x);
+	pLayoutState->accumulatedSize.y = kg_max( (pLayoutState->position.y - pLayoutState->origin.y) + pLayoutState->accumulatedSize.y, pLayoutState->maxSize.y);
+
+	pLayoutState->position.x += elementSize.x;
+}
+
+kg_internal void kg_layout_horizontal(kg_element* pElement)
+{
+	kg_layout_state layoutState = kg_create_layout_state(pElement);
+
+	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
+	{
+		kg_element* pChild = kg_null_ptr;
+		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
+
+		kg_advance_layout_horizontal(&layoutState, pChild);
+	}
+
+	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
+	{
+		kg_element* pChild = kg_null_ptr;
+		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
+		kg_layout_pass(pChild);
+	}
 }
 
 kg_internal void kg_layout_pass(kg_element* pElement)
 {
-	kg_layout_element(pElement);
+	const kg_float2 prefSize 	= pElement->prefSize;
+	const kg_float2 maxSize		= pElement->maxSize;
+	const kg_float2 minSize		= pElement->minSize;
+
+	pElement->size 		= kg_float2_clamp(&prefSize, &minSize, &maxSize);
+	pElement->position 	= kg_float2_add(&pElement->position, &pElement->offset);
+
+	if (kg_element_has_component(pElement, K15_GUI_WINDOW_COMPONENT))
+	{
+		//pElement->padding.y = kg_get_font_height();
+	}
+
+	if (pElement->layout == K15_GUI_LAYOUT_VERTICAL)
+	{
+		kg_layout_vertical(pElement);
+	}
+	else if (pElement->layout == K15_GUI_LAYOUT_HORIZONTAL)
+	{
+		kg_layout_horizontal(pElement);
+	}
 }
 
 kg_internal void kg_render_element(kg_element* pElement)
