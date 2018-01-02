@@ -89,7 +89,138 @@ void K15_WindowResized(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lP
 
 void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
-	
+	kg_keyboard_key_type buttonType = K15_GUI_KEY_NORMAL;
+
+	switch (p_wParam)
+	{
+		case VK_RETURN:
+			buttonType = K15_GUI_KEY_RETURN;
+			break;
+
+		case VK_BACK:
+			buttonType = K15_GUI_KEY_BACK;
+			break;
+
+		case VK_TAB:
+			buttonType = K15_GUI_KEY_TAB;
+			break;
+
+		case VK_DELETE:
+			buttonType = K15_GUI_KEY_DEL;
+			break;
+
+		case VK_PRIOR:
+			buttonType = K15_GUI_KEY_PGUP;
+			break;
+
+		case VK_NEXT:
+			buttonType = K15_GUI_KEY_PGDOWN;
+			break;
+
+		case VK_HOME:
+			buttonType = K15_GUI_KEY_HOME;
+			break;
+
+		case VK_END:
+			buttonType = K15_GUI_KEY_END;
+			break;
+
+		case VK_INSERT:
+			buttonType = K15_GUI_KEY_INS;
+			break;
+
+		case VK_ESCAPE:
+			buttonType = K15_GUI_KEY_ESC;
+			break;
+
+		case VK_MENU:
+			buttonType = K15_GUI_KEY_ALT;
+			break;
+
+		case VK_SHIFT:
+			buttonType = K15_GUI_KEY_SHIFT;
+			break;
+
+		case VK_CONTROL:
+			buttonType = K15_GUI_KEY_CTRL;
+			break;
+
+		case VK_F1:
+			buttonType = K15_GUI_KEY_F1;
+			break;
+
+		case VK_F2:
+			buttonType = K15_GUI_KEY_F2;
+			break;
+			
+		case VK_F3:
+			buttonType = K15_GUI_KEY_F3;
+			break;
+			
+		case VK_F4:
+			buttonType = K15_GUI_KEY_F4;
+			break;
+			
+		case VK_F5:
+			buttonType = K15_GUI_KEY_F5;
+			break;
+			
+		case VK_F6:
+			buttonType = K15_GUI_KEY_F6;
+			break;
+		
+		case VK_F7:
+			buttonType = K15_GUI_KEY_F7;
+			break;
+			
+		case VK_F8:
+			buttonType = K15_GUI_KEY_F8;
+			break;
+			
+		case VK_F9:
+			buttonType = K15_GUI_KEY_F9;
+			break;
+			
+		case VK_F10:
+			buttonType = K15_GUI_KEY_F10;
+			break;
+			
+		case VK_F11:
+			buttonType = K15_GUI_KEY_F11;
+			break;
+			
+		case VK_F12:
+			buttonType = K15_GUI_KEY_F12;
+			break;
+			
+		case VK_LEFT:
+			buttonType = K15_GUI_KEY_LEFT;
+			break;
+
+		case VK_RIGHT:
+			buttonType = K15_GUI_KEY_LEFT;
+			break;
+
+		case VK_UP:
+			buttonType = K15_GUI_KEY_LEFT;
+			break;
+
+		case VK_DOWN:
+			buttonType = K15_GUI_KEY_LEFT;
+			break;
+
+		default:
+			break;
+	}
+
+	if (p_Message == WM_KEYDOWN || p_Message == WM_SYSKEYDOWN)
+	{
+		kg_add_input_key_button_down(contextHandle, buttonType);
+	}
+	else
+	{
+		kg_add_input_key_button_up(contextHandle, buttonType);
+	}
 }
 
 void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)

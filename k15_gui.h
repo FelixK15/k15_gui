@@ -95,7 +95,7 @@ typedef enum
 {
 	K15_GUI_CTRL_MODIFIER 	= 0x01,
 	K15_GUI_L_ALT_MODIFIER 	= 0x02,
-	K15_GIU_R_ALT_MODIFIER 	= 0x04,
+	K15_GUI_R_ALT_MODIFIER 	= 0x04,
 	K15_GUI_SHIFT_MODIFIER 	= 0x08
 } kg_keyboard_modifier_type;
 /*********************************************************************************/
@@ -105,12 +105,16 @@ typedef enum
 	K15_GUI_KEY_BACK,
 	K15_GUI_KEY_TAB,
 	K15_GUI_KEY_DEL,
-	K15_GUI_KEY_PGDWN,
+	K15_GUI_KEY_PGDOWN,
 	K15_GUI_KEY_PGUP,
 	K15_GUI_KEY_HOME,
 	K15_GUI_KEY_END,
 	K15_GUI_KEY_INS,
 	K15_GUI_KEY_ESC,
+
+	K15_GUI_KEY_ALT,
+	K15_GUI_KEY_SHIFT,
+	K15_GUI_KEY_CTRL,
 
 	K15_GUI_KEY_F1,
 	K15_GUI_KEY_F2,
@@ -183,10 +187,10 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_u32 	offset;
-	kg_u32 	sizeInBytes;
 	void*	pNextHandle;
 	void* 	pPreviousHandle;
+	kg_u32 	offset;
+	kg_u32 	sizeInBytes;
 } kg_data_handle;
 /*********************************************************************************/
 typedef struct
@@ -221,17 +225,17 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	kg_crc32 	key;
 	kg_element 	element;
 	void* 		pNext;
+	kg_crc32 	key;
 } kg_hash_map_bucket;
 /*********************************************************************************/
 typedef struct
 {
+	kg_buffer				bucketBuffer;
+	kg_hash_map_bucket** 	pBuckets;
 	kg_u32 					size;
 	kg_u32					bucketCount;
-	kg_hash_map_bucket** 	pBuckets;
-	kg_buffer				bucketBuffer;
 } kg_hash_map;
 /*********************************************************************************/
 typedef struct 
@@ -239,8 +243,8 @@ typedef struct
 	const char* pFunction;
 	const char* pDescription;
 	const char* pIdentifier;
-	kg_result 	result;
 	void* 		pPrevious;
+	kg_result 	result;
 } kg_error;
 /*********************************************************************************/
 typedef struct
@@ -277,7 +281,6 @@ typedef struct
 		{
 			kg_keyboard_key_type		key;
 			kg_keyboard_modifier_type	modifier;
-			kg_input_action_type		actionType;
 		} keyboard_button;
 	} data;
 
@@ -314,13 +317,13 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
+	kg_array				elementStack;
+	kg_buffer 				memoryBuffer;
 	kg_render_queue_chain*	pRenderQueueChain;
 	kg_hash_map*			pElements;
 	kg_element*				pRootElement;
 	kg_error_stack* 		pErrorStack;
 	kg_input_queue*			pInputQueue;
-	kg_array				elementStack;
-	kg_buffer 				memoryBuffer;
 	kg_u32 					frameCounter;
 } kg_context;
 /*********************************************************************************/
@@ -372,6 +375,8 @@ kg_def kg_result 				kg_end_frame(kg_context_handle contextHandle);
 kg_def kg_result				kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y);
 kg_def kg_result 				kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
 kg_def kg_result 				kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type 			mouseButtonType);
+kg_def kg_result				kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
+kg_def kg_result				kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
 
 //*****************UTIL******************//
 kg_def unsigned int 			kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
@@ -393,7 +398,7 @@ kg_def kg_bool 					kg_pop_render_command(kg_render_queue_handle renderQueueHand
 
 #ifndef K15_GUI_STRIP_DEBUG_RENDERING
 # define K15_GUI_STRIP_DEBUG_RENDERING 0
-#endif //K15_STRIP_DEBUG_RENDERING
+#endif //K15_GUI_STRIP_DEBUG_RENDERING
 
 #ifndef K15_GUI_CUSTOM_ASSERT
 # include "assert.h"
@@ -408,7 +413,7 @@ kg_def kg_bool 					kg_pop_render_command(kg_render_queue_handle renderQueueHand
 #else
 # ifndef K15_GUI_CUSTOM_FREE
 #  error "K15_GUI_CUSTOM_MALLOC defined without matching K15_GUI_CUSTOM_FREE"
-# endif
+# endif //K15_GUI_CUSTOM_FREE
 # define kg_malloc(x, u) K15_GUI_CUSTOM_MALLOC(x, u)
 #endif //K15_GUI_CUSTOM_MALLOC
 
@@ -418,7 +423,7 @@ kg_def kg_bool 					kg_pop_render_command(kg_render_queue_handle renderQueueHand
 #else
 # ifndef K15_GUI_CUSTOM_MALLOC
 #  error "K15_GUI_CUSTOM_FREE defined without matching K15_GUI_CUSTOM_MALLOC"
-# endif
+# endif //K15_GUI_CUSTOM_MALLOC
 # define kg_free(x, u) K15_GUI_CUSTOM_FREE(x, u);
 #endif //K15_GUI_CUSTOM_FREE
 
@@ -1877,8 +1882,8 @@ kg_result kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned shor
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	kg_context* 	 	pContext 		= (kg_context*)contextHandle.value;
-	kg_input_queue* 	pInputQueue 	= pContext->pInputQueue;
+	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
+	kg_input_queue* pInputQueue = pContext->pInputQueue;
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
 	
@@ -1900,10 +1905,10 @@ kg_result kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsign
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	kg_context* 	 	pContext 		= (kg_context*)contextHandle.value;
-	kg_input_queue* 	pInputQueue 	= pContext->pInputQueue;
+	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
+	kg_input_queue* pInputQueue = pContext->pInputQueue;
 
-	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
+	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_BUTTON_PRESSED);
 	
 	if (pInputEvent == kg_null_ptr)
 	{
@@ -1916,7 +1921,6 @@ kg_result kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsign
 	pInputEvent->data.mouse_button.actionType 	= K15_GUI_ACTION_BUTTON_DOWN;
 
 	return K15_GUI_RESULT_SUCCESS;
-
 }
 
 kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType)
@@ -1925,10 +1929,10 @@ kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
-	kg_context* 	 	pContext 		= (kg_context*)contextHandle.value;
-	kg_input_queue* 	pInputQueue 	= pContext->pInputQueue;
+	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
+	kg_input_queue* pInputQueue = pContext->pInputQueue;
 
-	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
+	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_BUTTON_RELEASED);
 	
 	if (pInputEvent == kg_null_ptr)
 	{
@@ -1941,7 +1945,48 @@ kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned
 	pInputEvent->data.mouse_button.actionType	= K15_GUI_ACTION_BUTTON_UP;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
 
+kg_result kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keyboard_key_type buttonType)
+{
+	if (kg_is_invalid_context_handle(contextHandle))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
+	kg_input_queue* pInputQueue = pContext->pInputQueue;
+
+	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_KEY_PRESSED);
+	
+	if (pInputEvent == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	pInputEvent->data.keyboard_button.key = buttonType;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_result kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboard_key_type buttonType)
+{
+	if (kg_is_invalid_context_handle(contextHandle))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
+	kg_input_queue* pInputQueue = pContext->pInputQueue;
+
+	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_KEY_RELEASED);
+	
+	if (pInputEvent == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	pInputEvent->data.keyboard_button.key = buttonType;
+
+	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
