@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <stdio.h>
+#include <malloc.h>
 #include <math.h>
 
 #define K15_OPENGL_ENABLE_ERROR_CHECK_CALLS
@@ -29,6 +30,15 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
 
 uint32 screenWidth = 1024;
 uint32 screenHeight = 768;
+
+const size_t vertexMemorySize 	= kg_size_kilo_bytes(512);
+const size_t indexMemorySize	= kg_size_kilo_bytes(512);
+const size_t dataMemorySize 	= kg_size_mega_bytes(1);
+
+void* pVertexMemory; 	
+void* pIndexMemory;
+void* pDataMemory;
+
 
 kg_context_handle contextHandle;
 
@@ -396,7 +406,20 @@ char* getInfoLogForShader(GLuint p_Shader)
 
 void setup(HWND p_HWND)
 {
-	kg_create_context(&contextHandle);
+	pVertexMemory 	= malloc(vertexMemorySize);
+	pIndexMemory 	= malloc(indexMemorySize);
+	pDataMemory		= malloc(dataMemorySize);
+
+	kg_context_parameter parameter = kg_create_context_parameter();
+	parameter.vertex_draw_data.pVertexMemory 	= pVertexMemory;
+	parameter.vertex_draw_data.pIndexMemory		= pIndexMemory;
+	parameter.vertex_draw_data.vertexMemorySize = vertexMemorySize;
+	parameter.vertex_draw_data.indexMemorySize	= indexMemorySize;
+
+	parameter.pDataMemory		= pDataMemory;
+	parameter.dataMemorySize	= dataMemorySize;
+
+	kg_create_context_with_custom_parameter(&contextHandle, &parameter);
 }
 
 void swapBuffers(HWND p_HWND)
@@ -408,14 +431,13 @@ void swapBuffers(HWND p_HWND)
 
 void drawGUI()
 {
-	kg_render_queue_handle renderQueueHandle = kg_lock_render_queue(contextHandle);
-	kg_render_command renderCommand;
+	void* pRenderData = 0;
+	int renderDataSizeInBytes = 0;
 
-	while (kg_pop_render_command(renderQueueHandle, &renderCommand))
-	{
-	}
+	kg_get_render_data(contextHandle, &pRenderData, &renderDataSizeInBytes);
+	const kg_vertex_definition* pVertexDefinition = kg_get_vertex_definition();
 
-	kg_unlock_render_queue(contextHandle, renderQueueHandle);
+
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)

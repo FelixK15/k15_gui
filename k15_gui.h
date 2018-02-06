@@ -55,7 +55,9 @@ typedef enum
 	K15_GUI_RESULT_ELEMENT_NOT_STARTED 			= 17,
 	K15_GUI_RESULT_ELEMENT_NOT_FINISHED 		= 18,
 	K15_GUI_RESULT_DRAW_COMMAND_FINISHED 		= 19,
-	K15_GUI_RESULT_UNKNOWN_ERROR 				= 20
+	K15_GUI_RESULT_NEED_MORE_MEMORY 			= 20,
+	K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER 	= 21,
+	K15_GUI_RESULT_UNKNOWN_ERROR 
 } kg_result;
 /*********************************************************************************/
 typedef enum 
@@ -149,6 +151,19 @@ typedef enum
 	K15_GUI_LAYOUT_VERTICAL = 0,
 	K15_GUI_LAYOUT_HORIZONTAL
 } kg_layout_type;
+/*********************************************************************************/
+typedef enum 
+{
+	K15_GUI_POSITION_ATTRIBUTE_TYPE = 0,
+	K15_GUI_TEXCOORD_ATTRIBUTE_TYPE,
+	K15_GUI_COLOR_ATTRIBUTE_TYPE
+} kg_vertex_attribute_type;
+/*********************************************************************************/
+typedef enum 
+{
+	K15_GUI_FLOAT2_DATA_TYPE = 0,
+	K15_GUI_FLOAT4_DATA_TYPE
+} kg_vertex_attribute_data_type;
 /*********************************************************************************/
 typedef struct 
 {
@@ -295,35 +310,23 @@ typedef struct
 	kg_input_event* pLastEvent;
 } kg_input_queue;
 /*********************************************************************************/
-typedef struct
-{
-	int bla;
-} kg_render_command;
-/*********************************************************************************/
 typedef struct 
 {
-	kg_render_command* 	pFirstCommand;
-	kg_render_command* 	pLastCommand;
-	kg_bool 			inUse;
-} kg_render_queue;
-/*********************************************************************************/
-typedef struct 
-{
-	kg_buffer 			buffer;
-	kg_render_queue* 	pRenderQueues;
-	kg_u32				renderQueueCount;
-	kg_u32				activeRenderQueueIndex;	
-} kg_render_queue_chain;
+	int left;
+	int top;
+	int right;
+	int bottom;
+} kg_viewport;
 /*********************************************************************************/
 typedef struct 
 {
 	kg_array				elementStack;
 	kg_buffer 				memoryBuffer;
-	kg_render_queue_chain*	pRenderQueueChain;
 	kg_hash_map*			pElements;
 	kg_element*				pRootElement;
 	kg_error_stack* 		pErrorStack;
 	kg_input_queue*			pInputQueue;
+	kg_viewport				viewport;
 	kg_u32 					frameCounter;
 } kg_context;
 /*********************************************************************************/
@@ -332,11 +335,6 @@ typedef struct
 	size_t value;
 } kg_context_handle;
 /*********************************************************************************/
-typedef struct
-{
-	size_t value;
-} kg_render_queue_handle;
-/*********************************************************************************/
 typedef struct 
 {
 	kg_float2 origin;
@@ -344,7 +342,36 @@ typedef struct
 	kg_float2 accumulatedSize;
 	kg_float2 maxSize;
 } kg_layout_state;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_vertex_attribute_type 		type;
+	kg_vertex_attribute_data_type	dataType;
+	kg_u32							sizeInBytes;
+	kg_u32							offset;
+} kg_vertex_attribute_definition;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_u32 							stride;
+	kg_u32 							attributeCount;
+	kg_vertex_attribute_definition 	attributes[3];
+} kg_vertex_definition;
+/*********************************************************************************/
+typedef struct
+{
+	struct
+	{
+		void* 	pVertexMemory;
+		void* 	pIndexMemory;
+		size_t 	vertexMemorySize;
+		size_t 	indexMemorySize;		
+	} vertex_draw_data;
 
+	void* 	pDataMemory;
+	size_t 	dataMemorySize;
+} kg_context_parameter;
+/*********************************************************************************/
 //how this should work:
 // - Call gui logic (K15_GUIButton, K15_GUIBeginWindow, K15_GUIPushHorizontalLayout etc.)
 // - Store elements internally in the gui context (just rects?) <-- headache
@@ -354,43 +381,57 @@ typedef struct
 // - Call gui logic (next frame - retrieve results from last frame. Mainly results of the input)
 
 //******************CONTEXT******************//
-kg_def kg_result 				kg_create_context(kg_context_handle* pOutHandle);
-kg_def kg_result 				kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, void* pMemory, unsigned int memorySizeInBytes);
+kg_def kg_context_parameter			kg_create_context_parameter();
+kg_def kg_result 					kg_create_context(kg_context_handle* pOutHandle);
+kg_def kg_result 					kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter);
+kg_def kg_result 					kg_set_viewport(kg_context_handle contextHandle, const kg_viewport* pViewport);
+kg_def kg_result					kg_get_viewport(kg_context_handle contextHandle, kg_viewport* pOutViewport);
 
 //*****************CONTROLS******************//
-kg_def kg_result 				kg_begin_frame(kg_context_handle contextHandle);
-kg_def void 					kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier);
-kg_def kg_bool 					kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def kg_bool  				kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def kg_bool 					kg_button(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def void						kg_label(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def void						kg_separator(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
-kg_def void						kg_end_menu(kg_context_handle contextHandle);
-kg_def void						kg_end_window(kg_context_handle contextHandle);
-kg_def void						kg_end_toolbar(kg_context_handle contextHandle);
-kg_def kg_result 				kg_end_frame(kg_context_handle contextHandle);
+kg_def kg_result 					kg_begin_frame(kg_context_handle contextHandle);
+kg_def void 						kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier);
+kg_def kg_bool 						kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def kg_bool  					kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def kg_bool 						kg_button(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def void							kg_label(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def void							kg_separator(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
+kg_def void							kg_end_menu(kg_context_handle contextHandle);
+kg_def void							kg_end_window(kg_context_handle contextHandle);
+kg_def void							kg_end_toolbar(kg_context_handle contextHandle);
+kg_def kg_result 					kg_end_frame(kg_context_handle contextHandle);
 
 
 //*****************INPUT******************//
-kg_def kg_result				kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y);
-kg_def kg_result 				kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
-kg_def kg_result 				kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type 			mouseButtonType);
-kg_def kg_result				kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
-kg_def kg_result				kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
+kg_def kg_result					kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y);
+kg_def kg_result 					kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType);
+kg_def kg_result 					kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type 			mouseButtonType);
+kg_def kg_result					kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
+kg_def kg_result					kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
 
 //*****************UTIL******************//
-kg_def unsigned int 			kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
-kg_def kg_result 				kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def kg_result 				kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def kg_bool 					kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
+kg_def unsigned int 				kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
+kg_def kg_result 					kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def kg_result 					kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def kg_bool 						kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
 
 
-kg_def kg_render_queue_handle	kg_lock_render_queue(kg_context_handle contextHandle);
-kg_def kg_result 				kg_unlock_render_queue(kg_context_handle contextHandle, kg_render_queue_handle renderQueueHandle);
-kg_def kg_bool 					kg_pop_render_command(kg_render_queue_handle renderQueueHandle, kg_render_command* pOutRenderCommand);
+//****************RENDER*****************//
+kg_def const kg_vertex_definition*	kg_get_vertex_definition();
+kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, void** pOutRenderData, int* pOutRenderDataSizeInBytes);
+
 
 //*****************DEBUG*****************//
 
+kg_def const kg_color32 kg_color_white;
+kg_def const kg_color32 kg_color_black;
+kg_def const kg_color32 kg_color_light_red;
+kg_def const kg_color32 kg_color_light_green;
+kg_def const kg_color32 kg_color_light_blue;
+kg_def const kg_color32 kg_color_light_grey;
+kg_def const kg_color32 kg_color_dark_red;
+kg_def const kg_color32 kg_color_dark_green;
+kg_def const kg_color32 kg_color_dark_blue;
+kg_def const kg_color32 kg_color_dark_grey;
 
 #ifdef K15_GUI_IMPLEMENTATION
 
@@ -441,6 +482,13 @@ kg_def kg_bool 					kg_pop_render_command(kg_render_queue_handle renderQueueHand
 # define kg_memcpy(d, s, si) K15_GUI_MEMCPY(d, s, si)
 #endif //K15_GUI_MEMCPY
 
+#ifndef K15_GUI_MEMCMP
+# include "string.h"
+# define kg_memcmp(a, b, si) memcmp(a, b, si)
+#else
+# define kg_memcmp(a, b, si) K15_GUI_MEMCMP(a, b, si)
+#endif //K15_GUI_MEMCMP
+
 #ifndef K15_GUI_CLAMP
 # define kg_clamp(v, min, max) ((v)>(max)?(max):(v)<(min)?(min):(v))
 #else
@@ -464,10 +512,29 @@ kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 #define kg_size_kilo_bytes(n) ((n)*1024)
 #define kg_size_mega_bytes(n) ((n)*1024*1024)
 
-#define kg_default_context_size kg_size_kilo_bytes(256)
 #define kg_null_ptr (void*)(0)
 
 typedef kg_u32 kg_code_point;
+
+const kg_color32 kg_color_white 		= 0xFFFFFFFF;
+const kg_color32 kg_color_black 		= 0x000000FF;
+const kg_color32 kg_color_light_red		= 0xFF0000FF;
+const kg_color32 kg_color_light_green	= 0x00FF00FF;
+const kg_color32 kg_color_light_blue	= 0xFF00FFFF;
+const kg_color32 kg_color_light_grey 	= 0xDDDDDDFF;
+const kg_color32 kg_color_dark_red		= 0xDD0000FF;
+const kg_color32 kg_color_dark_green	= 0x00DD00FF;
+const kg_color32 kg_color_dark_blue		= 0x0000DDFF;
+const kg_color32 kg_color_dark_grey		= 0x333333FF;
+
+enum //constants
+{
+	//Window Component
+	TitleHeightInPixels 	= 30u,
+	MinAreaHeightInPixels 	= 10u,
+	MinAreaWidthInPixels	= 10u
+};
+
 
 void kg_layout_pass(kg_element*);
 
@@ -488,6 +555,77 @@ typedef struct
 	kg_float2		originalPosition;
 	const kg_utf8* 	pText;
 } kg_window_component;
+
+/*********************************************************************************/
+typedef struct
+{
+	kg_float4	position;
+	kg_float2 	texcoord;
+	kg_color32 	color;
+} kg_render_vertex_data;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_render_vertex_data* 	pVertexData;
+	kg_u32					vertexCount;
+	kg_bool 				dirty;
+} kg_render_vertices;
+/*********************************************************************************/
+
+/*********************************************************************************/
+enum
+{
+	VertexStride 		= sizeof(kg_render_vertex_data),
+	IndexSize 			= sizeof(kg_u16),
+	MinContextDataSize 	= kg_size_kilo_bytes(512)
+};
+/*********************************************************************************/
+kg_internal const kg_context_parameter* kg_get_default_context_parameter()
+{
+	static kg_context_parameter defaultParameter;
+	static const kg_u32 defaultVertexMemorySize = 4096u * VertexStride;
+	static const kg_u32 defaultIndexMemorySize 	= 4096u * IndexSize;
+	static const kg_u32 defaultDataMemorySize	= kg_size_mega_bytes(5);
+
+	defaultParameter.vertex_draw_data.pVertexMemory 	= kg_malloc(defaultVertexMemorySize, kg_null_ptr);
+	defaultParameter.vertex_draw_data.pIndexMemory 		= kg_malloc(defaultIndexMemorySize, kg_null_ptr);
+	defaultParameter.pDataMemory						= kg_malloc(defaultDataMemorySize, kg_null_ptr);
+	defaultParameter.vertex_draw_data.vertexMemorySize 	= defaultVertexMemorySize;
+	defaultParameter.vertex_draw_data.indexMemorySize 	= defaultIndexMemorySize;
+	defaultParameter.dataMemorySize 					= defaultDataMemorySize;
+
+	return &defaultParameter;
+}
+/*********************************************************************************/
+kg_internal kg_bool kg_is_invalid_context_parameter(const kg_context_parameter* pParameter)
+{
+	if (pParameter == kg_null_ptr)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	if (pParameter->vertex_draw_data.pVertexMemory == kg_null_ptr ||
+		pParameter->vertex_draw_data.vertexMemorySize == 0u)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	if (pParameter->vertex_draw_data.pIndexMemory == kg_null_ptr ||
+		pParameter->vertex_draw_data.indexMemorySize == 0u)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	if (pParameter->pDataMemory == kg_null_ptr ||
+		pParameter->dataMemorySize < MinContextDataSize)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	return K15_GUI_FALSE;
+}
+/*********************************************************************************/
+
 
 /*****************************UTF8-SUPPORT***************************************/
 kg_internal kg_u32 kg_read_code_point(const kg_utf8* pUtf8Text, kg_code_point* pOutCodepoint)
@@ -606,9 +744,22 @@ kg_internal kg_bool kg_is_invalid_context_handle(kg_context_handle contextHandle
 	return (contextHandle.value == 0u);
 }
 
-kg_internal kg_bool kg_is_invalid_render_queue_handle(kg_render_queue_handle renderQueueHandle)
+kg_internal kg_bool kg_is_invalid_viewport(const kg_viewport* pViewport)
 {
-	return (renderQueueHandle.value == 0u);
+	if (pViewport == kg_null_ptr)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	const int width 	= pViewport->right - pViewport->left;
+	const int height 	= pViewport->bottom - pViewport->top;
+
+	if (width == 0 || height == 0 || width < 0 || height < 0)
+	{
+		return K15_GUI_TRUE;
+	}
+
+	return K15_GUI_FALSE;
 }
 
 kg_internal kg_bool kg_is_invalid_data_handle(const kg_data_handle* pHandle)
@@ -797,43 +948,6 @@ kg_internal kg_result kg_create_input_queue(kg_input_queue** pOutInputQueue, voi
 
 	return K15_GUI_RESULT_SUCCESS;
 }
-
-kg_internal kg_result kg_create_render_queue_chain(kg_render_queue_chain** pOutRenderQueueChain, void* pMemory, kg_u32 memorySizeInBytes)
-{
-	if (memorySizeInBytes < sizeof(kg_render_queue_chain))
-	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	}
-
-	kg_byte* 	pRenderQueueChainMemory 			= (kg_byte*)pMemory + sizeof(kg_render_queue_chain);
-	kg_u32		renderQueueChainMemorySizeInBytes 	= memorySizeInBytes -= sizeof(kg_render_queue_chain);
-
-	kg_render_queue_chain* pRenderQueueChain = (kg_render_queue_chain*)pMemory;
-	kg_buffer renderQueueChainBuffer = kg_create_buffer(pRenderQueueChainMemory, renderQueueChainMemorySizeInBytes);
-
-	const kg_u32 renderQueueCount = 2u;
-
-	pRenderQueueChain->pRenderQueues = kg_reserve_memory_from_current_buffer_position(&renderQueueChainBuffer, kg_ptr_size_in_bytes * renderQueueCount);
-
-	if (pRenderQueueChain->pRenderQueues == kg_null_ptr)
-	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	}
-
-	for (kg_u32 renderQueueIndex = 0u; renderQueueIndex < renderQueueCount; ++renderQueueIndex)
-	{
-		pRenderQueueChain->pRenderQueues[renderQueueIndex].pFirstCommand 	= kg_null_ptr;
-		pRenderQueueChain->pRenderQueues[renderQueueIndex].pLastCommand 	= kg_null_ptr;
-		pRenderQueueChain->pRenderQueues[renderQueueIndex].inUse 			= K15_GUI_FALSE;
-	}
-
-	pRenderQueueChain->buffer 					= renderQueueChainBuffer;
-	pRenderQueueChain->renderQueueCount			= renderQueueCount;
-	pRenderQueueChain->activeRenderQueueIndex 	= 0u;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
 
 kg_internal kg_result kg_create_error_stack(kg_error_stack** pOutErrorStack, void* pMemory, kg_u32 memorySizeInBytes)
 {
@@ -1041,12 +1155,6 @@ kg_internal kg_bool kg_grow_array_capacity(kg_array* pArray)
 	pArray->pDataHandle = pNewArrayDataHandle;
 
 	return K15_GUI_TRUE;
-}
-
-kg_internal kg_render_queue_handle kg_invalid_render_queue_handle()
-{
-	static const kg_render_queue_handle invalidHandle = { 0u };
-	return invalidHandle;
 }
 
 kg_internal kg_array kg_invalid_array()
@@ -1463,14 +1571,22 @@ kg_internal void kg_layout_pass(kg_element* pElement)
 	}
 }
 
-kg_internal void kg_render_element(kg_element* pElement)
-{
+kg_internal void kg_render_element(kg_context* pContext, kg_element* pElement)
+{	
+	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
+	{
+		kg_element* pChild = kg_null_ptr;
+		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
+
+		kg_render_element(pContext, pChild);
+	}
+
 
 }
 
-kg_internal void kg_render_pass(kg_element* pElement)
+kg_internal void kg_render_pass(kg_context* pContext)
 {
-	kg_render_element(pElement);
+	kg_render_element(pContext, pContext->pRootElement);
 }
 
 kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, const char* pDescription, const char* pIdentifier, kg_result result)
@@ -1505,6 +1621,70 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, cons
 	}
 }
 
+/******************************RENDER LOGIC***************************************/
+kg_internal void kg_set_vertex_3d(kg_render_vertices* pVertices, kg_u32 vertexIndex, float x, float y, float z, float w, float u, float v, kg_color32 color)
+{
+	if (vertexIndex >= pVertices->vertexCount)
+	{
+		return;
+	}
+
+	kg_render_vertex_data* pVertexData = &pVertices->pVertexData[vertexIndex];
+
+	pVertexData->position.x	= x;
+	pVertexData->position.y	= y;
+	pVertexData->position.z	= z;
+	pVertexData->position.w	= w;
+	pVertexData->texcoord.x	= u;
+	pVertexData->texcoord.y	= v;
+	pVertexData->color 		= color;
+}
+
+kg_internal void kg_set_vertex_2d(kg_render_vertices* pVertices, kg_u32 vertexIndex, float x, float y, float u, float v, kg_color32 color)
+{
+	kg_set_vertex_3d(pVertices, vertexIndex, x, y, 1.f, 1.f, u, v, color);
+}
+
+kg_internal void kg_add_render_geometry(kg_context* pContext, kg_render_vertices* pVertices)
+{
+}
+
+kg_internal kg_render_vertices* kg_allocate_vertices(kg_context* pContext, kg_u32 vertexCount)
+{
+	return kg_null_ptr;
+}
+
+kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_element* pElement, kg_float2 offset, kg_float2 size, kg_color32 color)
+{
+	if (pContext == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pElement == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	kg_render_vertices* pVertices = kg_allocate_vertices(pContext, 6u);
+
+	if (pVertices == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	const kg_float2 position = kg_float2_add(&pElement->position, &offset);
+
+	kg_set_vertex_2d(pVertices, 0, position.x, 			position.y, 			0.f, 0.f, color);	
+	kg_set_vertex_2d(pVertices, 1, position.x + size.x, position.y, 			0.f, 0.f, color);	
+	kg_set_vertex_2d(pVertices, 2, position.x, 			position.y + size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(pVertices, 3, position.x, 			position.y + size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(pVertices, 4, position.x + size.x, position.y, 			0.f, 0.f, color);	
+	kg_set_vertex_2d(pVertices, 5, position.x + size.x, position.y + size.y, 	0.f, 0.f, color);	
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
 /******************************INPUT LOGIC****************************************/
 kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue, kg_input_type inputType)
 {
@@ -1536,7 +1716,6 @@ kg_internal const kg_utf8* kg_find_text(kg_context* pContext, const char* pTextI
 {
 	return pTextID;
 }
-
 
 /*****************************CONTROL LOGIC***************************************/
 kg_window_component* kg_allocate_window_component(kg_context* pContext, kg_element* pElement)
@@ -1580,15 +1759,15 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 	{
 		if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_MAXIMIZED ) == 0 )
 		{
-			pComponent->originalPosition = pElement->position;
-			pComponent->originalSize = pElement->size;
+			pComponent->originalPosition 	= pElement->position;
+			pComponent->originalSize 		= pElement->size;
 			pComponent->flags |= K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;	
 			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;
 		}
 		else
 		{
-			pElement->size = pComponent->originalSize;
-			pElement->position = pComponent->originalPosition;
+			pElement->size 		= pComponent->originalSize;
+			pElement->position 	= pComponent->originalPosition;
 			
 			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;
 		}
@@ -1600,20 +1779,26 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 	{
 		if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_MINIMIZED ) == 0)
 		{
-			pComponent->originalPosition = pElement->position;
-			pComponent->originalSize = pElement->size;
+			pComponent->originalPosition 	= pElement->position;
+			pComponent->originalSize 		= pElement->size;
 			pComponent->flags |= K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
 		}
 		else
 		{
-			pElement->size = pComponent->originalSize;
-			pElement->position = pComponent->originalPosition;
+			pElement->size 		= pComponent->originalSize;
+			pElement->position 	= pComponent->originalPosition;
 
 			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
 		}
 
 		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED;
 	}
+
+	const kg_float2 titleArea 	= kg_float2_load(pElement->size.x, TitleHeightInPixels);
+	const kg_float2 windowArea 	= kg_float2_load(pElement->size.x, kg_max(pElement->size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
+	
+	kg_render_element_rect(pContext, pElement, kg_float2_load(0.f, TitleHeightInPixels), windowArea, kg_color_white);
+	kg_render_element_rect(pContext, pElement, kg_float2_zero(), titleArea, kg_color_light_grey);
 
 	return (pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN);
 }
@@ -1638,37 +1823,55 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 //							Only need JPEG, PNG and maybe TIFF support).
 //  12. provide more style options other than just different colors.
 //		Imagesets and icons come to mind.
+kg_context_parameter kg_create_context_parameter()
+{
+	kg_context_parameter parameter;
+
+	parameter.pDataMemory 	= kg_null_ptr;
+	parameter.dataMemorySize = 0u;
+
+	parameter.vertex_draw_data.pVertexMemory 	= kg_null_ptr;
+	parameter.vertex_draw_data.pIndexMemory		= kg_null_ptr;
+	parameter.vertex_draw_data.vertexMemorySize = 0u;
+	parameter.vertex_draw_data.indexMemorySize 	= 0u;
+
+	return parameter;	
+}
 
 kg_result kg_create_context(kg_context_handle* pOutHandle)
 {
-	kg_byte* pMemory = kg_malloc(kg_default_context_size, 0u);
-
-	if (pMemory == kg_null_ptr)
-	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	}	
-
-	return kg_create_context_with_custom_memory( pOutHandle, pMemory, kg_default_context_size );
+	const kg_context_parameter* pParameter = kg_get_default_context_parameter();
+	return kg_create_context_with_custom_parameter( pOutHandle, pParameter );
 }
 
-kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, void* pMemory, unsigned int memorySizeInBytes)
+kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter)
 {
 	if (pOutHandle == kg_null_ptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	if (pMemory == kg_null_ptr)
+	if (pParameter == kg_null_ptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	if (memorySizeInBytes == 0u)
+	if (kg_is_invalid_context_parameter(pParameter))
 	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+		if (pParameter->dataMemorySize < MinContextDataSize)
+		{
+			return K15_GUI_RESULT_NEED_MORE_MEMORY;
+		}
+
+		return K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER;
 	}
 
-	kg_buffer memoryBuffer = kg_create_buffer(pMemory, memorySizeInBytes);
+	kg_buffer dataBuffer = kg_create_buffer(pParameter->pDataMemory, pParameter->dataMemorySize);
+
+	if (kg_is_invalid_buffer(&dataBuffer))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	} 
 
 	const kg_u32 hashMapDataSize 			= kg_size_kilo_bytes(64);
 	const kg_u32 errorStackDataSize 		= kg_size_kilo_bytes(16);
@@ -1677,7 +1880,7 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, vo
 
 	const kg_u32 totalDataSize = sizeof(kg_context) + hashMapDataSize + errorStackDataSize + inputBufferDataSize + renderQueueChainDataSize;
 
-	kg_u8* pDataMemory = (kg_u8*)kg_reserve_memory_from_current_buffer_position(&memoryBuffer, totalDataSize);
+	kg_u8* pDataMemory = (kg_u8*)kg_reserve_memory_from_current_buffer_position(&dataBuffer, totalDataSize);
 
 	if (pDataMemory == kg_null_ptr)
 	{
@@ -1693,7 +1896,7 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, vo
 	void* 		pInputBufferMemory		= pDataMemory + offset; offset += inputBufferDataSize;
 	void*		pRenderQueueChainMemory	= pDataMemory + offset;
 
-	pContext->memoryBuffer = memoryBuffer;
+	pContext->memoryBuffer = dataBuffer;
 	pContext->frameCounter = 0u;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
@@ -1719,13 +1922,6 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, vo
 		return result;
 	}
 	
-	result = kg_create_render_queue_chain(&pContext->pRenderQueueChain, pRenderQueueChainMemory, renderQueueChainDataSize);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		return result;
-	}
-
 	result = kg_create_array(&pContext->elementStack, &pContext->memoryBuffer, 16u, kg_ptr_size_in_bytes);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -1738,6 +1934,38 @@ kg_result kg_create_context_with_custom_memory(kg_context_handle* pOutHandle, vo
 	return K15_GUI_RESULT_SUCCESS;
 }
 
+kg_result kg_set_viewport(kg_context_handle contextHandle, const kg_viewport* pViewport)
+{
+	if (kg_is_invalid_context_handle(contextHandle))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (kg_is_invalid_viewport(pViewport))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	kg_context* pContext = (kg_context*)contextHandle.value;
+	pContext->viewport = *pViewport;
+}
+
+kg_result kg_get_viewport(kg_context_handle contextHandle, kg_viewport* pOutViewport)
+{
+	if (kg_is_invalid_context_handle(contextHandle))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pOutViewport == kg_null_ptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	kg_context* pContext = (kg_context*)contextHandle.value;
+	*pOutViewport = pContext->viewport;
+}
+
 kg_result kg_begin_frame(kg_context_handle contextHandle)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
@@ -1748,8 +1976,6 @@ kg_result kg_begin_frame(kg_context_handle contextHandle)
 	kg_context* pContext = (kg_context*)contextHandle.value;
 	kg_clear_array(&pContext->elementStack);
 
-	pContext->pRootElement = kg_allocate_element( pContext, "ROOT_ELEMENT" );
-	kg_array_push_back( &pContext->elementStack, &pContext->pRootElement );
 	return K15_GUI_RESULT_SUCCESS;
 }
 
@@ -1867,7 +2093,7 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 	kg_process_input_events(pContext);
 	kg_input_pass(pContext->pRootElement);
 	kg_layout_pass(pContext->pRootElement);
-	kg_render_pass(pContext->pRootElement);
+	kg_render_pass(pContext);
 	++pContext->frameCounter;
 
 	kg_clear_buffer(&pContext->pErrorStack->errorBuffer);
@@ -2011,38 +2237,38 @@ kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 	return K15_GUI_TRUE;
 }
 
-kg_render_queue_handle kg_lock_render_queue(kg_context_handle contextHandle)
+const kg_vertex_definition*	kg_get_vertex_definition()
 {
-	if (kg_is_invalid_context_handle(contextHandle))
-	{
-		return kg_invalid_render_queue_handle();
-	}
+	static kg_vertex_definition vertexDefinition;
 
-	kg_context* pContext 						= (kg_context*)contextHandle.value;
-	kg_render_queue_chain* pRenderQueueChain 	= pContext->pRenderQueueChain;
+	vertexDefinition.stride 					= VertexStride;
+	vertexDefinition.attributeCount 			= sizeof(vertexDefinition.attributes) / sizeof(vertexDefinition.attributes[0]);
+	vertexDefinition.attributes[0].type 		= K15_GUI_POSITION_ATTRIBUTE_TYPE;
+	vertexDefinition.attributes[0].dataType 	= K15_GUI_FLOAT4_DATA_TYPE;
+	vertexDefinition.attributes[0].offset		= 0u;
+	vertexDefinition.attributes[0].sizeInBytes 	= sizeof(kg_float4);
 
-	kg_render_queue_handle renderQueueHandle = {0};
-	return renderQueueHandle;
+	vertexDefinition.attributes[1].type 		= K15_GUI_TEXCOORD_ATTRIBUTE_TYPE;
+	vertexDefinition.attributes[1].dataType 	= K15_GUI_FLOAT2_DATA_TYPE;
+	vertexDefinition.attributes[1].offset		= sizeof(kg_float4);
+	vertexDefinition.attributes[1].sizeInBytes 	= sizeof(kg_float2);
+	
+	vertexDefinition.attributes[2].type 		= K15_GUI_COLOR_ATTRIBUTE_TYPE;
+	vertexDefinition.attributes[2].dataType 	= K15_GUI_FLOAT4_DATA_TYPE;
+	vertexDefinition.attributes[2].offset		= sizeof(kg_float4) + sizeof(kg_float2);
+	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_float4);
+
+	return &vertexDefinition;
 }
 
-kg_result kg_unlock_render_queue(kg_context_handle contextHandle, kg_render_queue_handle renderQueueHandle)
+kg_result kg_get_render_data(kg_context_handle contextHandle, void** pOutRenderData, int* pOutRenderDataSizeInBytes)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+		return K15_GUI_RESULT_INVALID_ARGUMENTS; 
 	}
 
 	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_bool kg_pop_render_command(kg_render_queue_handle renderQueueHandle, kg_render_command* pOutRenderCommand)
-{
-	if (kg_is_invalid_render_queue_handle(renderQueueHandle))
-	{
-		return K15_GUI_FALSE;
-	}
-
-	return K15_GUI_FALSE;
 }
 
 
