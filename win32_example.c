@@ -419,7 +419,8 @@ void setup(HWND p_HWND)
 	parameter.pDataMemory		= pDataMemory;
 	parameter.dataMemorySize	= dataMemorySize;
 
-	kg_create_context_with_custom_parameter(&contextHandle, &parameter);
+	const char* pError = NULL;
+	kg_create_context_with_custom_parameter(&contextHandle, &parameter, &pError);
 }
 
 void swapBuffers(HWND p_HWND)

@@ -7,12 +7,12 @@
 # define kg_def extern
 #endif //K15_GUI_STATIC
 
-#ifndef K15_GUI_TRUE
-# define K15_GUI_TRUE 1
+#ifndef kg_true
+# define kg_true 1
 #endif
 
-#ifndef K15_GUI_FALSE
-# define K15_GUI_FALSE 0
+#ifndef kg_false
+# define kg_false 0
 #endif
 
 typedef unsigned long long 	kg_u64;
@@ -240,7 +240,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	kg_element 	element;
+	void*		pElement;
 	void* 		pNext;
 	kg_crc32 	key;
 } kg_hash_map_bucket;
@@ -318,6 +318,11 @@ typedef struct
 	int bottom;
 } kg_viewport;
 /*********************************************************************************/
+typedef struct
+{
+	kg_hash_map* 			pElements;
+} kg_window;
+/*********************************************************************************/
 typedef struct 
 {
 	kg_array				elementStack;
@@ -383,7 +388,7 @@ typedef struct
 //******************CONTEXT******************//
 kg_def kg_context_parameter			kg_create_context_parameter();
 kg_def kg_result 					kg_create_context(kg_context_handle* pOutHandle);
-kg_def kg_result 					kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter);
+kg_def kg_result 					kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter, const char** pOutError);
 kg_def kg_result 					kg_set_viewport(kg_context_handle contextHandle, const kg_viewport* pViewport);
 kg_def kg_result					kg_get_viewport(kg_context_handle contextHandle, kg_viewport* pOutViewport);
 
@@ -512,7 +517,9 @@ kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 #define kg_size_kilo_bytes(n) ((n)*1024)
 #define kg_size_mega_bytes(n) ((n)*1024*1024)
 
-#define kg_null_ptr (void*)(0)
+#define kg_nullptr (void*)(0)
+
+#define kg_set_error(err, str) if (err != kg_nullptr) {*err = str;}
 
 typedef kg_u32 kg_code_point;
 
@@ -587,9 +594,9 @@ kg_internal const kg_context_parameter* kg_get_default_context_parameter()
 	static const kg_u32 defaultIndexMemorySize 	= 4096u * IndexSize;
 	static const kg_u32 defaultDataMemorySize	= kg_size_mega_bytes(5);
 
-	defaultParameter.vertex_draw_data.pVertexMemory 	= kg_malloc(defaultVertexMemorySize, kg_null_ptr);
-	defaultParameter.vertex_draw_data.pIndexMemory 		= kg_malloc(defaultIndexMemorySize, kg_null_ptr);
-	defaultParameter.pDataMemory						= kg_malloc(defaultDataMemorySize, kg_null_ptr);
+	defaultParameter.vertex_draw_data.pVertexMemory 	= kg_malloc(defaultVertexMemorySize, kg_nullptr);
+	defaultParameter.vertex_draw_data.pIndexMemory 		= kg_malloc(defaultIndexMemorySize, kg_nullptr);
+	defaultParameter.pDataMemory						= kg_malloc(defaultDataMemorySize, kg_nullptr);
 	defaultParameter.vertex_draw_data.vertexMemorySize 	= defaultVertexMemorySize;
 	defaultParameter.vertex_draw_data.indexMemorySize 	= defaultIndexMemorySize;
 	defaultParameter.dataMemorySize 					= defaultDataMemorySize;
@@ -599,30 +606,30 @@ kg_internal const kg_context_parameter* kg_get_default_context_parameter()
 /*********************************************************************************/
 kg_internal kg_bool kg_is_invalid_context_parameter(const kg_context_parameter* pParameter)
 {
-	if (pParameter == kg_null_ptr)
+	if (pParameter == kg_nullptr)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	if (pParameter->vertex_draw_data.pVertexMemory == kg_null_ptr ||
+	if (pParameter->vertex_draw_data.pVertexMemory == kg_nullptr ||
 		pParameter->vertex_draw_data.vertexMemorySize == 0u)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	if (pParameter->vertex_draw_data.pIndexMemory == kg_null_ptr ||
+	if (pParameter->vertex_draw_data.pIndexMemory == kg_nullptr ||
 		pParameter->vertex_draw_data.indexMemorySize == 0u)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	if (pParameter->pDataMemory == kg_null_ptr ||
+	if (pParameter->pDataMemory == kg_nullptr ||
 		pParameter->dataMemorySize < MinContextDataSize)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	return K15_GUI_FALSE;
+	return kg_false;
 }
 /*********************************************************************************/
 
@@ -685,7 +692,7 @@ kg_internal kg_float2 kg_float2_clamp(const kg_float2* pValue, const kg_float2* 
 	return clamped;
 }
 
-kg_internal kg_float2 kg_float2_max_individual(const kg_float2* pA, const kg_float2* pB)
+kg_internal kg_float2 kg_float2_max(const kg_float2* pA, const kg_float2* pB)
 {
 	kg_float2 maxValue = kg_float2_zero();
 	maxValue.x = kg_max(pA->x, pB->x);
@@ -746,9 +753,9 @@ kg_internal kg_bool kg_is_invalid_context_handle(kg_context_handle contextHandle
 
 kg_internal kg_bool kg_is_invalid_viewport(const kg_viewport* pViewport)
 {
-	if (pViewport == kg_null_ptr)
+	if (pViewport == kg_nullptr)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	const int width 	= pViewport->right - pViewport->left;
@@ -756,50 +763,50 @@ kg_internal kg_bool kg_is_invalid_viewport(const kg_viewport* pViewport)
 
 	if (width == 0 || height == 0 || width < 0 || height < 0)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	return K15_GUI_FALSE;
+	return kg_false;
 }
 
 kg_internal kg_bool kg_is_invalid_data_handle(const kg_data_handle* pHandle)
 {
-	if (pHandle == kg_null_ptr)
+	if (pHandle == kg_nullptr)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (pHandle->offset == 0u && pHandle->sizeInBytes == 0u)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	return K15_GUI_FALSE;
+	return kg_false;
 }
 
 kg_internal kg_bool kg_is_invalid_buffer(const kg_buffer* pBuffer)
 {
-	if (pBuffer == kg_null_ptr)
+	if (pBuffer == kg_nullptr)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (!pBuffer->pMemory)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (pBuffer->capacityInBytes == 0)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (pBuffer->sizeInBytes > pBuffer->capacityInBytes)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	return K15_GUI_FALSE;
+	return kg_false;
 }
 
 kg_internal void kg_clear_buffer(kg_buffer* pBuffer)
@@ -816,12 +823,12 @@ kg_internal void* kg_reserve_memory_from_current_buffer_position(kg_buffer* pBuf
 {
 	if(kg_is_invalid_buffer(pBuffer))
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
 	if (pBuffer->sizeInBytes + sizeInBytes >= pBuffer->capacityInBytes)
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
 	void* pMemory = (kg_byte*)pBuffer->pMemory + pBuffer->sizeInBytes;
@@ -840,7 +847,7 @@ kg_internal const kg_data_handle* kg_create_data_handle(kg_buffer* pBuffer, kg_u
 {
 	const kg_u32 totalSizeInBytes = sizeof( kg_data_handle ) + sizeInBytes;
 
-	if ( pBuffer == kg_null_ptr )
+	if ( pBuffer == kg_nullptr )
 	{
 		return kg_invalid_data_handle();
 	}
@@ -853,12 +860,12 @@ kg_internal const kg_data_handle* kg_create_data_handle(kg_buffer* pBuffer, kg_u
 	kg_data_handle* pDataHandle 	= ( kg_data_handle* )( pBuffer->pMemory + pBuffer->sizeInBytes );
 	pDataHandle->offset 			= pBuffer->sizeInBytes + sizeof( kg_data_handle );
 	pDataHandle->sizeInBytes 		= sizeInBytes;
-	pDataHandle->pNextHandle		= kg_null_ptr;
+	pDataHandle->pNextHandle		= kg_nullptr;
 	pDataHandle->pPreviousHandle 	= pBuffer->pLastHandle;
 
 	pBuffer->sizeInBytes += sizeInBytes + sizeof(kg_data_handle);
 
-	if (pBuffer->pFirstHandle == kg_null_ptr)
+	if (pBuffer->pFirstHandle == kg_nullptr)
 	{
 		pBuffer->pFirstHandle = ( void* )pDataHandle;
 		pBuffer->pLastHandle = ( void* )pDataHandle;
@@ -879,8 +886,8 @@ kg_internal kg_buffer kg_create_buffer(void* pMemory, kg_u32 capacityInBytes)
 	buffer.pMemory 			= pMemory;
 	buffer.sizeInBytes 		= 0u;
 	buffer.capacityInBytes 	= capacityInBytes;
-	buffer.pFirstHandle 	= kg_null_ptr;
-	buffer.pLastHandle 		= kg_null_ptr;
+	buffer.pFirstHandle 	= kg_nullptr;
+	buffer.pLastHandle 		= kg_nullptr;
 	return buffer;
 }
 
@@ -893,7 +900,7 @@ kg_internal void kg_defragment_buffer(kg_buffer* pBuffer, const kg_data_handle* 
 {
 	kg_data_handle* pNextHandle = (kg_data_handle*)pHandle->pNextHandle;
 
-	while( pNextHandle != kg_null_ptr)
+	while( pNextHandle != kg_nullptr)
 	{
 		pNextHandle->offset = pHandle->offset;
 		pNextHandle 		= (kg_data_handle*)pNextHandle->pNextHandle;
@@ -914,7 +921,7 @@ kg_internal void kg_free_from_buffer(kg_buffer* pBuffer, const kg_data_handle* p
 		pBuffer->pFirstHandle = pHandle->pNextHandle;
 	}
 
-	if (pHandle->pPreviousHandle != kg_null_ptr)
+	if (pHandle->pPreviousHandle != kg_nullptr)
 	{
 		kg_data_handle* pPreviousHandle = (kg_data_handle*)pHandle->pPreviousHandle;
 		pPreviousHandle->pNextHandle = pHandle->pNextHandle;
@@ -941,8 +948,8 @@ kg_internal kg_result kg_create_input_queue(kg_input_queue** pOutInputQueue, voi
 	kg_input_queue* pInputQueue = (kg_input_queue*)pMemory;
 
 	pInputQueue->buffer 		= kg_create_buffer(pInputBufferMemory, inputBufferMemorySizeInBytes);
-	pInputQueue->pFirstEvent 	= kg_null_ptr;
-	pInputQueue->pLastEvent 	= kg_null_ptr;
+	pInputQueue->pFirstEvent 	= kg_nullptr;
+	pInputQueue->pLastEvent 	= kg_nullptr;
 
 	*pOutInputQueue = pInputQueue;
 
@@ -967,7 +974,7 @@ kg_internal kg_result kg_create_error_stack(kg_error_stack** pOutErrorStack, voi
 
 	kg_error_stack* pErrorStack = (kg_error_stack*)pMemory;
 
-	pErrorStack->pLastError 	= kg_null_ptr;
+	pErrorStack->pLastError 	= kg_nullptr;
 	pErrorStack->errorBuffer	= errorStackBuffer;
 
 	*pOutErrorStack = pErrorStack;
@@ -1021,7 +1028,7 @@ kg_internal kg_hash_map_bucket* kg_allocate_bucket(kg_hash_map* pHashMap, kg_crc
 
 	if (kg_is_invalid_data_handle(pBucketHandle))
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
 	kg_hash_map_bucket* pBucket = (kg_hash_map_bucket*)kg_get_memory_from_buffer(pBucketBuffer, pBucketHandle);
@@ -1029,11 +1036,11 @@ kg_internal kg_hash_map_bucket* kg_allocate_bucket(kg_hash_map* pHashMap, kg_crc
 	return pBucket;
 }
 
-kg_internal kg_hash_map_bucket* kg_find_hash_element_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier, kg_bool* pOutIsNew)
+kg_internal kg_hash_map_bucket* kg_find_hash_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier, kg_bool* pOutIsNew)
 {
-	if (pHashMap == kg_null_ptr)
+	if (pHashMap == kg_nullptr)
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
 	kg_hash_map_bucket* pBucket = pHashMap->pBuckets[ bucketIndex ];
@@ -1051,41 +1058,48 @@ kg_internal kg_hash_map_bucket* kg_find_hash_element_bucket(kg_hash_map* pHashMa
 	return pBucket;
 }
 
-kg_internal kg_element* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identifier, kg_bool* pOutIsNew)
+kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identifier, kg_bool* pOutIsNew)
 {
-	if (pHashMap == kg_null_ptr)
+	if (pHashMap == kg_nullptr)
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
 	const kg_u32 hashIndex = identifier % pHashMap->bucketCount;
 	kg_hash_map_bucket* pBucket = pHashMap->pBuckets[hashIndex];
 
-	if (pHashMap->pBuckets[hashIndex] != kg_null_ptr)
+	if (pHashMap->pBuckets[hashIndex] != kg_nullptr)
 	{
-		pBucket = kg_find_hash_element_bucket(pHashMap, hashIndex, identifier, pOutIsNew);
+		pBucket = kg_find_hash_bucket(pHashMap, hashIndex, identifier, pOutIsNew);
 	}
 
 	if (pBucket)
 	{
-		*pOutIsNew = K15_GUI_FALSE;
-		return &pBucket->element;
+		if (pOutIsNew != kg_nullptr) 
+		{
+			*pOutIsNew = kg_false;
+		}
+
+		return &pBucket->pElement;
 	}
 
-	*pOutIsNew = K15_GUI_TRUE;
+	if (pOutIsNew != kg_nullptr)
+	{
+		*pOutIsNew = kg_true;
+	}
 
 	pBucket = kg_allocate_bucket(pHashMap, identifier);
 
-	if( pBucket == kg_null_ptr )
+	if( pBucket == kg_nullptr )
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
 	pBucket->pNext = pHashMap->pBuckets[hashIndex];
 
 	pHashMap->pBuckets[ hashIndex ] = pBucket;
 
-	return &pBucket->element;
+	return &pBucket->pElement;
 }
 
 kg_internal kg_rect kg_create_rect(kg_s32 x, kg_s32 y, kg_u32 w, kg_u32 h)
@@ -1127,14 +1141,14 @@ kg_internal kg_bool kg_grow_array_capacity(kg_array* pArray)
 {
 	if (kg_is_invalid_buffer(pArray->pBuffer))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	const kg_data_handle* pArrayDataHandle = pArray->pDataHandle;
 
 	if (kg_is_invalid_data_handle(pArrayDataHandle))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	const kg_u32 newCapacity = pArray->capacity * 2u;
@@ -1142,7 +1156,7 @@ kg_internal kg_bool kg_grow_array_capacity(kg_array* pArray)
 
 	if (kg_is_invalid_data_handle(pNewArrayDataHandle))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	void* pArrayMemory 		= kg_get_memory_from_buffer(pArray->pBuffer, pArrayDataHandle);
@@ -1154,38 +1168,38 @@ kg_internal kg_bool kg_grow_array_capacity(kg_array* pArray)
 	pArray->capacity 	= newCapacity;
 	pArray->pDataHandle = pNewArrayDataHandle;
 
-	return K15_GUI_TRUE;
+	return kg_true;
 }
 
 kg_internal kg_array kg_invalid_array()
 {
-	static const kg_array invalidArray = { kg_null_ptr, kg_null_ptr, 0u, 0u, 0u };
+	static const kg_array invalidArray = { kg_nullptr, kg_nullptr, 0u, 0u, 0u };
 	return invalidArray;
 }
 
 kg_internal kg_bool kg_is_invalid_array(kg_array* pArray)
 {
-	if (pArray == kg_null_ptr)
+	if (pArray == kg_nullptr)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (kg_is_invalid_data_handle(pArray->pDataHandle))
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (pArray->elementSizeInBytes == 0u)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
 	if (pArray->capacity == 0u)
 	{
-		return K15_GUI_TRUE;
+		return kg_true;
 	}
 
-	return K15_GUI_FALSE;
+	return kg_false;
 }
 
 kg_internal kg_result kg_create_array(kg_array* pOutArray, kg_buffer* pBuffer, kg_u32 initialCapacity, size_t elementSizeInBytes)
@@ -1221,7 +1235,7 @@ kg_internal kg_result kg_clear_array(kg_array* pArray)
 
 kg_internal kg_result kg_array_get_element(void** ppOutElement, kg_array* pArray, kg_u32 index)
 {
-	if (ppOutElement == kg_null_ptr)
+	if (ppOutElement == kg_nullptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
@@ -1244,7 +1258,7 @@ kg_internal kg_result kg_array_get_element(void** ppOutElement, kg_array* pArray
 
 kg_internal kg_result kg_array_get_back( void** ppOutElement, kg_array* pArray )
 {
-	if( ppOutElement == kg_null_ptr )
+	if( ppOutElement == kg_nullptr )
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
@@ -1269,7 +1283,7 @@ kg_internal kg_result kg_array_push_back(kg_array* pArray, void* pElement)
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	if (pElement == kg_null_ptr)
+	if (pElement == kg_nullptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
@@ -1331,7 +1345,7 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 
 		if (result != K15_GUI_RESULT_SUCCESS)
 		{
-			return kg_null_ptr;
+			return kg_nullptr;
 		}
 
 		pElement->size 				= kg_float2_zero();
@@ -1342,7 +1356,7 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 		pElement->identifier 		= identifierHash;
 		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
 		{
-			pElement->componentHandles[componentIndex] = kg_null_ptr;
+			pElement->componentHandles[componentIndex] = kg_nullptr;
 		}
 
 #ifdef K15_GUI_STORE_IDENTIFIER_STRING
@@ -1352,7 +1366,7 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 
 	kg_clear_array(&pElement->childArray);
 
-	kg_element* pParent = kg_null_ptr;
+	kg_element* pParent = kg_nullptr;
 	
 	if (kg_array_get_back(&pParent, &pContext->elementStack) == K15_GUI_RESULT_SUCCESS)
 	{
@@ -1395,8 +1409,8 @@ kg_internal void kg_process_input_events(kg_context* pContext)
 		pInputEvent = (kg_input_event*)pInputEvent->pNext;
 	}
 
-	pInputQueue->pFirstEvent 	= kg_null_ptr;
-	pInputQueue->pLastEvent 	= kg_null_ptr;
+	pInputQueue->pFirstEvent 	= kg_nullptr;
+	pInputQueue->pLastEvent 	= kg_nullptr;
 
 	kg_clear_buffer(&pInputQueue->buffer);
 }
@@ -1462,7 +1476,7 @@ kg_internal void kg_advance_layout_vertical(kg_layout_state* pLayoutState, kg_el
 	pElement->position = kg_calculate_element_position(pLayoutState, pElement);
 
 	const kg_float2 elementSize = kg_calculate_element_size_with_margin(pElement);
-	pLayoutState->maxSize = kg_float2_max_individual(&pLayoutState->maxSize, &elementSize);
+	pLayoutState->maxSize = kg_float2_max(&pLayoutState->maxSize, &elementSize);
 
 	if (pLayoutState->accumulatedSize.y + elementSize.y > pLayoutState->maxSize.y)
 	{
@@ -1488,7 +1502,7 @@ kg_internal void kg_layout_vertical(kg_element* pElement)
 
 	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
 	{
-		kg_element* pChild = kg_null_ptr;
+		kg_element* pChild = kg_nullptr;
 		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
 
 		kg_advance_layout_vertical(&layoutState, pChild);
@@ -1496,7 +1510,7 @@ kg_internal void kg_layout_vertical(kg_element* pElement)
 
 	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
 	{
-		kg_element* pChild = kg_null_ptr;
+		kg_element* pChild = kg_nullptr;
 		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
 		kg_layout_pass(pChild);
 	}
@@ -1507,7 +1521,7 @@ kg_internal void kg_advance_layout_horizontal(kg_layout_state* pLayoutState, kg_
 	pElement->position = kg_calculate_element_position(pLayoutState, pElement);
 
 	const kg_float2 elementSize = kg_calculate_element_size_with_margin(pElement);
-	pLayoutState->maxSize = kg_float2_max_individual(&pLayoutState->maxSize, &elementSize);
+	pLayoutState->maxSize = kg_float2_max(&pLayoutState->maxSize, &elementSize);
 
 	if (pLayoutState->accumulatedSize.x + elementSize.x > pLayoutState->maxSize.x)
 	{
@@ -1533,7 +1547,7 @@ kg_internal void kg_layout_horizontal(kg_element* pElement)
 
 	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
 	{
-		kg_element* pChild = kg_null_ptr;
+		kg_element* pChild = kg_nullptr;
 		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
 
 		kg_advance_layout_horizontal(&layoutState, pChild);
@@ -1541,7 +1555,7 @@ kg_internal void kg_layout_horizontal(kg_element* pElement)
 
 	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
 	{
-		kg_element* pChild = kg_null_ptr;
+		kg_element* pChild = kg_nullptr;
 		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
 		kg_layout_pass(pChild);
 	}
@@ -1575,7 +1589,7 @@ kg_internal void kg_render_element(kg_context* pContext, kg_element* pElement)
 {	
 	for (kg_u32 childIndex = 0u; childIndex < pElement->childArray.size; ++childIndex)
 	{
-		kg_element* pChild = kg_null_ptr;
+		kg_element* pChild = kg_nullptr;
 		kg_array_get_element(&pChild, &pElement->childArray, childIndex);
 
 		kg_render_element(pContext, pChild);
@@ -1591,7 +1605,7 @@ kg_internal void kg_render_pass(kg_context* pContext)
 
 kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, const char* pDescription, const char* pIdentifier, kg_result result)
 {
-	if (pContext == kg_null_ptr)
+	if (pContext == kg_nullptr)
 	{
 		return;
 	}
@@ -1599,7 +1613,7 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, cons
 	kg_error_stack* pErrorStack = pContext->pErrorStack;
 	kg_error* 		pError		= kg_reserve_memory_from_current_buffer_position(&pErrorStack->errorBuffer, sizeof(kg_error));
 
-	if (pError == kg_null_ptr)
+	if (pError == kg_nullptr)
 	{
 		return;
 	}
@@ -1608,9 +1622,9 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, cons
 	pError->pDescription 	= pDescription;
 	pError->pIdentifier		= pIdentifier;
 	pError->result			= result;
-	pError->pPrevious		= kg_null_ptr;
+	pError->pPrevious		= kg_nullptr;
 
-	if (pErrorStack->pLastError == kg_null_ptr)
+	if (pErrorStack->pLastError == kg_nullptr)
 	{
 		pErrorStack->pLastError = pError;
 	}
@@ -1651,24 +1665,24 @@ kg_internal void kg_add_render_geometry(kg_context* pContext, kg_render_vertices
 
 kg_internal kg_render_vertices* kg_allocate_vertices(kg_context* pContext, kg_u32 vertexCount)
 {
-	return kg_null_ptr;
+	return kg_nullptr;
 }
 
 kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_element* pElement, kg_float2 offset, kg_float2 size, kg_color32 color)
 {
-	if (pContext == kg_null_ptr)
+	if (pContext == kg_nullptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	if (pElement == kg_null_ptr)
+	if (pElement == kg_nullptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
 	kg_render_vertices* pVertices = kg_allocate_vertices(pContext, 6u);
 
-	if (pVertices == kg_null_ptr)
+	if (pVertices == kg_nullptr)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
@@ -1690,12 +1704,12 @@ kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue,
 {
 	kg_input_event* pInputEvent = (kg_input_event*)kg_reserve_memory_from_current_buffer_position(&pInputQueue->buffer, sizeof(kg_input_event));
 	
-	if( pInputEvent == kg_null_ptr)
+	if( pInputEvent == kg_nullptr)
 	{
-		return kg_null_ptr;
+		return kg_nullptr;
 	}
 
-	if (pInputQueue->pFirstEvent == kg_null_ptr)
+	if (pInputQueue->pFirstEvent == kg_nullptr)
 	{
 		pInputQueue->pFirstEvent = pInputEvent;
 	}
@@ -1705,7 +1719,7 @@ kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue,
 	}
 
 	pInputQueue->pLastEvent = pInputEvent;
-	pInputEvent->pNext 		= kg_null_ptr;
+	pInputEvent->pNext 		= kg_nullptr;
 	pInputEvent->type		= inputType;
 
 	return pInputEvent;
@@ -1720,20 +1734,20 @@ kg_internal const kg_utf8* kg_find_text(kg_context* pContext, const char* pTextI
 /*****************************CONTROL LOGIC***************************************/
 kg_window_component* kg_allocate_window_component(kg_context* pContext, kg_element* pElement)
 {
-	if (pElement->componentHandles[K15_GUI_WINDOW_COMPONENT] == kg_null_ptr)
+	if (pElement->componentHandles[K15_GUI_WINDOW_COMPONENT] == kg_nullptr)
 	{
 		const kg_data_handle* pWindowComponentHandle = kg_allocate_from_buffer(&pContext->memoryBuffer, sizeof(kg_window_component));
 
 		if (kg_is_invalid_data_handle(pWindowComponentHandle))
 		{
-			return kg_null_ptr;
+			return kg_nullptr;
 		}
 
 		kg_window_component* pWindowComponent = (kg_window_component*)kg_get_memory_from_buffer(&pContext->memoryBuffer, pWindowComponentHandle);
 		pWindowComponent->flags 			= K15_GUI_WINDOW_FLAG_IS_OPEN;
 		pWindowComponent->originalSize 		= kg_float2_zero();
 		pWindowComponent->originalPosition 	= kg_float2_zero();
-		pWindowComponent->pText 			= kg_null_ptr;
+		pWindowComponent->pText 			= kg_nullptr;
 
 		pElement->componentHandles[K15_GUI_WINDOW_COMPONENT] = pWindowComponentHandle;
 	}
@@ -1752,7 +1766,7 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 
 	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN ) == 0 )
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_MAXIMIZE_BUTTON_CLICKED ) != 0 )
@@ -1803,6 +1817,35 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 	return (pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN);
 }
 
+
+kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 identifier)
+{
+	kg_bool isNew = kg_false;
+	kg_element* pElement = kg_insert_hash_element(pHashMap, identifier, &isNew);
+
+	if (isNew == kg_true)
+	{
+		pElement->size			= kg_float2_zero();
+		pElement->maxSize		= kg_float2_zero();
+		pElement->minSize		= kg_float2_zero();
+		pElement->prefSize		= kg_float2_zero();
+		pElement->position		= kg_float2_zero();
+		pElement->offset		= kg_float2_zero();
+		pElement->border		= kg_float4_zero();
+		pElement->margin		= kg_float4_zero();
+		pElement->padding		= kg_float4_zero();
+		pElement->layout		= K15_GUI_LAYOUT_VERTICAL;
+		pElement->identifier	= identifier;
+
+		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
+		{
+			pElement->componentHandles[componentIndex] = kg_invalid_data_handle();
+		}
+	}
+
+	return pElement;
+}
+
 //TODO-LIST:
 //	1. Proper layouting (currently broken as PopLayout pops layouts from the stack that
 //						later get references via the layoutIndex in the K15_GUIElement
@@ -1827,11 +1870,11 @@ kg_context_parameter kg_create_context_parameter()
 {
 	kg_context_parameter parameter;
 
-	parameter.pDataMemory 	= kg_null_ptr;
-	parameter.dataMemorySize = 0u;
+	parameter.pDataMemory 		= kg_nullptr;
+	parameter.dataMemorySize 	= 0u;
 
-	parameter.vertex_draw_data.pVertexMemory 	= kg_null_ptr;
-	parameter.vertex_draw_data.pIndexMemory		= kg_null_ptr;
+	parameter.vertex_draw_data.pVertexMemory 	= kg_nullptr;
+	parameter.vertex_draw_data.pIndexMemory		= kg_nullptr;
 	parameter.vertex_draw_data.vertexMemorySize = 0u;
 	parameter.vertex_draw_data.indexMemorySize 	= 0u;
 
@@ -1841,18 +1884,20 @@ kg_context_parameter kg_create_context_parameter()
 kg_result kg_create_context(kg_context_handle* pOutHandle)
 {
 	const kg_context_parameter* pParameter = kg_get_default_context_parameter();
-	return kg_create_context_with_custom_parameter( pOutHandle, pParameter );
+	return kg_create_context_with_custom_parameter( pOutHandle, pParameter, kg_nullptr);
 }
 
-kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter)
+kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter, const char** pOutError)
 {
-	if (pOutHandle == kg_null_ptr)
+	if (pOutHandle == kg_nullptr)
 	{
+		kg_set_error(pOutError, "argument 'pOutHandle' is NULL.");
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	if (pParameter == kg_null_ptr)
+	if (pParameter == kg_nullptr)
 	{
+		kg_set_error(pOutError, "argument 'pParameter' is NULL.");
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
@@ -1882,7 +1927,7 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 
 	kg_u8* pDataMemory = (kg_u8*)kg_reserve_memory_from_current_buffer_position(&dataBuffer, totalDataSize);
 
-	if (pDataMemory == kg_null_ptr)
+	if (pDataMemory == kg_nullptr)
 	{
 		pOutHandle->value = 0;
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
@@ -1957,7 +2002,7 @@ kg_result kg_get_viewport(kg_context_handle contextHandle, kg_viewport* pOutView
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	if (pOutViewport == kg_null_ptr)
+	if (pOutViewport == kg_nullptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
@@ -1976,6 +2021,15 @@ kg_result kg_begin_frame(kg_context_handle contextHandle)
 	kg_context* pContext = (kg_context*)contextHandle.value;
 	kg_clear_array(&pContext->elementStack);
 
+	kg_element* pRootElement = kg_insert_ui_element(pContext->pElements, 0u);
+
+	if (pRootElement == kg_nullptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	pContext->pRootElement = pRootElement;
+
 	return K15_GUI_RESULT_SUCCESS;
 }
 
@@ -1991,7 +2045,7 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	kg_context* pContext = (kg_context*)contextHandle.value;
@@ -2002,7 +2056,7 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 	if (!pElement)
 	{
 		kg_push_error(pContext, "kg_begin_window", "Could not allocate element.", pIdentifier, K15_GUI_RESULT_OUT_OF_MEMORY);
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	kg_window_component* pWindowComponent = kg_allocate_window_component(pContext, pElement);
@@ -2010,14 +2064,14 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 	if (!pWindowComponent)
 	{
 		kg_push_error(pContext, "kg_begin_window", "Could not allocate window component.", pIdentifier, K15_GUI_RESULT_OUT_OF_MEMORY);
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	pWindowComponent->pText = pText;
 
 	if (kg_array_push_back(&pContext->elementStack, &pElement) != K15_GUI_RESULT_SUCCESS)
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 	
 	return kg_window_logic(pContext, pElement, pWindowComponent);
@@ -2027,7 +2081,7 @@ kg_bool kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, cons
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 }
 
@@ -2035,7 +2089,7 @@ kg_bool kg_button(kg_context_handle contextHandle, const char* pTextID, const ch
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 }
 
@@ -2113,7 +2167,7 @@ kg_result kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned shor
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
 	
-	if (pInputEvent == kg_null_ptr)
+	if (pInputEvent == kg_nullptr)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
@@ -2136,7 +2190,7 @@ kg_result kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsign
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_BUTTON_PRESSED);
 	
-	if (pInputEvent == kg_null_ptr)
+	if (pInputEvent == kg_nullptr)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
@@ -2160,7 +2214,7 @@ kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_BUTTON_RELEASED);
 	
-	if (pInputEvent == kg_null_ptr)
+	if (pInputEvent == kg_nullptr)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
@@ -2184,7 +2238,7 @@ kg_result kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keybo
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_KEY_PRESSED);
 	
-	if (pInputEvent == kg_null_ptr)
+	if (pInputEvent == kg_nullptr)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
@@ -2205,7 +2259,7 @@ kg_result kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboar
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_KEY_RELEASED);
 	
-	if (pInputEvent == kg_null_ptr)
+	if (pInputEvent == kg_nullptr)
 	{
 		return K15_GUI_RESULT_OUT_OF_MEMORY;
 	}
@@ -2219,22 +2273,22 @@ kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
 	kg_error_stack* pErrorStack = pContext->pErrorStack;
 	kg_error* 		pLastError 	= pErrorStack->pLastError;
 
-	if (pLastError == kg_null_ptr)
+	if (pLastError == kg_nullptr)
 	{
-		return K15_GUI_FALSE;
+		return kg_false;
 	}
 
 	pErrorStack->pLastError = pLastError->pPrevious;
 	*pOutError = pLastError;
 
-	return K15_GUI_TRUE;
+	return kg_true;
 }
 
 const kg_vertex_definition*	kg_get_vertex_definition()
@@ -2267,6 +2321,8 @@ kg_result kg_get_render_data(kg_context_handle contextHandle, void** pOutRenderD
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS; 
 	}
+
+	
 
 	return K15_GUI_RESULT_SUCCESS;
 }
