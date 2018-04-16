@@ -240,7 +240,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
-	void*		pElement;
+	kg_element	element;
 	void* 		pNext;
 	kg_crc32 	key;
 } kg_hash_map_bucket;
@@ -845,12 +845,12 @@ kg_internal const kg_data_handle* kg_invalid_data_handle()
 
 kg_internal const kg_data_handle* kg_create_data_handle(kg_buffer* pBuffer, kg_u32 sizeInBytes)
 {
-	const kg_u32 totalSizeInBytes = sizeof( kg_data_handle ) + sizeInBytes;
-
 	if ( pBuffer == kg_nullptr )
 	{
 		return kg_invalid_data_handle();
 	}
+
+	const kg_u32 totalSizeInBytes = sizeof( kg_data_handle ) + sizeInBytes;
 
 	if ( ( pBuffer->sizeInBytes + totalSizeInBytes ) >= pBuffer->capacityInBytes )
 	{
@@ -1348,12 +1348,17 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 			return kg_nullptr;
 		}
 
+		pElement->offset			= kg_float2_zero();
+		pElement->minSize			= kg_float2_zero();
+		pElement->maxSize			= kg_float2_zero();
+		pElement->prefSize			= kg_float2_zero();
 		pElement->size 				= kg_float2_zero();
 		pElement->position 			= kg_float2_zero();
 		pElement->padding			= kg_float4_zero();
 		pElement->margin			= kg_float4_zero();
 		pElement->border			= kg_float4_zero();
 		pElement->identifier 		= identifierHash;
+
 		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
 		{
 			pElement->componentHandles[componentIndex] = kg_nullptr;
