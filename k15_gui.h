@@ -1080,7 +1080,7 @@ kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identif
 			*pOutIsNew = kg_false;
 		}
 
-		return &pBucket->pElement;
+		return &pBucket->element;
 	}
 
 	if (pOutIsNew != kg_nullptr)
@@ -1099,7 +1099,7 @@ kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identif
 
 	pHashMap->pBuckets[ hashIndex ] = pBucket;
 
-	return &pBucket->pElement;
+	return &pBucket->element;
 }
 
 kg_internal kg_rect kg_create_rect(kg_s32 x, kg_s32 y, kg_u32 w, kg_u32 h)
