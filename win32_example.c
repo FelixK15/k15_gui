@@ -39,7 +39,6 @@ void* pVertexMemory;
 void* pIndexMemory;
 void* pDataMemory;
 
-
 kg_context_handle contextHandle;
 
 uint32 convertColor(kg_color32 p_Color)
@@ -68,7 +67,7 @@ void updateGUI()
 {
 	kg_begin_frame(contextHandle);
 
-	if (kg_begin_window(contextHandle, "TestWindow", "window_0"))
+	if (kg_begin_window(contextHandle, "TestWindow"))
 	{
 		kg_end_window(contextHandle);
 	}
