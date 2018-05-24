@@ -50,15 +50,19 @@ typedef enum
 	K15_GUI_RESULT_TOO_MANY_ICONS 				= 12,
 	K15_GUI_RESULT_NO_ICONS 					= 13,
 	K15_GUI_RESULT_HASH_CONFLICT 				= 14,
-	K15_GUI_RESULT_FRAME_NOT_FINISHED 			= 15,
-	K15_GUI_RESULT_FRAME_NOT_STARTED 			= 16,
-	K15_GUI_RESULT_ELEMENT_NOT_STARTED 			= 17,
-	K15_GUI_RESULT_ELEMENT_NOT_FINISHED 		= 18,
-	K15_GUI_RESULT_DRAW_COMMAND_FINISHED 		= 19,
-	K15_GUI_RESULT_NEED_MORE_MEMORY 			= 20,
-	K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER 	= 21,
+	K15_GUI_RESULT_ELEMENT_NOT_FINISHED 		= 15,
+	K15_GUI_RESULT_ELEMENT_NOT_STARTED 			= 16,
+	K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER 	= 17,
+	K15_GUI_RESULT_NEED_MORE_MEMORY			 	= 18,
 	K15_GUI_RESULT_UNKNOWN_ERROR 
 } kg_result;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_CONTEXT_INSIDE_FRAME_FLAG			= 0x1,
+	K15_GUI_CONTEXT_INSIDE_WINDOW_FLAG			= 0x2,
+	K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG			= 0x4
+} kg_context_flags;
 /*********************************************************************************/
 typedef enum 
 {
@@ -82,7 +86,6 @@ typedef enum
 	K15_GUI_WINDOW_COMPONENT = 0,
 	K15_GUI_COMPONENT_COUNT
 } kg_component_type;
-
 /*********************************************************************************/
 typedef enum 
 {
@@ -165,15 +168,6 @@ typedef enum
 	K15_GUI_FLOAT4_DATA_TYPE
 } kg_vertex_attribute_data_type;
 /*********************************************************************************/
-typedef struct 
-{
-	kg_byte* 	pMemory;
-	kg_u32 		sizeInBytes;
-	kg_u32 		capacityInBytes;
-	void* 		pFirstHandle;
-	void*		pLastHandle;
-} kg_buffer;
-/*********************************************************************************/
 typedef struct
 {
 	float x;
@@ -202,34 +196,11 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	void*	pNextHandle;
-	void* 	pPreviousHandle;
-	size_t 	offset;
-	kg_u32 	sizeInBytes;
-} kg_data_handle;
-/*********************************************************************************/
-typedef struct 
-{
-	kg_u32 					capacityInBytes;
-	kg_u32 					sizeInBytes;
-	const kg_data_handle* 	pDataHandle;
-} kg_linear_allocator;
-/*********************************************************************************/
-typedef struct
-{
-	const kg_data_handle* 	pDataHandle;
-	kg_u32 					elementSizeInBytes;
-	kg_u32 					capacity;
-	kg_u32 					size;
+	void*	pData;
+	kg_u32 	elementSizeInBytes;
+	kg_u32 	capacity;
+	kg_u32 	size;
 } kg_fixed_array;
-/*********************************************************************************/
-typedef struct
-{
-	const kg_data_handle* 	pDataHandle;
-	kg_u32 					elementSizeInBytes;
-	kg_u32 					capacity;
-	kg_u32 					size;
-} kg_dynamic_array;
 /*********************************************************************************/
 typedef struct
 {
@@ -237,19 +208,19 @@ typedef struct
 	const char* pIdentifier;
 #endif
 	
-	const kg_data_handle*	componentHandles[K15_GUI_COMPONENT_COUNT];
-	kg_layout_type			layout;
-	kg_u32 					frameUseCounter;
-	kg_crc32 				identifier;
-	kg_float2				position;
-	kg_float2				size;
-	kg_float2				minSize;
-	kg_float2				maxSize;
-	kg_float2				prefSize;
-	kg_float2				offset;
-	kg_float4				margin;
-	kg_float4				padding;
-	kg_float4				border;
+	void*			componentHandles[K15_GUI_COMPONENT_COUNT];
+	kg_layout_type	layout;
+	kg_u32 			frameUseCounter;
+	kg_crc32 		identifier;
+	kg_float2		position;
+	kg_float2		size;
+	kg_float2		minSize;
+	kg_float2		maxSize;
+	kg_float2		prefSize;
+	kg_float2		offset;
+	kg_float4		margin;
+	kg_float4		padding;
+	kg_float4		border;
 } kg_element;
 /*********************************************************************************/
 typedef struct 
@@ -262,7 +233,6 @@ typedef struct
 typedef struct
 {
 	kg_fixed_array		bucketArray;
-	kg_linear_allocator bucketAllocator;
 	kg_u32 				size;
 } kg_hash_map;
 /*********************************************************************************/
@@ -277,14 +247,8 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	size_t offset;
-	void* pPrevious;
-} kg_error_offset;
-/*********************************************************************************/
-typedef struct
-{
-	kg_linear_allocator allocator;
-	kg_error_offset* 	pLastError;
+	//kg_buffer errorBuffer;
+	kg_error* pLastError;
 } kg_error_stack;
 /*********************************************************************************/
 typedef struct 
@@ -292,6 +256,13 @@ typedef struct
 	kg_sint2 position;
 	kg_uint2 size;
 } kg_rect;
+/*********************************************************************************/
+typedef struct
+{
+	void*	pMemory;
+	size_t	memorySizeInBytes;
+	size_t 	allocPosition;
+} kg_linear_allocator;
 /*********************************************************************************/
 typedef struct
 {
@@ -324,9 +295,8 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_buffer 		buffer;
-	kg_input_event* pFirstEvent;
-	kg_input_event* pLastEvent;
+	kg_linear_allocator*	pAllocator;
+	kg_input_event* 		pFirstEvent;
 } kg_input_queue;
 /*********************************************************************************/
 typedef struct 
@@ -339,19 +309,22 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_hash_map* 			pElements;
+	kg_rect rect;
+	void* 	pNext;
+	kg_u32 	flags;
 } kg_window;
 /*********************************************************************************/
 typedef struct 
 {
-	//kg_array				elementStack;
-	kg_buffer 				memoryBuffer;
+	kg_linear_allocator		allocator;
 	kg_hash_map				elements;
 	kg_input_queue			inputQueue;
 	kg_viewport				viewport;
 	kg_error_stack	 		errorStack;
-	kg_element*				pRootElement;
+	kg_window*				pFirstWindow;
+	size_t					allocatorFrameDataPosition;
 	kg_u32 					frameCounter;
+	kg_u32					flags;
 } kg_context;
 /*********************************************************************************/
 typedef struct 
@@ -388,12 +361,12 @@ typedef struct
 	{
 		void* 	pVertexMemory;
 		void* 	pIndexMemory;
-		size_t 	vertexMemorySize;
-		size_t 	indexMemorySize;		
+		size_t 	vertexMemorySizeInBytes;
+		size_t 	indexMemorySizeInBytes;		
 	} vertex_draw_data;
 
-	void* 	pDataMemory;
-	size_t 	dataMemorySize;
+	void* 	pMemory;
+	size_t 	memorySizeInBytes;
 } kg_context_parameter;
 /*********************************************************************************/
 //how this should work:
@@ -613,12 +586,12 @@ kg_internal const kg_context_parameter* kg_get_default_context_parameter()
 	static const kg_u32 defaultIndexMemorySize 	= 4096u * IndexSize;
 	static const kg_u32 defaultDataMemorySize	= kg_size_mega_bytes(5);
 
-	defaultParameter.vertex_draw_data.pVertexMemory 	= kg_malloc(defaultVertexMemorySize, kg_nullptr);
-	defaultParameter.vertex_draw_data.pIndexMemory 		= kg_malloc(defaultIndexMemorySize, kg_nullptr);
-	defaultParameter.pDataMemory						= kg_malloc(defaultDataMemorySize, kg_nullptr);
-	defaultParameter.vertex_draw_data.vertexMemorySize 	= defaultVertexMemorySize;
-	defaultParameter.vertex_draw_data.indexMemorySize 	= defaultIndexMemorySize;
-	defaultParameter.dataMemorySize 					= defaultDataMemorySize;
+	defaultParameter.vertex_draw_data.pVertexMemory 			= kg_malloc(defaultVertexMemorySize, kg_nullptr);
+	defaultParameter.vertex_draw_data.pIndexMemory 				= kg_malloc(defaultIndexMemorySize, kg_nullptr);
+	defaultParameter.pMemory									= kg_malloc(defaultDataMemorySize, kg_nullptr);
+	defaultParameter.vertex_draw_data.vertexMemorySizeInBytes 	= defaultVertexMemorySize;
+	defaultParameter.vertex_draw_data.indexMemorySizeInBytes 	= defaultIndexMemorySize;
+	defaultParameter.memorySizeInBytes 							= defaultDataMemorySize;
 
 	return &defaultParameter;
 }
@@ -631,19 +604,19 @@ kg_internal kg_bool kg_is_invalid_context_parameter(const kg_context_parameter* 
 	}
 
 	if (pParameter->vertex_draw_data.pVertexMemory == kg_nullptr ||
-		pParameter->vertex_draw_data.vertexMemorySize == 0u)
+		pParameter->vertex_draw_data.vertexMemorySizeInBytes == 0u)
 	{
 		return kg_true;
 	}
 
 	if (pParameter->vertex_draw_data.pIndexMemory == kg_nullptr ||
-		pParameter->vertex_draw_data.indexMemorySize == 0u)
+		pParameter->vertex_draw_data.indexMemorySizeInBytes == 0u)
 	{
 		return kg_true;
 	}
 
-	if (pParameter->pDataMemory == kg_nullptr ||
-		pParameter->dataMemorySize < MinContextDataSize)
+	if (pParameter->pMemory == kg_nullptr ||
+		pParameter->memorySizeInBytes < MinContextDataSize)
 	{
 		return kg_true;
 	}
@@ -683,12 +656,6 @@ kg_internal kg_u32 kg_read_code_point(const kg_utf8* pUtf8Text, kg_code_point* p
 	}
 
 	return 0u;
-}
-
-kg_internal kg_float2 kg_float2_load(float x, float y)
-{
-	kg_float2 f2 = {x, y};
-	return f2;
 }
 
 kg_internal kg_float2 kg_float2_zero()
@@ -788,39 +755,19 @@ kg_internal kg_bool kg_is_invalid_viewport(const kg_viewport* pViewport)
 	return kg_false;
 }
 
-kg_internal kg_bool kg_is_invalid_data_handle(const kg_data_handle* pHandle)
+kg_internal kg_bool kg_is_invalid_linear_allocator(const kg_linear_allocator* pAllocator)
 {
-	if (pHandle == kg_nullptr)
+	if (pAllocator == kg_nullptr)
 	{
 		return kg_true;
 	}
 
-	if (pHandle->offset == 0u && pHandle->sizeInBytes == 0u)
+	if (pAllocator->pMemory == kg_nullptr)
 	{
 		return kg_true;
 	}
 
-	return kg_false;
-}
-
-kg_internal kg_bool kg_is_invalid_buffer(const kg_buffer* pBuffer)
-{
-	if (pBuffer == kg_nullptr)
-	{
-		return kg_true;
-	}
-
-	if (!pBuffer->pMemory)
-	{
-		return kg_true;
-	}
-
-	if (pBuffer->capacityInBytes == 0)
-	{
-		return kg_true;
-	}
-
-	if (pBuffer->sizeInBytes > pBuffer->capacityInBytes)
+	if (pAllocator->memorySizeInBytes == 0u)
 	{
 		return kg_true;
 	}
@@ -828,260 +775,149 @@ kg_internal kg_bool kg_is_invalid_buffer(const kg_buffer* pBuffer)
 	return kg_false;
 }
 
-kg_internal void kg_clear_buffer(kg_buffer* pBuffer)
+kg_internal kg_result kg_create_linear_allocator(kg_linear_allocator* pOutAllocator, void* pMemory, size_t memorySizeInBytes)
 {
-	if(kg_is_invalid_buffer(pBuffer))
-	{
-		return;
-	}
-
-	pBuffer->sizeInBytes = 0u;
-}
-
-kg_internal void* kg_reserve_memory_from_current_buffer_position(kg_buffer* pBuffer, kg_u32 sizeInBytes)
-{
-	if(kg_is_invalid_buffer(pBuffer))
-	{
-		return kg_nullptr;
-	}
-
-	if (pBuffer->sizeInBytes + sizeInBytes >= pBuffer->capacityInBytes)
-	{
-		return kg_nullptr;
-	}
-
-	void* pMemory = (kg_byte*)pBuffer->pMemory + pBuffer->sizeInBytes;
-	pBuffer->sizeInBytes += sizeInBytes;
-
-	return pMemory;
-}
-
-kg_internal const kg_data_handle* kg_invalid_data_handle()
-{
-	static const kg_data_handle invalidDataHandles = {0u, 0u};
-	return &invalidDataHandles;
-}
-
-kg_internal const kg_data_handle* kg_create_data_handle(kg_buffer* pBuffer, size_t sizeInBytes)
-{
-	if ( pBuffer == kg_nullptr )
-	{
-		return kg_invalid_data_handle();
-	}
-
-	const size_t totalSizeInBytes = sizeof( kg_data_handle ) + sizeInBytes;
-
-	if ( ( pBuffer->sizeInBytes + totalSizeInBytes ) >= pBuffer->capacityInBytes )
-	{
-		return kg_invalid_data_handle();
-	}
-
-	kg_data_handle* pDataHandle 	= ( kg_data_handle* )( pBuffer->pMemory + pBuffer->sizeInBytes );
-	pDataHandle->offset 			= pBuffer->sizeInBytes + sizeof( kg_data_handle );
-	pDataHandle->sizeInBytes 		= sizeInBytes;
-	pDataHandle->pNextHandle		= kg_nullptr;
-	pDataHandle->pPreviousHandle 	= pBuffer->pLastHandle;
-
-	pBuffer->sizeInBytes += sizeInBytes + sizeof(kg_data_handle);
-
-	if (pBuffer->pFirstHandle == kg_nullptr)
-	{
-		pBuffer->pFirstHandle = ( void* )pDataHandle;
-		pBuffer->pLastHandle = ( void* )pDataHandle;
-	}
-	else
-	{
-		kg_data_handle* pLastHandle = (kg_data_handle*)pBuffer->pLastHandle;
-		pLastHandle->pNextHandle 	= pDataHandle;
-		pBuffer->pLastHandle 		= pDataHandle;
-	}
-
-	return pDataHandle;
-}
-
-kg_internal kg_buffer kg_create_buffer(void* pMemory, kg_u32 capacityInBytes)
-{
-	kg_buffer buffer;
-	buffer.pMemory 			= pMemory;
-	buffer.sizeInBytes 		= 0u;
-	buffer.capacityInBytes 	= capacityInBytes;
-	buffer.pFirstHandle 	= kg_nullptr;
-	buffer.pLastHandle 		= kg_nullptr;
-	return buffer;
-}
-
-kg_internal const kg_data_handle* kg_allocate_from_buffer(kg_buffer* pBuffer, size_t sizeInBytes)
-{
-	return kg_create_data_handle(pBuffer, sizeInBytes);
-}
-
-kg_internal void kg_defragment_buffer(kg_buffer* pBuffer, const kg_data_handle* pHandle)
-{
-	kg_data_handle* pNextHandle = (kg_data_handle*)pHandle->pNextHandle;
-
-	while( pNextHandle != kg_nullptr)
-	{
-		pNextHandle->offset = pHandle->offset;
-		pNextHandle 		= (kg_data_handle*)pNextHandle->pNextHandle;
-	}
-}
-
-kg_internal void kg_free_from_buffer(kg_buffer* pBuffer, const kg_data_handle* pHandle)
-{
-	if ( kg_is_invalid_data_handle( pHandle ) )
-	{
-		return;
-	}
-
-	kg_defragment_buffer(pBuffer, pHandle); 
-
-	if (pBuffer->pFirstHandle == pHandle)
-	{
-		pBuffer->pFirstHandle = pHandle->pNextHandle;
-	}
-
-	if (pHandle->pPreviousHandle != kg_nullptr)
-	{
-		kg_data_handle* pPreviousHandle = (kg_data_handle*)pHandle->pPreviousHandle;
-		pPreviousHandle->pNextHandle = pHandle->pNextHandle;
-	}
-
-	pBuffer->sizeInBytes -= pHandle->sizeInBytes;
-}
-
-kg_internal kg_byte* kg_get_memory_from_buffer(kg_buffer* pBuffer, const kg_data_handle* pHandle)
-{
-	return pBuffer->pMemory + pHandle->offset;
-}
-
-kg_internal kg_result kg_create_fixed_array(kg_fixed_array* pOutArray, kg_buffer* pBuffer, kg_u32 capacity, size_t elementSizeInBytes)
-{
-	const size_t totalArraySizeInBytes = capacity * elementSizeInBytes;
-
-	const kg_data_handle* pDataHandle = kg_allocate_from_buffer(pBuffer, totalArraySizeInBytes);
-
-	if (kg_is_invalid_data_handle(pDataHandle))
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	pOutArray->size 				= 0u;
-	pOutArray->capacity 			= capacity;
-	pOutArray->elementSizeInBytes 	= elementSizeInBytes;
-	pOutArray->pDataHandle			= pDataHandle;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal kg_result kg_create_input_queue(kg_input_queue** pOutInputQueue, void* pMemory, kg_u32 memorySizeInBytes)
-{
-	if (memorySizeInBytes < sizeof(kg_input_queue))
-	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	}
-
-	kg_byte* 	pInputBufferMemory 				= (kg_byte*)pMemory + sizeof(kg_input_queue);
-	kg_u32 		inputBufferMemorySizeInBytes 	= memorySizeInBytes -= sizeof(kg_input_queue);
-
-	kg_input_queue* pInputQueue = (kg_input_queue*)pMemory;
-
-	pInputQueue->buffer 		= kg_create_buffer(pInputBufferMemory, inputBufferMemorySizeInBytes);
-	pInputQueue->pFirstEvent 	= kg_nullptr;
-	pInputQueue->pLastEvent 	= kg_nullptr;
-
-	*pOutInputQueue = pInputQueue;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal kg_result kg_create_error_stack(kg_error_stack* pOutErrorStack, kg_buffer* pBuffer)
-{
-	if (pOutErrorStack == kg_nullptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (kg_is_invalid_buffer(pBuffer))
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	const size_t initialErrorStackSizeInBytes = kg_size_kilo_bytes(128u);
-	const kg_data_handle* pDataHandle =	kg_allocate_from_buffer(pBuffer, initialErrorStackSizeInBytes);
-
-	if (kg_is_invalid_data_handle(pDataHandle))
-	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	} 
-
-	pOutErrorStack->pDataHandle = pDataHandle;
-	pOutErrorStack->errorBuffer	= errorStackBuffer;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal kg_result kg_create_linear_allocator(kg_linear_allocator* pOutAllocator, kg_buffer* pBuffer, size_t sizeInBytes)
-{
-	if (kg_is_invalid_buffer(pBuffer))
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (initialItemCount == 0u)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (elementSizeInBytes == 0u)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
 	if (pOutAllocator == kg_nullptr)
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	const kg_data_handle* pDataHandle = kg_allocate_from_buffer(pBuffer, sizeInBytes);
-
-	if (kg_is_invalid_data_handle(pDataHandle))
+	if (pMemory == kg_nullptr)
 	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	pOutAllocator->capacityInBytes 		= sizeInBytes;
-	pOutAllocator->sizeInBytes			= 0u;
-	pOutAllocator->pDataHandle			= pDataHandle;
+	if (memorySizeInBytes == 0u)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	kg_linear_allocator linearAllocator;
+	linearAllocator.allocPosition 		= 0u;
+	linearAllocator.memorySizeInBytes 	= memorySizeInBytes;
+	linearAllocator.pMemory				= pMemory;
+
+	*pOutAllocator = linearAllocator;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_buffer* pBuffer, size_t elementSizeInBytes)
+kg_internal kg_result kg_reset_linear_allocator(kg_linear_allocator* pAllocator, size_t position)
 {
-	const kg_u32 defaultBucketCount = 128u;
-	
-	kg_linear_allocator bucketAllocator;
-	kg_result result = kg_create_linear_allocator(&bucketAllocator, pBuffer, defaultBucketCount * sizeof(kg_hash_map_bucket));
+	if (kg_is_invalid_linear_allocator(pAllocator))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	position = kg_clamp(position, 0u, pAllocator->allocPosition);
+	pAllocator->allocPosition = position;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_internal size_t kg_get_linear_allocator_position(const kg_linear_allocator* pAllocator)
+{
+	return pAllocator->allocPosition;
+}
+
+kg_internal kg_result kg_allocate_from_linear_allocator(void** pOutPointer, kg_linear_allocator* pAllocator, size_t sizeInBytes)
+{
+	if (pAllocator == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (sizeInBytes == 0u)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pAllocator->allocPosition + sizeInBytes > pAllocator->memorySizeInBytes)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	*pOutPointer = (kg_byte*)pAllocator->pMemory + pAllocator->allocPosition;
+	pAllocator->allocPosition += sizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_internal kg_result kg_create_fixed_array(kg_fixed_array* pOutArray, kg_linear_allocator* pAllocator, kg_u32 capacity, size_t elementSizeInBytes)
+{
+	if (kg_is_invalid_linear_allocator(pAllocator))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	const size_t totalArraySizeInBytes = capacity * elementSizeInBytes;
+
+	void* pArrayData = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pArrayData, pAllocator, totalArraySizeInBytes);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	const kg_u32 bucketArrayLength = 256u;
+	pOutArray->size 				= 0u;
+	pOutArray->capacity 			= capacity;
+	pOutArray->elementSizeInBytes 	= elementSizeInBytes;
+	pOutArray->pData				= pArrayData;
 
-	kg_fixed_array bucketArray;
-	result = kg_create_fixed_array(&bucketArray, pBuffer, bucketArrayLength, kg_ptr_size_in_bytes);
+	return K15_GUI_RESULT_SUCCESS;
+}
 
-	if (result != K15_GUI_RESULT_SUCCESS)	
+kg_internal kg_result kg_create_input_queue(kg_input_queue* pOutInputQueue, kg_linear_allocator* pAllocator)
+{
+	if (kg_is_invalid_linear_allocator(pAllocator))
 	{
-		//FK: Destroy bucket allocator?
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pOutInputQueue == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	const size_t inputBufferCount		= 32u;
+	const size_t inputBufferSizeInBytes = inputBufferCount * sizeof(kg_input_event);
+
+	void* pInputMemory = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pInputMemory, pAllocator, inputBufferSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
 		return result;
 	}
 
-	pOutHashMap->size 				= 0u;
-	pOutHashMap->bucketAllocator	= bucketAllocator;
-	pOutHashMap->bucketArray 		= bucketArray;
+	kg_input_queue inputQueue;
+	inputQueue.pFirstEvent 	= kg_nullptr;
+
+	*pOutInputQueue = inputQueue;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
+{
+	if (kg_is_invalid_linear_allocator(pAllocator))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	const kg_u32 bucketArrayLength = 256u;
+
+	kg_fixed_array bucketArray;
+	kg_result result = kg_create_fixed_array(&bucketArray, pAllocator, bucketArrayLength, kg_ptr_size_in_bytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)	
+	{
+		return result;
+	}
+
+	pOutHashMap->size 			= 0u;
+	pOutHashMap->bucketArray 	= bucketArray;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -1180,6 +1016,35 @@ kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identif
 	return kg_nullptr;
 }
 
+
+kg_internal kg_result kg_create_error_stack(kg_error_stack* pOutErrorStack, kg_linear_allocator* pAllocator)
+{
+	if (pOutErrorStack == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (kg_is_invalid_linear_allocator(pAllocator))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	const size_t errorStackCount 		= 32u;
+	const size_t errorStackSizeInBytes 	= errorStackCount * sizeof(kg_error);
+
+	void* pBufferMemory = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pBufferMemory, pAllocator, errorStackSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pOutErrorStack->pLastError 	= kg_nullptr;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+
 kg_internal kg_rect kg_create_rect(kg_s32 x, kg_s32 y, kg_u32 w, kg_u32 h)
 {
 	kg_rect rect;
@@ -1217,7 +1082,7 @@ kg_internal kg_crc32 kg_generate_crc32(const char* pIdentifier)
 
 kg_internal kg_bool kg_element_has_component(kg_element* pElement, kg_component_type componentType)
 {
-	return !kg_is_invalid_data_handle(pElement->componentHandles[componentType]);
+	return pElement->componentHandles[componentType] != kg_nullptr;
 }
 
 kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pIdentifier)
@@ -1505,7 +1370,6 @@ kg_internal void kg_render_element(kg_context* pContext, kg_element* pElement)
 
 kg_internal void kg_render_pass(kg_context* pContext)
 {
-	kg_render_element(pContext, pContext->pRootElement);
 }
 
 kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, const char* pDescription, const char* pIdentifier, kg_result result)
@@ -1605,16 +1469,19 @@ kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_element* p
 
 	return K15_GUI_RESULT_SUCCESS;
 }
-
 /******************************INPUT LOGIC****************************************/
 kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue, kg_input_type inputType)
 {
-	kg_input_event* pInputEvent = (kg_input_event*)kg_reserve_memory_from_current_buffer_position(&pInputQueue->buffer, sizeof(kg_input_event));
-	
-	if( pInputEvent == kg_nullptr)
+	kg_input_event* pInputEvent = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pInputEvent, pInputQueue->pAllocator, sizeof(kg_input_event));
+
+	if(result != K15_GUI_RESULT_SUCCESS)
 	{
 		return kg_nullptr;
 	}
+
+	pInputEvent->pNext 	= kg_nullptr;
+	pInputEvent->type	= inputType;
 
 	if (pInputQueue->pFirstEvent == kg_nullptr)
 	{
@@ -1622,47 +1489,18 @@ kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue,
 	}
 	else
 	{
-		pInputQueue->pLastEvent->pNext = pInputEvent;
+		pInputEvent->pNext = pInputQueue->pFirstEvent;
+		pInputQueue->pFirstEvent = pInputEvent;
 	}
-
-	pInputQueue->pLastEvent = pInputEvent;
-	pInputEvent->pNext 		= kg_nullptr;
-	pInputEvent->type		= inputType;
 
 	return pInputEvent;
 }
-
 /*****************************RESOURCE LOGIC**************************************/
 kg_internal const kg_utf8* kg_find_text(kg_context* pContext, const char* pTextID)
 {
 	return pTextID;
 }
-
 /*****************************CONTROL LOGIC***************************************/
-kg_window_component* kg_allocate_window_component(kg_context* pContext, kg_element* pElement)
-{
-	if (pElement->componentHandles[K15_GUI_WINDOW_COMPONENT] == kg_nullptr)
-	{
-		const kg_data_handle* pWindowComponentHandle = kg_allocate_from_buffer(&pContext->memoryBuffer, sizeof(kg_window_component));
-
-		if (kg_is_invalid_data_handle(pWindowComponentHandle))
-		{
-			return kg_nullptr;
-		}
-
-		kg_window_component* pWindowComponent = (kg_window_component*)kg_get_memory_from_buffer(&pContext->memoryBuffer, pWindowComponentHandle);
-		pWindowComponent->flags 			= K15_GUI_WINDOW_FLAG_IS_OPEN;
-		pWindowComponent->originalSize 		= kg_float2_zero();
-		pWindowComponent->originalPosition 	= kg_float2_zero();
-		pWindowComponent->pText 			= kg_nullptr;
-
-		pElement->componentHandles[K15_GUI_WINDOW_COMPONENT] = pWindowComponentHandle;
-	}
-
-	kg_window_component* pWindowComponent = (kg_window_component*)kg_get_memory_from_buffer( &pContext->memoryBuffer, pElement->componentHandles[K15_GUI_WINDOW_COMPONENT] );
-	return pWindowComponent;
-}
-
 kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, kg_window_component* pComponent)
 {
 	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED ) != 0 )
@@ -1715,15 +1553,14 @@ kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, 
 		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED;
 	}
 
-	const kg_float2 titleArea 	= kg_float2_load(pElement->size.x, TitleHeightInPixels);
-	const kg_float2 windowArea 	= kg_float2_load(pElement->size.x, kg_max(pElement->size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
+	const kg_float2 titleArea 	= kg_create_float2(pElement->size.x, TitleHeightInPixels);
+	const kg_float2 windowArea 	= kg_create_float2(pElement->size.x, kg_max(pElement->size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
 	
-	kg_render_element_rect(pContext, pElement, kg_float2_load(0.f, TitleHeightInPixels), windowArea, kg_color_white);
+	kg_render_element_rect(pContext, pElement, kg_create_float2(0.f, TitleHeightInPixels), windowArea, kg_color_white);
 	kg_render_element_rect(pContext, pElement, kg_float2_zero(), titleArea, kg_color_light_grey);
 
 	return (pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN);
 }
-
 
 kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 identifier)
 {
@@ -1746,11 +1583,24 @@ kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 ide
 
 		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
 		{
-			pElement->componentHandles[componentIndex] = kg_invalid_data_handle();
+			pElement->componentHandles[componentIndex] = kg_nullptr;
 		}
 	}
 
 	return pElement;
+}
+
+kg_internal void kg_push_window(kg_context* pContext, kg_window* pWindow)
+{
+	pWindow->pNext = pContext->pFirstWindow;
+	pContext->pFirstWindow = pWindow;
+}
+
+kg_internal void kg_reset_context_state(kg_context* pContext)
+{
+	pContext->flags = 0u;
+	pContext->pFirstWindow = kg_nullptr;
+	kg_reset_linear_allocator(&pContext->allocator, pContext->allocatorFrameDataPosition);
 }
 
 //TODO-LIST:
@@ -1770,20 +1620,20 @@ kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 ide
 //	10. replace stb_truetype? Probably just going to strip the stuff that I need from 
 //		stb_truetype
 //	11. replace stb_image (I guess that is definitely doable. 
-//							Only need JPEG, PNG and maybe TIFF support).
-//  12. provide more style options other than just different colors.
+//							Only need JPE G, PNG and maybe TIFF support).
+//  12. provide more style options other  than just different colors.
 //		Imagesets and icons come to mind.
 kg_context_parameter kg_create_context_parameter()
-{
+{ 
 	kg_context_parameter parameter;
 
-	parameter.pDataMemory 		= kg_nullptr;
-	parameter.dataMemorySize 	= 0u;
+	parameter.pMemory 				= kg_nullptr;
+	parameter.memorySizeInBytes 	= 0u;
 
-	parameter.vertex_draw_data.pVertexMemory 	= kg_nullptr;
-	parameter.vertex_draw_data.pIndexMemory		= kg_nullptr;
-	parameter.vertex_draw_data.vertexMemorySize = 0u;
-	parameter.vertex_draw_data.indexMemorySize 	= 0u;
+	parameter.vertex_draw_data.pVertexMemory 			= kg_nullptr;
+	parameter.vertex_draw_data.pIndexMemory				= kg_nullptr;
+	parameter.vertex_draw_data.vertexMemorySizeInBytes 	= 0u;
+	parameter.vertex_draw_data.indexMemorySizeInBytes 	= 0u;
 
 	return parameter;	
 }
@@ -1812,7 +1662,7 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 
 	if (kg_is_invalid_context_parameter(pParameter))
 	{
-		if (pParameter->dataMemorySize < MinContextDataSize)
+		if (pParameter->memorySizeInBytes < MinContextDataSize)
 		{
 			return K15_GUI_RESULT_NEED_MORE_MEMORY;
 		}
@@ -1820,48 +1670,37 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER;
 	}
 
-	kg_buffer dataBuffer = kg_create_buffer(pParameter->pDataMemory, pParameter->dataMemorySize);
+	kg_result result = kg_create_linear_allocator(&pContext->allocator, pParameter->pMemory, pParameter->memorySizeInBytes);
 
-	if (kg_is_invalid_buffer(&dataBuffer))
+	if (result != K15_GUI_RESULT_SUCCESS)
 	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	} 
+		return K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER;
+	}
 
-	pContext->memoryBuffer = dataBuffer;
 	pContext->frameCounter = 0u;
 
-	kg_result result = kg_create_hash_map(&pContext->elements, &dataBuffer, sizeof(kg_element));
+	result = kg_create_hash_map(&pContext->elements, &pContext->allocator, sizeof(kg_element));
 	
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	result = kg_create_error_stack(&pContext->errorStack, &dataBuffer);
+	result = kg_create_error_stack(&pContext->errorStack, &pContext->allocator);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-#if 0
-
-	result = kg_create_input_queue(&pContext->pInputQueue, pInputBufferMemory, inputBufferDataSize);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		return result;
-	}
-	
-	result = kg_create_array(&pContext->elementStack, &pContext->memoryBuffer, 16u, kg_ptr_size_in_bytes);
+	result = kg_create_input_queue(&pContext->inputQueue, &pContext->allocator);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	#endif
-
+	pContext->allocatorFrameDataPosition = kg_get_linear_allocator_position(&pContext->allocator);
 	pOutHandle->value = (size_t)pContext;
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -1901,24 +1740,20 @@ kg_result kg_get_viewport(kg_context_handle contextHandle, kg_viewport* pOutView
 
 kg_result kg_begin_frame(kg_context_handle contextHandle)
 {
-	#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
 	kg_context* pContext = (kg_context*)contextHandle.value;
-	kg_clear_array(&pContext->elementStack);
 
-	kg_element* pRootElement = kg_insert_ui_element(pContext->pElements, 0u);
-
-	if (pRootElement == kg_nullptr)
+	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) > 0)
 	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
+		return K15_GUI_RESULT_ELEMENT_NOT_FINISHED;
 	}
 
-	pContext->pRootElement = pRootElement;
-#endif
+	kg_reset_context_state(pContext);
+
 	return K15_GUI_RESULT_SUCCESS;
 }
 
@@ -1928,44 +1763,44 @@ void kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier)
 	{
 		return;
 	}
+
+	kg_context* pContext = (kg_context*)contextHandle.value;
+
+	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG) > 0)
+	{
+		//kg_push_error()
+	}
+
+	pContext->flags |= K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
 }
 
 kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 {
-	#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return kg_false;
 	}
 
 	kg_context* pContext = (kg_context*)contextHandle.value;
-
-	const kg_utf8* pText = kg_find_text(pContext, pTextID);
-	kg_element* pElement = kg_allocate_element(pContext, pIdentifier);
-
-	if (!pElement)
-	{
-		kg_push_error(pContext, "kg_begin_window", "Could not allocate element.", pIdentifier, K15_GUI_RESULT_OUT_OF_MEMORY);
-		return kg_false;
-	}
-
-	kg_window_component* pWindowComponent = kg_allocate_window_component(pContext, pElement);
-
-	if (!pWindowComponent)
-	{
-		kg_push_error(pContext, "kg_begin_window", "Could not allocate window component.", pIdentifier, K15_GUI_RESULT_OUT_OF_MEMORY);
-		return kg_false;
-	}
-
-	pWindowComponent->pText = pText;
-
-	if (kg_array_push_back(&pContext->elementStack, &pElement) != K15_GUI_RESULT_SUCCESS)
-	{
-		return kg_false;
-	}
 	
-	return kg_window_logic(pContext, pElement, pWindowComponent);
-	#endif
+	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_WINDOW_FLAG) > 0)
+	{
+		return kg_false;
+	}
+
+	kg_window* pWindow = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pWindow, &pContext->allocator, sizeof(kg_window));
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		//kg_push_error();
+		return kg_false;
+	}
+
+	pWindow->rect.position 	= kg_create_sint2(0, 0);
+	pWindow->rect.size		= kg_create_uint2(150, 150);
+
+	kg_push_window(pContext, pWindow);
 
 	return kg_false;
 }
@@ -2039,9 +1874,15 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 	}
 
 	kg_context* pContext = (kg_context*)contextHandle.value;
+	
+	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
+	{
+		return K15_GUI_RESULT_ELEMENT_NOT_STARTED;
+	}
+
 	kg_process_input_events(pContext);
-	kg_input_pass(pContext->pRootElement);
-	kg_layout_pass(pContext->pRootElement);
+	//kg_input_pass(pContext->pRootElement);
+	//kg_layout_pass(pContext->pRootElement);
 	kg_render_pass(pContext);
 	++pContext->frameCounter;
 
@@ -2176,14 +2017,13 @@ kg_result kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboar
 
 kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 {
-#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return kg_false;
 	}
 
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_error_stack* pErrorStack = pContext->pErrorStack;
+	kg_error_stack* pErrorStack = &pContext->errorStack;
 	kg_error* 		pLastError 	= pErrorStack->pLastError;
 
 	if (pLastError == kg_nullptr)
@@ -2193,7 +2033,7 @@ kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 
 	pErrorStack->pLastError = pLastError->pPrevious;
 	*pOutError = pLastError;
-#endif
+
 	return kg_true;
 }
 

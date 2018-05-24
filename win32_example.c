@@ -33,7 +33,7 @@ uint32 screenHeight = 768;
 
 const size_t vertexMemorySize 	= kg_size_kilo_bytes(512);
 const size_t indexMemorySize	= kg_size_kilo_bytes(512);
-const size_t dataMemorySize 	= kg_size_mega_bytes(1);
+const size_t dataMemorySize 	= kg_size_mega_bytes(5);
 
 void* pVertexMemory; 	
 void* pIndexMemory;
@@ -410,13 +410,13 @@ void setup(HWND p_HWND)
 	pDataMemory		= malloc(dataMemorySize);
 
 	kg_context_parameter parameter = kg_create_context_parameter();
-	parameter.vertex_draw_data.pVertexMemory 	= pVertexMemory;
-	parameter.vertex_draw_data.pIndexMemory		= pIndexMemory;
-	parameter.vertex_draw_data.vertexMemorySize = vertexMemorySize;
-	parameter.vertex_draw_data.indexMemorySize	= indexMemorySize;
+	parameter.vertex_draw_data.pVertexMemory 			= pVertexMemory;
+	parameter.vertex_draw_data.pIndexMemory				= pIndexMemory;
+	parameter.vertex_draw_data.vertexMemorySizeInBytes 	= vertexMemorySize;
+	parameter.vertex_draw_data.indexMemorySizeInBytes	= indexMemorySize;
 
-	parameter.pDataMemory		= pDataMemory;
-	parameter.dataMemorySize	= dataMemorySize;
+	parameter.pMemory			= pDataMemory;
+	parameter.memorySizeInBytes	= dataMemorySize;
 
 	const char* pError = NULL;
 	kg_create_context_with_custom_parameter(&contextHandle, &parameter, &pError);
@@ -436,8 +436,6 @@ void drawGUI()
 
 	kg_get_render_data(contextHandle, &pRenderData, &renderDataSizeInBytes);
 	const kg_vertex_definition* pVertexDefinition = kg_get_vertex_definition();
-
-
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
