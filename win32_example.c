@@ -409,17 +409,23 @@ void setup(HWND p_HWND)
 	pIndexMemory 	= malloc(indexMemorySize);
 	pDataMemory		= malloc(dataMemorySize);
 
-	kg_context_parameter parameter = kg_create_context_parameter();
-	parameter.vertex_draw_data.pVertexMemory 			= pVertexMemory;
-	parameter.vertex_draw_data.pIndexMemory				= pIndexMemory;
-	parameter.vertex_draw_data.vertexMemorySizeInBytes 	= vertexMemorySize;
-	parameter.vertex_draw_data.indexMemorySizeInBytes	= indexMemorySize;
+	memset(pDataMemory, 0, dataMemorySize);
 
-	parameter.pMemory			= pDataMemory;
-	parameter.memorySizeInBytes	= dataMemorySize;
+	char fcc[4] = {'F', 'U', 'C', 'K'};
+	char* bla = (char*)pDataMemory;
+	memcpy(bla + dataMemorySize - 4, fcc, 4);
+
+	kg_context_parameter parameter = kg_create_context_parameter();
+	parameter.scratchBuffer = kg_create_buffer(pDataMemory, dataMemorySize);
+
+	kg_render_context_parameter renderParameter = kg_create_render_context_parameter();
+	renderParameter.vertexBufferCount 	= 1u;
+	renderParameter.indexBufferCount	= 1u;
+	renderParameter.vertexBuffer[0] 	= kg_create_buffer(pVertexMemory, vertexMemorySize);
+	renderParameter.indexBuffer[0] 		= kg_create_buffer(pIndexMemory, indexMemorySize);
 
 	const char* pError = NULL;
-	kg_create_context_with_custom_parameter(&contextHandle, &parameter, &pError);
+	kg_create_context_with_custom_parameter(&contextHandle, &parameter, &renderParameter, &pError);
 }
 
 void swapBuffers(HWND p_HWND)
