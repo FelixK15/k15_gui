@@ -77,7 +77,7 @@ void updateGUI()
 	kg_error* pError = 0;
 	while( kg_pop_error(contextHandle, &pError) )
 	{
-		printf("Error occured in function '%s' with element '%s' : '%s'\n", pError->pFunction, pError->pIdentifier, pError->pDescription );
+		printf("Error occured: '%s'\n", pError->pDescription );
 	}
 }
 

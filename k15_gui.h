@@ -242,33 +242,31 @@ typedef struct
 	kg_u32 				size;
 } kg_hash_map;
 /*********************************************************************************/
-typedef struct 
-{
-	const char* pFunction;
-	const char* pDescription;
-	const char* pIdentifier;
-	void* 		pPrevious;
-	kg_result 	result;
-} kg_error;
-/*********************************************************************************/
-typedef struct
-{
-	//kg_buffer errorBuffer;
-	kg_error* pLastError;
-} kg_error_stack;
-/*********************************************************************************/
-typedef struct 
-{
-	kg_sint2 position;
-	kg_uint2 size;
-} kg_rect;
-/*********************************************************************************/
 typedef struct
 {
 	void*	pMemory;
 	size_t	memorySizeInBytes;
 	size_t 	allocPosition;
 } kg_linear_allocator;
+/*********************************************************************************/
+typedef struct 
+{
+	void* 		pNext;
+	const char* pDescription;
+	kg_result 	result;
+} kg_error;
+/*********************************************************************************/
+typedef struct
+{
+	kg_linear_allocator errorAllocator;
+	kg_error* 			pFirstError;
+} kg_error_stack;
+/*********************************************************************************/
+typedef struct 
+{
+	kg_float2 position;
+	kg_float2 size;
+} kg_rect;
 /*********************************************************************************/
 typedef struct
 {
@@ -322,8 +320,11 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_linear_allocator vertexAllocator[K15_GUI_MAX_RENDER_BUFFER_COUNT];
-	kg_linear_allocator indexAllocator[K15_GUI_MAX_RENDER_BUFFER_COUNT];
+	kg_linear_allocator* pVertexAllocator;
+	kg_linear_allocator* pIndexAllocator;
+
+	kg_linear_allocator vertexAllocators[K15_GUI_MAX_RENDER_BUFFER_COUNT];
+	kg_linear_allocator indexAllocators[K15_GUI_MAX_RENDER_BUFFER_COUNT];
 	kg_u32 vertexAllocatorCount;
 	kg_u32 indexAllocatorCount;
 } kg_render_context;
@@ -545,14 +546,6 @@ const kg_color32 kg_color_dark_red		= 0xDD0000FF;
 const kg_color32 kg_color_dark_green	= 0x00DD00FF;
 const kg_color32 kg_color_dark_blue		= 0x0000DDFF;
 const kg_color32 kg_color_dark_grey		= 0x333333FF;
-
-enum //constants
-{
-	//Window Component
-	TitleHeightInPixels 	= 30u,
-	MinAreaHeightInPixels 	= 10u,
-	MinAreaWidthInPixels	= 10u
-};
 
 
 void kg_layout_pass(kg_element*);
@@ -822,6 +815,12 @@ kg_internal kg_sint2 kg_create_sint2(kg_s32 x, kg_s32 y)
 	return s2;
 }
 
+kg_internal kg_float2 kg_uint2_to_float2_cast(kg_uint2 u2)
+{
+	kg_float2 f2 = { (float)u2.x, (float)u2.y };
+	return f2;
+}
+
 kg_internal kg_bool kg_is_invalid_context_handle(kg_context_handle contextHandle)
 {
 	return (contextHandle.value == 0u);
@@ -1001,7 +1000,7 @@ kg_internal kg_result kg_create_render_context(kg_render_context* pOutRenderCont
 	 
 	for (kg_u32 indexBufferIndex = 0u; indexBufferIndex < pParameter->indexBufferCount; ++indexBufferIndex)
 	{
-		result = kg_create_linear_allocator(&context.indexAllocator[indexBufferIndex], pParameter->indexBuffer[indexBufferIndex].pMemory, pParameter->indexBuffer[indexBufferIndex].memorySizeInBytes );
+		result = kg_create_linear_allocator(&context.indexAllocators[indexBufferIndex], pParameter->indexBuffer[indexBufferIndex].pMemory, pParameter->indexBuffer[indexBufferIndex].memorySizeInBytes );
 
 		if (result != K15_GUI_RESULT_SUCCESS)
 		{
@@ -1011,7 +1010,7 @@ kg_internal kg_result kg_create_render_context(kg_render_context* pOutRenderCont
 
 	for (kg_u32 vertexBufferIndex = 0u; vertexBufferIndex < pParameter->vertexBufferCount; ++vertexBufferIndex)
 	{
-		result = kg_create_linear_allocator(&context.vertexAllocator[vertexBufferIndex], pParameter->vertexBuffer[vertexBufferIndex].pMemory, pParameter->vertexBuffer[vertexBufferIndex].memorySizeInBytes );
+		result = kg_create_linear_allocator(&context.vertexAllocators[vertexBufferIndex], pParameter->vertexBuffer[vertexBufferIndex].pMemory, pParameter->vertexBuffer[vertexBufferIndex].memorySizeInBytes );
 
 		if (result != K15_GUI_RESULT_SUCCESS)
 		{
@@ -1024,9 +1023,20 @@ kg_internal kg_result kg_create_render_context(kg_render_context* pOutRenderCont
 
 	*pOutRenderContext = context;
 
+	pOutRenderContext->pIndexAllocator 	= &pOutRenderContext->indexAllocators[0u];
+	pOutRenderContext->pVertexAllocator = &pOutRenderContext->vertexAllocators[0u];
+
 	return K15_GUI_RESULT_SUCCESS;
 }
 
+kg_internal void kg_swap_render_buffers(kg_render_context* pRenderContext)
+{
+	const kg_u32 indexAllocatorIndex 	= (1u + (pRenderContext->pIndexAllocator  - pRenderContext->indexAllocators)  / kg_ptr_size_in_bytes) % pRenderContext->indexAllocatorCount;
+	const kg_u32 vertexAllocatorIndex 	= (1u + (pRenderContext->pVertexAllocator - pRenderContext->pVertexAllocator) / kg_ptr_size_in_bytes) % pRenderContext->vertexAllocatorCount;
+
+	pRenderContext->pIndexAllocator = &pRenderContext->indexAllocators[indexAllocatorIndex];
+	pRenderContext->pVertexAllocator = &pRenderContext->vertexAllocators[vertexAllocatorIndex];
+}
 kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
 {
 	if (kg_is_invalid_linear_allocator(pAllocator))
@@ -1160,24 +1170,33 @@ kg_internal kg_result kg_create_error_stack(kg_error_stack* pOutErrorStack, kg_l
 	const size_t errorStackCount 		= 32u;
 	const size_t errorStackSizeInBytes 	= errorStackCount * sizeof(kg_error);
 
-	void* pBufferMemory = kg_nullptr;
-	kg_result result = kg_allocate_from_linear_allocator(&pBufferMemory, pAllocator, errorStackSizeInBytes);
+	void* pMemory = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pMemory, pAllocator, errorStackSizeInBytes);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	pOutErrorStack->pLastError 	= kg_nullptr;
+	kg_linear_allocator errorAllocator;
+	result = kg_create_linear_allocator(&errorAllocator, pMemory, errorStackSizeInBytes);
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pOutErrorStack->errorAllocator 	= errorAllocator;
+	pOutErrorStack->pFirstError 	= kg_nullptr;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_internal kg_rect kg_create_rect(kg_s32 x, kg_s32 y, kg_u32 w, kg_u32 h)
+kg_internal kg_rect kg_create_rect(float x, float y, float w, float h)
 {
 	kg_rect rect;
-	rect.position 	= kg_create_sint2(x, y);
-	rect.size 		= kg_create_uint2(w, h);
+	rect.position 	= kg_create_float2(x, y);
+	rect.size 		= kg_create_float2(w, h);
 
 	return rect;
 }
@@ -1500,38 +1519,36 @@ kg_internal void kg_render_pass(kg_context* pContext)
 {
 }
 
-kg_internal void kg_push_error(kg_context* pContext, const char* pFunction, const char* pDescription, const char* pIdentifier, kg_result result)
+kg_internal void kg_push_error(kg_context* pContext, const char* pDescription, kg_result errorResult)
 {
-	#if 0
 	if (pContext == kg_nullptr)
 	{
 		return;
 	}
 
-	kg_error_stack* pErrorStack = pContext->pErrorStack;
-	kg_error* 		pError		= kg_reserve_memory_from_current_buffer_position(&pErrorStack->errorBuffer, sizeof(kg_error));
+	kg_error_stack* pErrorStack = &pContext->errorStack;
+	kg_error* pError = kg_nullptr;
 
-	if (pError == kg_nullptr)
+	kg_result result = kg_allocate_from_linear_allocator(&pError, &pErrorStack->errorAllocator, sizeof(kg_error));
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return;
 	}
 
-	pError->pFunction	 	= pFunction;
 	pError->pDescription 	= pDescription;
-	pError->pIdentifier		= pIdentifier;
-	pError->result			= result;
-	pError->pPrevious		= kg_nullptr;
+	pError->result			= errorResult;
 
-	if (pErrorStack->pLastError == kg_nullptr)
+	if (pErrorStack->pFirstError == kg_nullptr)
 	{
-		pErrorStack->pLastError = pError;
+		pErrorStack->pFirstError 	= pError;
+		pError->pNext				= kg_nullptr;
 	}
 	else
 	{
-		pError->pPrevious = pErrorStack->pLastError;
-		pErrorStack->pLastError = pError;
+		pError->pNext = pErrorStack->pFirstError;
+		pErrorStack->pFirstError = pError;
 	}
-	#endif
 }
 
 /******************************RENDER LOGIC***************************************/
@@ -1562,7 +1579,7 @@ kg_internal void kg_add_render_geometry(kg_context* pContext, kg_render_vertices
 {
 }
 
-kg_internal kg_result kg_allocate_vertices(kg_render_vertices** pOutVertices, kg_linear_allocator* pAllocator, kg_u32 vertexCount)
+kg_internal kg_result kg_allocate_vertices(kg_render_vertices* pOutVertices, kg_linear_allocator* pAllocator, kg_u32 vertexCount)
 {
 	if (pOutVertices == kg_nullptr)
 	{
@@ -1579,37 +1596,43 @@ kg_internal kg_result kg_allocate_vertices(kg_render_vertices** pOutVertices, kg
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	return kg_allocate_from_linear_allocator(pOutVertices, pAllocator, sizeof(kg_render_vertex_data));
-}
+	kg_render_vertices renderVertices;
 
-kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_element* pElement, kg_float2 offset, kg_float2 size, kg_color32 color)
-{
-	if (pContext == kg_nullptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (pElement == kg_nullptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	kg_render_vertices* pVertices = kg_nullptr;
-	const kg_result result = kg_allocate_vertices(&pVertices, &pContext->renderContext.vertexAllocator[0], 6u);
+	const size_t vertexDataSizeInBytes = sizeof(kg_render_vertex_data) * vertexCount; 
+	kg_result result = kg_allocate_from_linear_allocator(&renderVertices.pVertexData, pAllocator, vertexDataSizeInBytes);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	const kg_float2 position = kg_float2_add(&pElement->position, &offset);
+	renderVertices.vertexCount = vertexCount;
+	*pOutVertices = renderVertices;
 
-	kg_set_vertex_2d(pVertices, 0, position.x, 			position.y, 			0.f, 0.f, color);	
-	kg_set_vertex_2d(pVertices, 1, position.x + size.x, position.y, 			0.f, 0.f, color);	
-	kg_set_vertex_2d(pVertices, 2, position.x, 			position.y + size.y, 	0.f, 0.f, color);	
-	kg_set_vertex_2d(pVertices, 3, position.x, 			position.y + size.y, 	0.f, 0.f, color);	
-	kg_set_vertex_2d(pVertices, 4, position.x + size.x, position.y, 			0.f, 0.f, color);	
-	kg_set_vertex_2d(pVertices, 5, position.x + size.x, position.y + size.y, 	0.f, 0.f, color);	
+	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_rect rect, kg_color32 color)
+{
+	if (pContext == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	kg_render_vertices vertices;
+	const kg_result result = kg_allocate_vertices(&vertices, pContext->renderContext.pVertexAllocator, 6u);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	kg_set_vertex_2d(&vertices, 0, rect.position.x, 				rect.position.y, 				0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 1, rect.position.x + rect.size.x, 	rect.position.y, 				0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 2, rect.position.x, 				rect.position.y + rect.size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 3, rect.position.x, 				rect.position.y + rect.size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 4, rect.position.x + rect.size.x, 	rect.position.y, 				0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 5, rect.position.x + rect.size.x, 	rect.position.y + rect.size.y, 	0.f, 0.f, color);	
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -1645,65 +1668,49 @@ kg_internal const kg_utf8* kg_find_text(kg_context* pContext, const char* pTextI
 	return pTextID;
 }
 /*****************************CONTROL LOGIC***************************************/
-kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_element* pElement, kg_window_component* pComponent)
+kg_internal kg_bool kg_window_logic(kg_context* pContext, kg_window* pWindow)
 {
-	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED ) != 0 )
+	if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED ) != 0 )
 	{
-		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_OPEN;
-		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED;
+		pWindow->flags &= ~K15_GUI_WINDOW_FLAG_IS_OPEN;
+		pWindow->flags &= ~K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED;
 	}
 
-	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN ) == 0 )
+	if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_IS_OPEN ) == 0 )
 	{
 		return kg_false;
 	}
 
-	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_MAXIMIZE_BUTTON_CLICKED ) != 0 )
+	if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_MAXIMIZE_BUTTON_CLICKED ) != 0 )
 	{
-		if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_MAXIMIZED ) == 0 )
+		if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_IS_MAXIMIZED ) == 0 )
 		{
-			pComponent->originalPosition 	= pElement->position;
-			pComponent->originalSize 		= pElement->size;
-			pComponent->flags |= K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;	
-			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;
+			pWindow->flags |= K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;	
+			pWindow->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;
 		}
 		else
 		{
-			pElement->size 		= pComponent->originalSize;
-			pElement->position 	= pComponent->originalPosition;
-			
-			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;
+			pWindow->flags &= ~K15_GUI_WINDOW_FLAG_IS_MAXIMIZED;
 		}
 
-		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_MAXIMIZE_BUTTON_CLICKED;
+		pWindow->flags &= ~K15_GUI_WINDOW_FLAG_MAXIMIZE_BUTTON_CLICKED;
 	}
 
-	if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED ) != 0 )
+	if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED ) != 0 )
 	{
-		if ( ( pComponent->flags & K15_GUI_WINDOW_FLAG_IS_MINIMIZED ) == 0)
+		if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_IS_MINIMIZED ) == 0)
 		{
-			pComponent->originalPosition 	= pElement->position;
-			pComponent->originalSize 		= pElement->size;
-			pComponent->flags |= K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
+			pWindow->flags |= K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
 		}
 		else
 		{
-			pElement->size 		= pComponent->originalSize;
-			pElement->position 	= pComponent->originalPosition;
-
-			pComponent->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
+			pWindow->flags &= ~K15_GUI_WINDOW_FLAG_IS_MINIMIZED;	
 		}
 
-		pComponent->flags &= ~K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED;
+		pWindow->flags &= ~K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED;
 	}
 
-	const kg_float2 titleArea 	= kg_create_float2(pElement->size.x, TitleHeightInPixels);
-	const kg_float2 windowArea 	= kg_create_float2(pElement->size.x, kg_max(pElement->size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
-	
-	kg_render_element_rect(pContext, pElement, kg_create_float2(0.f, TitleHeightInPixels), windowArea, kg_color_white);
-	kg_render_element_rect(pContext, pElement, kg_float2_zero(), titleArea, kg_color_light_grey);
-
-	return (pComponent->flags & K15_GUI_WINDOW_FLAG_IS_OPEN);
+	return (pWindow->flags & K15_GUI_WINDOW_FLAG_IS_OPEN);
 }
 
 kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 identifier)
@@ -1929,6 +1936,7 @@ kg_result kg_begin_frame(kg_context_handle contextHandle)
 	}
 
 	kg_reset_context_state(pContext);
+	kg_swap_render_buffers(&pContext->renderContext);
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -1964,23 +1972,22 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 		return kg_false;
 	}
 
-
 	kg_window* pWindow = kg_nullptr;
 	kg_result result = kg_allocate_from_linear_allocator(&pWindow, &pContext->allocator, sizeof(kg_window));
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
-		//kg_push_error();
+		kg_push_error(pContext, "[kg_begin_window] could not allocate window.", result);
 		return kg_false;
 	}
 
-	pWindow->rect.position 	= kg_create_sint2(0, 0);
-	pWindow->rect.size		= kg_create_uint2(150, 150);
-	pWindow->pNext			= kg_nullptr;
+	pWindow->flags			= K15_GUI_WINDOW_FLAG_IS_OPEN;
+	pWindow->rect.position 	= kg_float2_zero();
+	pWindow->rect.size		= kg_create_float2(150.f, 150.f);
 
 	kg_push_window(pContext, pWindow);
 
-	return kg_false;
+	return kg_window_logic(pContext, pWindow);
 }
 
 kg_bool kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier)
@@ -2025,15 +2032,47 @@ void kg_end_menu(kg_context_handle contextHandle)
 
 void kg_end_window(kg_context_handle contextHandle)
 {
-	#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return;
 	}
 
 	kg_context* pContext = (kg_context*)contextHandle.value;
-	kg_array_pop_back(&pContext->elementStack);
-	#endif
+	const kg_window* pWindow = pContext->pFirstWindow;
+
+	if (pWindow == kg_nullptr)
+	{
+		kg_push_error(pContext, "[kg_end_window] no window has been created up until this point.", K15_GUI_RESULT_ELEMENT_NOT_STARTED);
+		return;
+	}
+
+	pContext->pFirstWindow = (kg_window*)pWindow->pNext;
+
+	static const float TitleHeightInPixels 		= 30.f;
+	static const float MinAreaHeightInPixels 	= 10.f;
+
+	const kg_float2 titleArea 	= kg_create_float2(pWindow->rect.size.x, TitleHeightInPixels);
+	const kg_rect titleRect 	= kg_create_rect(pWindow->rect.position.x, pWindow->rect.position.y, titleArea.x, titleArea.y);
+
+	kg_result result = K15_GUI_RESULT_SUCCESS;
+
+	result |= kg_render_element_rect(pContext, titleRect, kg_color_white);
+
+	if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_IS_OPEN ) == 0 )
+	{
+		goto kg_end_window_end;
+	}
+
+	const kg_float2 windowArea 	= kg_create_float2(pWindow->rect.size.x, kg_max(pWindow->rect.size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
+	const kg_rect windowRect	= kg_create_rect(pWindow->rect.position.x, pWindow->rect.position.y + TitleHeightInPixels, windowArea.x, windowArea.y);
+
+	result |= kg_render_element_rect(pContext, windowRect, kg_color_light_grey);
+
+kg_end_window_end:
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		kg_push_error(pContext, "[kg_end_window] could not render window.", result);
+	}
 }
 
 void kg_end_toolbar(kg_context_handle contextHandle)
@@ -2200,17 +2239,17 @@ kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 		return kg_false;
 	}
 
-	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_error_stack* pErrorStack = &pContext->errorStack;
-	kg_error* 		pLastError 	= pErrorStack->pLastError;
+	kg_context* 	pContext 		= (kg_context*)contextHandle.value;
+	kg_error_stack* pErrorStack 	= &pContext->errorStack;
+	kg_error* 		pFirstError 	= pErrorStack->pFirstError;
 
-	if (pLastError == kg_nullptr)
+	if (pFirstError == kg_nullptr)
 	{
 		return kg_false;
 	}
 
-	pErrorStack->pLastError = pLastError->pPrevious;
-	*pOutError = pLastError;
+	pErrorStack->pFirstError = pFirstError->pNext;
+	*pOutError = pFirstError;
 
 	return kg_true;
 }
