@@ -1802,8 +1802,6 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
-	kg_context* pContext = (kg_context*)pOutHandle;
-
 	if (pParameter == kg_nullptr)
 	{
 		kg_set_str(pOutError, "argument 'pParameter' is NULL.");
@@ -1831,13 +1829,23 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return K15_GUI_RESULT_INVALID_RENDER_CONTEXT_PARAMETER;
 	}
 
-	kg_result result = kg_create_linear_allocator(&pContext->allocator, pParameter->scratchBuffer.pMemory, pParameter->scratchBuffer.memorySizeInBytes);
+	kg_linear_allocator allocator;
+	kg_result result = kg_create_linear_allocator(&allocator, pParameter->scratchBuffer.pMemory, pParameter->scratchBuffer.memorySizeInBytes);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER;
 	}
 
+	kg_context* pContext = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pContext, &allocator, sizeof(kg_context));
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pContext->allocator = allocator;
 	pContext->frameCounter = 0u;
 
 	result = kg_create_hash_map(&pContext->elements, &pContext->allocator, sizeof(kg_element));
@@ -1955,7 +1963,8 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 	{
 		return kg_false;
 	}
-4
+
+
 	kg_window* pWindow = kg_nullptr;
 	kg_result result = kg_allocate_from_linear_allocator(&pWindow, &pContext->allocator, sizeof(kg_window));
 
@@ -1967,6 +1976,7 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 
 	pWindow->rect.position 	= kg_create_sint2(0, 0);
 	pWindow->rect.size		= kg_create_uint2(150, 150);
+	pWindow->pNext			= kg_nullptr;
 
 	kg_push_window(pContext, pWindow);
 
