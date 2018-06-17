@@ -1034,8 +1034,11 @@ kg_internal void kg_swap_render_buffers(kg_render_context* pRenderContext)
 	const kg_u32 indexAllocatorIndex 	= (1u + (pRenderContext->pIndexAllocator  - pRenderContext->indexAllocators)  / kg_ptr_size_in_bytes) % pRenderContext->indexAllocatorCount;
 	const kg_u32 vertexAllocatorIndex 	= (1u + (pRenderContext->pVertexAllocator - pRenderContext->pVertexAllocator) / kg_ptr_size_in_bytes) % pRenderContext->vertexAllocatorCount;
 
-	pRenderContext->pIndexAllocator = &pRenderContext->indexAllocators[indexAllocatorIndex];
-	pRenderContext->pVertexAllocator = &pRenderContext->vertexAllocators[vertexAllocatorIndex];
+	pRenderContext->pIndexAllocator 	= &pRenderContext->indexAllocators[indexAllocatorIndex];
+	pRenderContext->pVertexAllocator	= &pRenderContext->vertexAllocators[vertexAllocatorIndex];
+
+	kg_reset_linear_allocator(pRenderContext->pIndexAllocator, 0u);
+	kg_reset_linear_allocator(pRenderContext->pVertexAllocator, 0u);
 }
 kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
 {
