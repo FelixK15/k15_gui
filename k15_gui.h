@@ -8,7 +8,7 @@
 #endif //K15_GUI_STATIC
 
 #ifndef kg_true
-# define kg_true 1
+# define kg_true 1 
 #endif
 
 #ifndef kg_false
