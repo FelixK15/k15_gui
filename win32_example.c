@@ -498,33 +498,25 @@ void setup(HWND p_HWND)
 	for (int attributeIndex = 0; attributeIndex < pVertexDefinition->attributeCount; ++attributeIndex)
 	{
 		const kg_vertex_attribute_definition* pAttribute = pVertexDefinition->attributes + attributeIndex;
-		K15_GL(glVertexAttribPointer(attributeIndex, pAttribute->size, pAttribute->dataType == K15_GUI_FLOAT_DATA_TYPE ? GL_FLOAT : GL_UNSIGNED_INT, GL_FALSE, pVertexDefinition->stride, (const GLvoid*)pAttribute->offset));
+		K15_GL(glVertexAttribPointer(attributeIndex, pAttribute->size, GL_FLOAT, GL_FALSE, pVertexDefinition->stride, (const GLvoid*)pAttribute->offset));
 	}
 
 	const char* pVertexShader = ""
 	"#version 410\n"
 	"in vec4 positionIn;\n"
+	"in vec4 colorIn;\n"
 	"in vec2 texCoordsIn;\n"
-	"in uint colorIn;\n"
 	""
 	"out vec2 texCoords;\n"
 	"out vec4 color;\n"
 	""
-	"vec4 unpackColor(uint packedColor)\n"
-	"{\n"
-	"	vec4 color;\n"
-	"	color.r = ((packedColor & 0x000000FF) >> 0) / 255.f";
-	"	color.g = ((packedColor & 0x0000FF00) >> 8) / 255.f";
-	"	color.b = ((packedColor & 0x00FF0000) >> 16) / 255.f";
-	"	color.a = ((packedColor & 0xFF000000) >> 24) / 255.f";
-	"	return color;\n"
-	"}\n"
+	"uniform mat4 projection;\n"
 	""
 	"void main()\n"
 	"{\n"
-	"	texCoords = texCoordsIn;\n"
-	"	color = unpackColor(colorIn);\n"
-	"	gl_Position = positionIn;\n"
+	"	texCoords 	= texCoordsIn;\n"
+	"	color 		= colorIn;\n"
+	"	gl_Position = positionIn * projection;\n"
 	"}\n";
 
 	const char* pFragmentShader = ""
@@ -601,6 +593,12 @@ void drawGUI()
 	{
 		return;	
 	}
+
+	float mat[16];
+	kg_calculate_row_major_projection_matrix(mat, screenWidth, screenHeight);
+
+	GLint projectionLocation = kglGetUniformLocation(shaderProgram, "projection");
+	K15_GL(glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, mat));
 
 	K15_GL(glBufferSubData(GL_ARRAY_BUFFER, 0, renderData.vertexDataSizeInBytes, renderData.pVertexData));
 	K15_GL(glDrawArrays(GL_TRIANGLES, 0, renderData.vertexCount));

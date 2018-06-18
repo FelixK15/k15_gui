@@ -452,8 +452,8 @@ kg_def kg_result					kg_add_input_key_button_up(kg_context_handle contextHandle,
 
 //*****************UTIL******************//
 kg_def const char*					kg_result_to_string(kg_result p_Result);
-kg_def kg_result 					kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def kg_result 					kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def void 						kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight);
+kg_def void 						kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight);
 kg_def kg_bool 						kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
 kg_def kg_buffer					kg_create_buffer(void* pMemory, size_t memorySizeInBytes);
 
@@ -595,10 +595,10 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_float4	position;  
-	kg_float2 	texcoord;
-	kg_color32 	color;
-	kg_byte		padding[4];
+	kg_float4	position;  	
+	kg_float4 	color;		
+	kg_float2 	texcoord;	
+	kg_float2	padding[3];		
 } kg_render_vertex_data; 
 /*********************************************************************************/
 typedef struct 
@@ -830,6 +830,12 @@ kg_internal kg_float2 kg_create_float2(float x, float y)
 {
 	kg_float2 f2 = {x, y};
 	return f2;
+}
+
+kg_internal kg_float4 kg_create_float4(float x, float y, float z, float w)
+{
+	kg_float4 f4 = {x, y, z, w};
+	return f4;
 }
 
 kg_internal kg_uint2 kg_create_uint2(kg_u32 x, kg_u32 y)
@@ -1249,6 +1255,16 @@ kg_internal kg_rect kg_create_rect(float x, float y, float w, float h)
 	return rect;
 }
 
+kg_internal kg_float4 kg_unpack_color(kg_color32 color)
+{
+	const float r = (float)((color >> 24) & 0xFF) / 255.f;
+	const float g = (float)((color >> 16) & 0xFF) / 255.f;
+	const float b = (float)((color >>  8) & 0xFF) / 255.f;
+	const float a = (float)((color >>  0) & 0xFF) / 255.f;
+
+	return kg_create_float4(r, g, b, a);
+}
+
 kg_internal kg_crc32 kg_generate_crc32(const char* pIdentifier)
 {	
 	static const kg_u32 crc_table[] = {
@@ -1615,7 +1631,7 @@ kg_internal void kg_set_vertex_3d(kg_render_vertices* pVertices, kg_u32 vertexIn
 	pVertexData->position.w	= w;
 	pVertexData->texcoord.x	= u;
 	pVertexData->texcoord.y	= v;
-	pVertexData->color 		= color;
+	pVertexData->color 		= kg_unpack_color(color);
 }
 
 kg_internal void kg_set_vertex_2d(kg_render_vertices* pVertices, kg_u32 vertexIndex, float x, float y, float u, float v, kg_color32 color)
@@ -2030,7 +2046,8 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 	}
 
 	pWindow->flags			= K15_GUI_WINDOW_FLAG_IS_OPEN;
-	pWindow->rect.position 	= kg_float2_zero();
+	//pWindow->rect.position 	= kg_float2_zero();
+	pWindow->rect.position 	= kg_create_float2(200.f, 200.f);
 	pWindow->rect.size		= kg_create_float2(150.f, 150.f);
 
 	kg_push_window(pContext, pWindow);
@@ -2114,7 +2131,7 @@ void kg_end_window(kg_context_handle contextHandle)
 	const kg_float2 windowArea 	= kg_create_float2(pWindow->rect.size.x, kg_max(pWindow->rect.size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
 	const kg_rect windowRect	= kg_create_rect(pWindow->rect.position.x, pWindow->rect.position.y + TitleHeightInPixels, windowArea.x, windowArea.y);
 
-	result |= kg_render_element_rect(pContext, windowRect, kg_color_light_grey);
+	result |= kg_render_element_rect(pContext, windowRect, kg_color_dark_red);
 
 kg_end_window_end:
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2303,6 +2320,72 @@ const char* kg_result_to_string(kg_result result)
 	return "";
 }
 
+void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight)
+{
+	// m0  m1  m2  m3
+	// m4  m5  m6  m7
+	// m8  m9  m10 m11
+	// m12 m13 m14 m15
+
+	// x x x x
+	// y y y y
+	// z z z z
+	// w w w w
+
+	const float w = 1.f / (float)screenWidth;
+	const float h = 1.f / (float)screenHeight;
+
+	pMatrix[ 0] = (2.f * w) * 0.5f;
+	pMatrix[ 1] = 0.f;
+	pMatrix[ 2] = 0.f;
+	pMatrix[ 3] = 0.f;
+	pMatrix[ 4] = 0.f;
+	pMatrix[ 5] = (2.f * h) * 0.5f;
+	pMatrix[ 6] = 0.f;
+	pMatrix[ 7] = 1.f;
+	pMatrix[ 8] = 0.f;
+	pMatrix[ 9] = 0.f;
+	pMatrix[10] = 1.f;
+	pMatrix[11] = 0.f;
+	pMatrix[12] = 1.f;
+	pMatrix[13] = 1.f;
+	pMatrix[14] = 1.f;
+	pMatrix[15] = 1.f;
+}
+
+void kg_calculate_row_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight)
+{
+	// m0  m1  m2  m3
+	// m4  m5  m6  m7
+	// m8  m9  m10 m11
+	// m12 m13 m14 m15
+
+	// x y z w
+	// x y z w
+	// x y z w
+	// x y z w
+
+	const float w = 1.f / (float)screenWidth;
+	const float h = 1.f / (float)screenHeight;
+
+	pMatrix[ 0] = w*0.5f;
+	pMatrix[ 1] = 0.f;
+	pMatrix[ 2] = 0.f;
+	pMatrix[ 3] = 1.f;
+	pMatrix[ 4] = 0.f;
+	pMatrix[ 5] = h*0.5f;
+	pMatrix[ 6] = 0.f;
+	pMatrix[ 7] = 1.f;
+	pMatrix[ 8] = 0.f;
+	pMatrix[ 9] = 0.f;
+	pMatrix[10] = 1.f;
+	pMatrix[11] = 1.f;
+	pMatrix[12] = 1.f;
+	pMatrix[13] = 1.f;
+	pMatrix[14] = 1.f;
+	pMatrix[15] = 1.f;
+}
+
 kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
@@ -2346,17 +2429,19 @@ const kg_vertex_definition*	kg_get_vertex_definition()
 	vertexDefinition.attributes[0].sizeInBytes 	= sizeof(kg_float4);
 	vertexDefinition.attributes[0].size 		= 4;
 
-	vertexDefinition.attributes[1].type 		= K15_GUI_TEXCOORD_ATTRIBUTE_TYPE;
+	vertexDefinition.attributes[1].type 		= K15_GUI_COLOR_ATTRIBUTE_TYPE;
 	vertexDefinition.attributes[1].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
 	vertexDefinition.attributes[1].offset		= sizeof(kg_float4);
-	vertexDefinition.attributes[1].sizeInBytes 	= sizeof(kg_float2);
-	vertexDefinition.attributes[1].size 		= 2;
+	vertexDefinition.attributes[1].sizeInBytes 	= sizeof(kg_float4);
+	vertexDefinition.attributes[1].size 		= 4;
+
+	vertexDefinition.attributes[2].type 		= K15_GUI_TEXCOORD_ATTRIBUTE_TYPE;
+	vertexDefinition.attributes[2].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
+	vertexDefinition.attributes[2].offset		= sizeof(kg_float4) * 2u;
+	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_float2);
+	vertexDefinition.attributes[2].size 		= 2;
 	
-	vertexDefinition.attributes[2].type 		= K15_GUI_COLOR_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[2].dataType 	= K15_GUI_UINT_DATA_TYPE;
-	vertexDefinition.attributes[2].offset		= sizeof(kg_float4) + sizeof(kg_float2);
-	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_u32);
-	vertexDefinition.attributes[2].size 		= 1;
+	
 
 	return &vertexDefinition;
 }
