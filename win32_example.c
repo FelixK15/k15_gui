@@ -35,6 +35,11 @@ const size_t vertexMemorySize 	= kg_size_kilo_bytes(512);
 const size_t indexMemorySize	= kg_size_kilo_bytes(512);
 const size_t dataMemorySize 	= kg_size_mega_bytes(5);
 
+GLuint vertexBuffer 	= 0u;
+GLuint indexBuffer 		= 0u;
+GLuint vertexArray 		= 0u;
+GLuint shaderProgram 	= 0u;
+
 void* pVertexMemory; 	
 void* pIndexMemory;
 void* pDataMemory;
@@ -403,6 +408,53 @@ char* getInfoLogForShader(GLuint p_Shader)
 	return infoLog;
 }
 
+uint8 shaderCompilationFailed(GLuint shader)
+{
+	GLint success = 0u;
+	K15_GL(glGetShaderiv(shader, GL_COMPILE_STATUS, &success));
+
+	if (success == kg_true)
+	{
+		return kg_false;
+	}
+
+	GLint logSize = 0;
+	K15_GL(glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logSize));
+
+	GLint size = 0;
+	char* pLog = (char*)malloc(logSize);
+	K15_GL(glGetShaderInfoLog(shader, logSize, &size, pLog));
+
+	printf("Could not compile shader:\n%s\n\n", pLog);
+	free(pLog);
+
+	return kg_true;
+}
+
+uint8 shaderLinkingFailed(GLuint program)
+{
+	GLint isLinked = 0;
+	K15_GL(glGetProgramiv(program, GL_LINK_STATUS, (int *)&isLinked));
+
+	if (isLinked == GL_TRUE)
+	{
+		return kg_false;
+	}
+
+	GLint maxLength = 0;
+	K15_GL(glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength));
+
+	char* pLog = (char*)malloc(maxLength);
+	K15_GL(glGetProgramInfoLog(program, maxLength, &maxLength, pLog));
+	
+	printf("Could not link shader:\n%s\n\n", pLog);
+
+
+	free(pLog);
+
+	return kg_true;
+}
+
 void setup(HWND p_HWND)
 {
 	pVertexMemory 	= malloc(vertexMemorySize);
@@ -423,9 +475,114 @@ void setup(HWND p_HWND)
 	renderParameter.indexBufferCount	= 1u;
 	renderParameter.vertexBuffer[0] 	= kg_create_buffer(pVertexMemory, vertexMemorySize);
 	renderParameter.indexBuffer[0] 		= kg_create_buffer(pIndexMemory, indexMemorySize);
+	renderParameter.indexDataType		= K15_GUI_INDEX_DATA_TYPE_SHORT;
+
+	K15_GL(glGenBuffers(1, &vertexBuffer));
+	K15_GL(glGenBuffers(1, &indexBuffer));
+
+	K15_GL(glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer));
+	K15_GL(glBufferStorage(GL_ARRAY_BUFFER, vertexMemorySize, kg_nullptr, GL_DYNAMIC_STORAGE_BIT));
+	
+	K15_GL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer));
+	K15_GL(glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, indexMemorySize, kg_nullptr, GL_DYNAMIC_STORAGE_BIT));
+
+	K15_GL(glGenVertexArrays(1, &vertexArray));
+	K15_GL(glBindVertexArray(vertexArray));
+
+	K15_GL(glEnableVertexAttribArray(0));
+	K15_GL(glEnableVertexAttribArray(1));
+	K15_GL(glEnableVertexAttribArray(2));
+
+	const kg_vertex_definition* pVertexDefinition = kg_get_vertex_definition();
+
+	for (int attributeIndex = 0; attributeIndex < pVertexDefinition->attributeCount; ++attributeIndex)
+	{
+		const kg_vertex_attribute_definition* pAttribute = pVertexDefinition->attributes + attributeIndex;
+		K15_GL(glVertexAttribPointer(attributeIndex, pAttribute->size, pAttribute->dataType == K15_GUI_FLOAT_DATA_TYPE ? GL_FLOAT : GL_UNSIGNED_INT, GL_FALSE, pVertexDefinition->stride, (const GLvoid*)pAttribute->offset));
+	}
+
+	const char* pVertexShader = ""
+	"#version 410\n"
+	"in vec4 positionIn;\n"
+	"in vec2 texCoordsIn;\n"
+	"in uint colorIn;\n"
+	""
+	"out vec2 texCoords;\n"
+	"out vec4 color;\n"
+	""
+	"vec4 unpackColor(uint packedColor)\n"
+	"{\n"
+	"	vec4 color;\n"
+	"	color.r = ((packedColor & 0x000000FF) >> 0) / 255.f";
+	"	color.g = ((packedColor & 0x0000FF00) >> 8) / 255.f";
+	"	color.b = ((packedColor & 0x00FF0000) >> 16) / 255.f";
+	"	color.a = ((packedColor & 0xFF000000) >> 24) / 255.f";
+	"	return color;\n"
+	"}\n"
+	""
+	"void main()\n"
+	"{\n"
+	"	texCoords = texCoordsIn;\n"
+	"	color = unpackColor(colorIn);\n"
+	"	gl_Position = positionIn;\n"
+	"}\n";
+
+	const char* pFragmentShader = ""
+	"#version 410\n"
+	"in vec2 texCoords;\n"
+	"in vec4 color;\n"
+	""
+	"void main()\n"
+	"{\n"
+	"	gl_FragColor = color;\n"
+	"}\n";
+
+	const int vertexShaderLength = strlen(pVertexShader);
+	const int fragmentShaderLength = strlen(pFragmentShader);
+
+	shaderProgram = kglCreateProgram();
+
+	GLuint vertexShader 	= kglCreateShader(GL_VERTEX_SHADER);
+	GLuint fragmentShader	= kglCreateShader(GL_FRAGMENT_SHADER);
+
+	K15_GL(glShaderSource(vertexShader, 1, &pVertexShader, &vertexShaderLength));
+	K15_GL(glShaderSource(fragmentShader, 1, &pFragmentShader, &fragmentShaderLength));
+
+	K15_GL(glCompileShader(vertexShader));
+	K15_GL(glCompileShader(fragmentShader));
+
+	if (shaderCompilationFailed(vertexShader))
+	{
+		return;
+	}
+
+	if (shaderCompilationFailed(fragmentShader))
+	{
+		return;
+	}
+
+	K15_GL(glAttachShader(shaderProgram, vertexShader));
+	K15_GL(glAttachShader(shaderProgram, fragmentShader));
+
+	K15_GL(glLinkProgram(shaderProgram));
+
+	if (shaderLinkingFailed(shaderProgram))
+	{
+		return;
+	}
+
+	K15_GL(glDetachShader(shaderProgram, vertexShader));
+	K15_GL(glDetachShader(shaderProgram, fragmentShader));
+
+	K15_GL(glUseProgram(shaderProgram));
 
 	const char* pError = NULL;
-	kg_create_context_with_custom_parameter(&contextHandle, &parameter, &renderParameter, &pError);
+	kg_result result = kg_create_context_with_custom_parameter(&contextHandle, &parameter, &renderParameter, &pError);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		printf("could not create gui context. error = %s\n", kg_result_to_string(result));
+	}
 }
 
 void swapBuffers(HWND p_HWND)
@@ -437,11 +594,16 @@ void swapBuffers(HWND p_HWND)
 
 void drawGUI()
 {
-	void* pRenderData = 0;
-	int renderDataSizeInBytes = 0;
+	kg_render_data renderData;
+	kg_result result = kg_get_render_data(contextHandle, &renderData);
 
-	kg_get_render_data(contextHandle, &pRenderData, &renderDataSizeInBytes);
-	const kg_vertex_definition* pVertexDefinition = kg_get_vertex_definition();
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return;	
+	}
+
+	K15_GL(glBufferSubData(GL_ARRAY_BUFFER, 0, renderData.vertexDataSizeInBytes, renderData.pVertexData));
+	K15_GL(glDrawArrays(GL_TRIANGLES, 0, renderData.vertexCount));
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)

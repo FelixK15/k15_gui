@@ -46,7 +46,7 @@
 		if (value) \
 			variable = (void*)value; \
 		else \
-			printf( "Could not assign to variable \'%s\'.", #variable);\
+			printf( "[gl] Could not assign to variable \'%s\'.", #variable);\
 	}
 
 void K15_GL3RegisterGLFunctions();
@@ -61,6 +61,17 @@ void K15_GL3RegisterGLFunctions();
 # endif //APIENTRY
 #endif // _WIN32
 
+#ifndef K15_GL 
+# define K15_GL(x) 	{ \
+						k##x; \
+						GLenum __err = kglGetError(); \
+						while (__err != GL_NO_ERROR) \
+						{ \
+							printf("[gl] error calling function '%s' GLenum: %s\n", #x, K15_GLConvertErrorCode(__err)); \
+							__err = kglGetError(); \
+						} \
+					}
+#endif
 void APIENTRY K15_DebugProcARB(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
 {
 	const char* sourceName = 0;
@@ -223,6 +234,7 @@ PFNGLTEXIMAGE1DPROC		kglTexImage1D;
 PFNGLTEXIMAGE2DPROC		kglTexImage2D;
 PFNGLTEXPARAMETERIPROC	kglTexParameteri;
 PFNGLDRAWARRAYSPROC		kglDrawArrays;
+PFNGLBUFFERSTORAGEPROC 	kglBufferStorage;
 
 #ifdef _WIN32
 #define kglGetProcAddress kwglGetProcAddress
@@ -608,6 +620,7 @@ void K15_GL3RegisterGLFunctions()
 	K15_GL3_CHECK_ASSIGNMENT(kglUniformMatrix2fv, kglGetProcAddress("glUniformMatrix2fv"));
 	K15_GL3_CHECK_ASSIGNMENT(kglUniformMatrix3fv, kglGetProcAddress("glUniformMatrix3fv"));
 	K15_GL3_CHECK_ASSIGNMENT(kglUniformMatrix4fv, kglGetProcAddress("glUniformMatrix4fv"));
+	K15_GL3_CHECK_ASSIGNMENT(kglBufferStorage, kglGetProcAddress("glBufferStorage"));
 
 	kglDebugMessageCallback(K15_DebugProcARB, 0);
 }

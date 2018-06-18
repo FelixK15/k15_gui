@@ -165,14 +165,20 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
-	K15_GUI_FLOAT2_DATA_TYPE = 0,
-	K15_GUI_FLOAT4_DATA_TYPE
+	K15_GUI_FLOAT_DATA_TYPE = 0,
+	K15_GUI_UINT_DATA_TYPE,
 } kg_vertex_attribute_data_type;
 /*********************************************************************************/
 typedef enum
 {
 	K15_GUI_MAX_RENDER_BUFFER_COUNT = 4u
 } kg_constants;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_INDEX_DATA_TYPE_SHORT,
+	K15_GUI_INDEX_DATA_TYPE_INT
+} kg_index_data_type;
 /*********************************************************************************/
 typedef struct
 {
@@ -199,6 +205,19 @@ typedef struct
 	kg_s32 x;
 	kg_s32 y;
 } kg_sint2;
+/*********************************************************************************/
+typedef struct
+{
+	void* 				pVertexData;
+	void* 				pIndexData;
+	size_t 				vertexDataSizeInBytes;
+	size_t 				indexDataSizeInBytes;
+
+	int					vertexCount;
+	int					indexCount;
+
+	kg_index_data_type	indexDataType;
+} kg_render_data;
 /*********************************************************************************/
 typedef struct
 {
@@ -327,6 +346,8 @@ typedef struct
 	kg_linear_allocator indexAllocators[K15_GUI_MAX_RENDER_BUFFER_COUNT];
 	kg_u32 vertexAllocatorCount;
 	kg_u32 indexAllocatorCount;
+
+	kg_index_data_type indexDataType;
 } kg_render_context;
 /*********************************************************************************/
 typedef struct 
@@ -360,14 +381,15 @@ typedef struct
 {
 	kg_vertex_attribute_type 		type;
 	kg_vertex_attribute_data_type	dataType;
-	kg_u32							sizeInBytes;
-	kg_u32							offset;
+	int								size;
+	size_t							sizeInBytes;
+	size_t							offset;
 } kg_vertex_attribute_definition;
 /*********************************************************************************/
 typedef struct 
 {
-	kg_u32 							stride;
-	kg_u32 							attributeCount;
+	size_t 							stride;
+	int 							attributeCount;
 	kg_vertex_attribute_definition 	attributes[3];
 } kg_vertex_definition;
 /*********************************************************************************/
@@ -383,6 +405,8 @@ typedef struct
 	kg_buffer 	indexBuffer[K15_GUI_MAX_RENDER_BUFFER_COUNT];
 	kg_u32 		vertexBufferCount;
 	kg_u32		indexBufferCount;
+
+	kg_index_data_type indexDataType;
 } kg_render_context_parameter;
 /*********************************************************************************/
 typedef struct
@@ -427,7 +451,7 @@ kg_def kg_result					kg_add_input_key_button_down(kg_context_handle contextHandl
 kg_def kg_result					kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboard_key_type buttonType);
 
 //*****************UTIL******************//
-kg_def unsigned int 				kg_convert_result_to_string(kg_result p_Result, char* pMessageBuffer, unsigned int messageBufferSizeInBytes);
+kg_def const char*					kg_result_to_string(kg_result p_Result);
 kg_def kg_result 					kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
 kg_def kg_result 					kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
 kg_def kg_bool 						kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
@@ -435,7 +459,7 @@ kg_def kg_buffer					kg_create_buffer(void* pMemory, size_t memorySizeInBytes);
 
 //****************RENDER*****************//
 kg_def const kg_vertex_definition*	kg_get_vertex_definition();
-kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, void** pOutRenderData, int* pOutRenderDataSizeInBytes);
+kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_render_data* pOutRenderData);
 
 
 //*****************DEBUG*****************//
@@ -687,6 +711,11 @@ kg_internal kg_bool kg_is_invalid_render_context_parameter(const kg_render_conte
 	}
 
 	if (pParameter->indexBufferCount > K15_GUI_MAX_RENDER_BUFFER_COUNT)
+	{
+		return kg_true;
+	}
+
+	if (pParameter->indexDataType != K15_GUI_INDEX_DATA_TYPE_INT && pParameter->indexDataType != K15_GUI_INDEX_DATA_TYPE_SHORT)
 	{
 		return kg_true;
 	}
@@ -1020,11 +1049,12 @@ kg_internal kg_result kg_create_render_context(kg_render_context* pOutRenderCont
 
 	context.vertexAllocatorCount 	= pParameter->vertexBufferCount;
 	context.indexAllocatorCount 	= pParameter->indexBufferCount;
-
+	
 	*pOutRenderContext = context;
 
 	pOutRenderContext->pIndexAllocator 	= &pOutRenderContext->indexAllocators[0u];
 	pOutRenderContext->pVertexAllocator = &pOutRenderContext->vertexAllocators[0u];
+	pOutRenderContext->indexDataType	= pParameter->indexDataType;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -1040,6 +1070,21 @@ kg_internal void kg_swap_render_buffers(kg_render_context* pRenderContext)
 	kg_reset_linear_allocator(pRenderContext->pIndexAllocator, 0u);
 	kg_reset_linear_allocator(pRenderContext->pVertexAllocator, 0u);
 }
+
+kg_internal kg_u32 kg_get_index_data_type_size_in_bytes(kg_index_data_type indexDataType)
+{
+	switch(indexDataType)
+	{
+		case K15_GUI_INDEX_DATA_TYPE_SHORT:
+			return 2u;
+
+		case K15_GUI_INDEX_DATA_TYPE_INT:
+			return 4u;
+	}
+
+	return 0u;
+}
+
 kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
 {
 	if (kg_is_invalid_linear_allocator(pAllocator))
@@ -2235,6 +2280,29 @@ kg_result kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboar
 	return K15_GUI_RESULT_SUCCESS;
 }
 
+const char* kg_result_to_string(kg_result result)
+{
+	switch(result)
+	{
+		case K15_GUI_RESULT_SUCCESS:
+			return "success";
+
+		case K15_GUI_RESULT_OUT_OF_MEMORY:
+			return "out of memory";
+
+		case K15_GUI_RESULT_INVALID_ARGUMENTS:
+			return "invalid arguments";
+
+		case K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER:
+			return "invalid context parameter";
+
+		case K15_GUI_RESULT_INVALID_RENDER_CONTEXT_PARAMETER:
+			return "invalid render context parameter";
+	}
+
+	return "";
+}
+
 kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
@@ -2273,31 +2341,42 @@ const kg_vertex_definition*	kg_get_vertex_definition()
 	vertexDefinition.stride 					= VertexStride;
 	vertexDefinition.attributeCount 			= sizeof(vertexDefinition.attributes) / sizeof(vertexDefinition.attributes[0]);
 	vertexDefinition.attributes[0].type 		= K15_GUI_POSITION_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[0].dataType 	= K15_GUI_FLOAT4_DATA_TYPE;
+	vertexDefinition.attributes[0].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
 	vertexDefinition.attributes[0].offset		= 0u;
 	vertexDefinition.attributes[0].sizeInBytes 	= sizeof(kg_float4);
+	vertexDefinition.attributes[0].size 		= 4;
 
 	vertexDefinition.attributes[1].type 		= K15_GUI_TEXCOORD_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[1].dataType 	= K15_GUI_FLOAT2_DATA_TYPE;
+	vertexDefinition.attributes[1].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
 	vertexDefinition.attributes[1].offset		= sizeof(kg_float4);
 	vertexDefinition.attributes[1].sizeInBytes 	= sizeof(kg_float2);
+	vertexDefinition.attributes[1].size 		= 2;
 	
 	vertexDefinition.attributes[2].type 		= K15_GUI_COLOR_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[2].dataType 	= K15_GUI_FLOAT4_DATA_TYPE;
+	vertexDefinition.attributes[2].dataType 	= K15_GUI_UINT_DATA_TYPE;
 	vertexDefinition.attributes[2].offset		= sizeof(kg_float4) + sizeof(kg_float2);
-	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_float4);
+	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_u32);
+	vertexDefinition.attributes[2].size 		= 1;
 
 	return &vertexDefinition;
 }
 
-kg_result kg_get_render_data(kg_context_handle contextHandle, void** pOutRenderData, int* pOutRenderDataSizeInBytes)
+kg_result kg_get_render_data(kg_context_handle contextHandle, kg_render_data* pOutRenderData)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS; 
 	}
 
-	
+	kg_context* pContext = (kg_context*)contextHandle.value;
+
+	pOutRenderData->pVertexData 			= pContext->renderContext.pVertexAllocator->pMemory;
+	pOutRenderData->vertexDataSizeInBytes 	= pContext->renderContext.pVertexAllocator->allocPosition;
+	pOutRenderData->vertexCount				= pOutRenderData->vertexDataSizeInBytes / sizeof(kg_render_vertex_data);
+	pOutRenderData->pIndexData				= pContext->renderContext.pIndexAllocator->pMemory;
+	pOutRenderData->indexDataSizeInBytes	= pContext->renderContext.pIndexAllocator->allocPosition;
+	pOutRenderData->indexDataType			= pContext->renderContext.indexDataType;
+	pOutRenderData->indexCount 				= pOutRenderData->indexDataSizeInBytes / kg_get_index_data_type_size_in_bytes(pContext->renderContext.indexDataType);
 
 	return K15_GUI_RESULT_SUCCESS;
 }
