@@ -300,6 +300,8 @@ typedef struct
 		{
 			kg_u16 x;
 			kg_u16 y;
+			kg_u16 deltaX;
+			kg_u16 deltaY;
 		} mouse_move;
 
 		struct 
@@ -323,7 +325,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_linear_allocator*	pAllocator;
+	kg_linear_allocator		allocator;
 	kg_input_event* 		pFirstEvent;
 } kg_input_queue;
 /*********************************************************************************/
@@ -357,6 +359,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct 
 {
+	char					fourCC[4];
 	kg_linear_allocator		allocator;
 	kg_hash_map				elements;
 	kg_input_queue			inputQueue;
@@ -571,10 +574,10 @@ const kg_color32 kg_color_light_red		= 0xFF0000FF;
 const kg_color32 kg_color_light_green	= 0x00FF00FF;
 const kg_color32 kg_color_light_blue	= 0xFF00FFFF;
 const kg_color32 kg_color_light_grey 	= 0xDDDDDDFF;
-const kg_color32 kg_color_dark_red		= 0xDD0000FF;
-const kg_color32 kg_color_dark_green	= 0x00DD00FF;
-const kg_color32 kg_color_dark_blue		= 0x0000DDFF;
-const kg_color32 kg_color_dark_grey		= 0x333333FF;
+const kg_color32 kg_color_dark_red		= 0x40000FF;
+const kg_color32 kg_color_dark_green	= 0x004400FF;
+const kg_color32 kg_color_dark_blue		= 0x000044FF;
+const kg_color32 kg_color_dark_grey		= 0x444444FF;
 
 
 void kg_layout_pass(kg_element*);
@@ -863,7 +866,13 @@ kg_internal kg_float2 kg_uint2_to_float2_cast(kg_uint2 u2)
 
 kg_internal kg_bool kg_is_invalid_context_handle(kg_context_handle contextHandle)
 {
-	return (contextHandle.value == 0u);
+	if (contextHandle.value == 0)
+	{
+		return kg_true;
+	}
+
+	const kg_context* pContext = (kg_context*)contextHandle.value;
+	return !(pContext->fourCC[0] == 'K' && pContext->fourCC[1] == 'G' && pContext->fourCC[2] == 'U' && pContext->fourCC[3] == 'I');
 }
 
 kg_internal kg_bool kg_is_invalid_viewport(const kg_viewport* pViewport)
@@ -1020,8 +1029,17 @@ kg_internal kg_result kg_create_input_queue(kg_input_queue* pOutInputQueue, kg_l
 		return result;
 	}
 
+	kg_linear_allocator allocator;
+	result = kg_create_linear_allocator(&allocator, pInputMemory, inputBufferSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
 	kg_input_queue inputQueue;
 	inputQueue.pFirstEvent 	= kg_nullptr;
+	inputQueue.allocator 	= allocator;
 
 	*pOutInputQueue = inputQueue;
 
@@ -1357,49 +1375,39 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 
 }
 
-kg_internal void kg_process_mouse_input(kg_context* pContext, kg_input_event* pInputEvent)
+kg_internal void kg_process_mouse_input(kg_context* pContext, const kg_input_event* pInputEvent)
 {
 
 }
 
-kg_internal void kg_process_keyboard_input(kg_context* pContext, kg_input_event* pInputEvent)
-{
-	
-}
-
-kg_internal void kg_process_gamepad_input(kg_context* pContext, kg_input_event* pInputEvent)
+kg_internal void kg_process_keyboard_input(kg_context* pContext, const kg_input_event* pInputEvent)
 {
 	
 }
 
-kg_internal void kg_process_input_event(kg_context* pContext, kg_input_event* pInputEvent)
+kg_internal void kg_process_gamepad_input(kg_context* pContext, const kg_input_event* pInputEvent)
+{
+	
+}
+
+kg_internal void kg_process_input_event(kg_context* pContext, const kg_input_event* pInputEvent)
 {
 
 }
 
 kg_internal void kg_process_input_events(kg_context* pContext)
 {
-	#if 0
-	kg_input_queue* pInputQueue = pContext->pInputQueue;
-	kg_input_event* pInputEvent = pInputQueue->pFirstEvent;
+	kg_input_queue* pInputQueue = &pContext->inputQueue;
+	const kg_input_event* pInputEvent = pInputQueue->pFirstEvent;
 
-	while (pInputEvent)
+	while (pInputEvent != kg_nullptr)
 	{
 		kg_process_input_event(pContext, pInputEvent);
-		pInputEvent = (kg_input_event*)pInputEvent->pNext;
+		pInputEvent = (const kg_input_event*)pInputEvent->pNext;
 	}
 
-	pInputQueue->pFirstEvent 	= kg_nullptr;
-	pInputQueue->pLastEvent 	= kg_nullptr;
-
-	kg_clear_buffer(&pInputQueue->buffer);
-	#endif
-}
-
-
-kg_internal void kg_input_pass(kg_element* pElement)
-{
-
+	pInputQueue->pFirstEvent = kg_nullptr;
+	kg_reset_linear_allocator(&pInputQueue->allocator, 0u);
 }
 
 kg_internal kg_float2 kg_calculate_element_layout_start_position(kg_element* pElement)
@@ -1709,7 +1717,7 @@ kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_rect rect,
 kg_internal kg_input_event* kg_allocate_input_event(kg_input_queue* pInputQueue, kg_input_type inputType)
 {
 	kg_input_event* pInputEvent = kg_nullptr;
-	kg_result result = kg_allocate_from_linear_allocator(&pInputEvent, pInputQueue->pAllocator, sizeof(kg_input_event));
+	kg_result result = kg_allocate_from_linear_allocator(&pInputEvent, &pInputQueue->allocator, sizeof(kg_input_event));
 
 	if(result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -1921,6 +1929,10 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return result;
 	}
 
+	pContext->fourCC[0] = 'K';
+	pContext->fourCC[1] = 'G';
+	pContext->fourCC[2] = 'U';
+	pContext->fourCC[3] = 'I';
 	pContext->allocator = allocator;
 	pContext->frameCounter = 0u;
 
@@ -2006,6 +2018,8 @@ kg_result kg_begin_frame(kg_context_handle contextHandle)
 
 	kg_reset_context_state(pContext);
 	kg_swap_render_buffers(&pContext->renderContext);
+
+	pContext->flags |= K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -2136,7 +2150,7 @@ void kg_end_window(kg_context_handle contextHandle)
 	const kg_float2 windowArea 	= kg_create_float2(pWindow->rect.size.x, kg_max(pWindow->rect.size.y - TitleHeightInPixels, MinAreaHeightInPixels)); 
 	const kg_rect windowRect	= kg_create_rect(pWindow->rect.position.x, pWindow->rect.position.y + TitleHeightInPixels, windowArea.x, windowArea.y);
 
-	result |= kg_render_element_rect(pContext, windowRect, kg_color_dark_red);
+	result |= kg_render_element_rect(pContext, windowRect, kg_color_dark_green);
 
 kg_end_window_end:
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -2168,7 +2182,6 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 	}
 
 	kg_process_input_events(pContext);
-	//kg_input_pass(pContext->pRootElement);
 	//kg_layout_pass(pContext->pRootElement);
 	kg_render_pass(pContext);
 	++pContext->frameCounter;
@@ -2180,14 +2193,13 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 
 kg_result kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned short x, unsigned short y)
 {
-#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_input_queue* pInputQueue = pContext->pInputQueue;
+	kg_input_queue* pInputQueue = &pContext->inputQueue;
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_MOVE);
 	
@@ -2198,20 +2210,21 @@ kg_result kg_add_input_mouse_move(kg_context_handle contextHandle, unsigned shor
 
 	pInputEvent->data.mouse_move.x = x;
 	pInputEvent->data.mouse_move.y = y;
-#endif
+	pInputEvent->data.mouse_move.deltaX = pInputEvent->data.mouse_move.x - y;
+	pInputEvent->data.mouse_move.deltaY = pInputEvent->data.mouse_move.y - y;
+
 	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_result kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType)
 {
-#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_input_queue* pInputQueue = pContext->pInputQueue;
+	kg_input_queue* pInputQueue = &pContext->inputQueue;
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_BUTTON_PRESSED);
 	
@@ -2224,20 +2237,18 @@ kg_result kg_add_input_mouse_button_down(kg_context_handle contextHandle, unsign
 	pInputEvent->data.mouse_button.y 			= y;
 	pInputEvent->data.mouse_button.buttonType 	= mouseButtonType;
 	pInputEvent->data.mouse_button.actionType 	= K15_GUI_ACTION_BUTTON_DOWN;
-#endif
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned short x, unsigned short y, kg_mouse_button_type mouseButtonType)
 {
-#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_input_queue* pInputQueue = pContext->pInputQueue;
+	kg_input_queue* pInputQueue = &pContext->inputQueue;
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_MOUSE_BUTTON_RELEASED);
 	
@@ -2250,21 +2261,18 @@ kg_result kg_add_input_mouse_button_up(kg_context_handle contextHandle, unsigned
 	pInputEvent->data.mouse_button.y 			= y;
 	pInputEvent->data.mouse_button.buttonType 	= mouseButtonType;
 	pInputEvent->data.mouse_button.actionType	= K15_GUI_ACTION_BUTTON_UP;
-#endif
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_result kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keyboard_key_type buttonType)
 {
-
-#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_input_queue* pInputQueue = pContext->pInputQueue;
+	kg_input_queue* pInputQueue = &pContext->inputQueue;
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_KEY_PRESSED);
 	
@@ -2274,20 +2282,18 @@ kg_result kg_add_input_key_button_down(kg_context_handle contextHandle, kg_keybo
 	}
 
 	pInputEvent->data.keyboard_button.key = buttonType;
-#endif
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_result kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboard_key_type buttonType)
 {
-#if 0
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
 		return K15_GUI_RESULT_INVALID_ARGUMENTS;
 	}
 	kg_context* 	pContext 	= (kg_context*)contextHandle.value;
-	kg_input_queue* pInputQueue = pContext->pInputQueue;
+	kg_input_queue* pInputQueue = &pContext->inputQueue;
 
 	kg_input_event* pInputEvent = kg_allocate_input_event(pInputQueue, K15_GUI_INPUT_TYPE_KEY_RELEASED);
 	
@@ -2297,7 +2303,6 @@ kg_result kg_add_input_key_button_up(kg_context_handle contextHandle, kg_keyboar
 	}
 
 	pInputEvent->data.keyboard_button.key = buttonType;
-#endif
 
 	return K15_GUI_RESULT_SUCCESS;
 }
@@ -2458,8 +2463,6 @@ const kg_vertex_definition*	kg_get_vertex_definition()
 	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_float2);
 	vertexDefinition.attributes[2].size 		= 2;
 	
-	
-
 	return &vertexDefinition;
 }
 
