@@ -1375,7 +1375,7 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 
 }
 
-kg_internal void kg_process_mouse_input(kg_context* pContext, const kg_input_event* pInputEvent)
+kg_internal void kg_process_mouse_movement(kg_context* pContext, const kg_input_event* pInputEvent)
 {
 
 }
@@ -1390,11 +1390,6 @@ kg_internal void kg_process_gamepad_input(kg_context* pContext, const kg_input_e
 	
 }
 
-kg_internal void kg_process_input_event(kg_context* pContext, const kg_input_event* pInputEvent)
-{
-
-}
-
 kg_internal void kg_process_input_events(kg_context* pContext)
 {
 	kg_input_queue* pInputQueue = &pContext->inputQueue;
@@ -1402,7 +1397,15 @@ kg_internal void kg_process_input_events(kg_context* pContext)
 
 	while (pInputEvent != kg_nullptr)
 	{
-		kg_process_input_event(pContext, pInputEvent);
+		switch(pInputEvent->type)
+		{
+			case K15_GUI_INPUT_TYPE_MOUSE_MOVE:
+				kg_process_mouse_movement(pContext, pInputEvent);
+				break;
+
+			default:
+				break;
+		}
 		pInputEvent = (const kg_input_event*)pInputEvent->pNext;
 	}
 
