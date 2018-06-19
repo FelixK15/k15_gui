@@ -595,7 +595,7 @@ void drawGUI()
 	}
 
 	float mat[16];
-	kg_calculate_row_major_projection_matrix(mat, screenWidth, screenHeight);
+	kg_calculate_row_major_projection_matrix(mat, screenWidth, screenHeight, K15_GUI_MATRIX_INVERT_Y_AXIS_FLAG);
 
 	GLint projectionLocation = kglGetUniformLocation(shaderProgram, "projection");
 	K15_GL(glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, mat));

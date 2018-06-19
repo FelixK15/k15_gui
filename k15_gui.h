@@ -65,6 +65,11 @@ typedef enum
 	K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG			= 0x4
 } kg_context_flags;
 /*********************************************************************************/
+typedef enum
+{
+	K15_GUI_MATRIX_INVERT_Y_AXIS_FLAG = 0x1
+} kg_matrix_flags;
+/*********************************************************************************/
 typedef enum 
 {
 	K15_GUI_INPUT_TYPE_MOUSE_BUTTON_PRESSED = 0,
@@ -452,8 +457,8 @@ kg_def kg_result					kg_add_input_key_button_up(kg_context_handle contextHandle,
 
 //*****************UTIL******************//
 kg_def const char*					kg_result_to_string(kg_result p_Result);
-kg_def void 						kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight);
-kg_def void 						kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight);
+kg_def void 						kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def void 						kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
 kg_def kg_bool 						kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
 kg_def kg_buffer					kg_create_buffer(void* pMemory, size_t memorySizeInBytes);
 
@@ -2047,7 +2052,7 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 
 	pWindow->flags			= K15_GUI_WINDOW_FLAG_IS_OPEN;
 	//pWindow->rect.position 	= kg_float2_zero();
-	pWindow->rect.position 	= kg_create_float2(200.f, 200.f);
+	pWindow->rect.position 	= kg_create_float2(10.f, 10.f);
 	pWindow->rect.size		= kg_create_float2(150.f, 150.f);
 
 	kg_push_window(pContext, pWindow);
@@ -2320,7 +2325,7 @@ const char* kg_result_to_string(kg_result result)
 	return "";
 }
 
-void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight)
+void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight, unsigned int flags)
 {
 	// m0  m1  m2  m3
 	// m4  m5  m6  m7
@@ -2335,25 +2340,31 @@ void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth
 	const float w = 1.f / (float)screenWidth;
 	const float h = 1.f / (float)screenHeight;
 
-	pMatrix[ 0] = (2.f * w) * 0.5f;
+	pMatrix[ 0] = (2.f * w);
 	pMatrix[ 1] = 0.f;
 	pMatrix[ 2] = 0.f;
 	pMatrix[ 3] = 0.f;
 	pMatrix[ 4] = 0.f;
-	pMatrix[ 5] = (2.f * h) * 0.5f;
+	pMatrix[ 5] = (2.f * h);
 	pMatrix[ 6] = 0.f;
-	pMatrix[ 7] = 1.f;
+	pMatrix[ 7] = 0.f;
 	pMatrix[ 8] = 0.f;
 	pMatrix[ 9] = 0.f;
 	pMatrix[10] = 1.f;
 	pMatrix[11] = 0.f;
-	pMatrix[12] = 1.f;
-	pMatrix[13] = 1.f;
-	pMatrix[14] = 1.f;
+	pMatrix[12] = -1.f;
+	pMatrix[13] = -1.f;
+	pMatrix[14] = 0.f;
 	pMatrix[15] = 1.f;
+
+	if ((flags & K15_GUI_MATRIX_INVERT_Y_AXIS_FLAG) > 0)
+	{
+		pMatrix[ 5] = -(2.f * h);
+		pMatrix[13] = 1.f;
+	}
 }
 
-void kg_calculate_row_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight)
+void kg_calculate_row_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight, unsigned int flags)
 {
 	// m0  m1  m2  m3
 	// m4  m5  m6  m7
@@ -2368,22 +2379,28 @@ void kg_calculate_row_major_projection_matrix(float* pMatrix, int screenWidth, i
 	const float w = 1.f / (float)screenWidth;
 	const float h = 1.f / (float)screenHeight;
 
-	pMatrix[ 0] = w*0.5f;
+	pMatrix[ 0] = (2.f * w);
 	pMatrix[ 1] = 0.f;
 	pMatrix[ 2] = 0.f;
-	pMatrix[ 3] = 1.f;
+	pMatrix[ 3] = -1.f;
 	pMatrix[ 4] = 0.f;
-	pMatrix[ 5] = h*0.5f;
+	pMatrix[ 5] = (2.f * h);
 	pMatrix[ 6] = 0.f;
-	pMatrix[ 7] = 1.f;
+	pMatrix[ 7] = -1.f;
 	pMatrix[ 8] = 0.f;
 	pMatrix[ 9] = 0.f;
 	pMatrix[10] = 1.f;
-	pMatrix[11] = 1.f;
-	pMatrix[12] = 1.f;
-	pMatrix[13] = 1.f;
-	pMatrix[14] = 1.f;
+	pMatrix[11] = 0.f;
+	pMatrix[12] = 0.f;
+	pMatrix[13] = 0.f;
+	pMatrix[14] = 0.f;
 	pMatrix[15] = 1.f;
+
+	if ((flags & K15_GUI_MATRIX_INVERT_Y_AXIS_FLAG) > 0)
+	{
+		pMatrix[5] = -(2.f * h);
+		pMatrix[7] = 1.f;
+	}
 }
 
 kg_bool kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError)
