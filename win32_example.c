@@ -503,9 +503,9 @@ void setup(HWND p_HWND)
 
 	const char* pVertexShader = ""
 	"#version 410\n"
-	"in vec4 positionIn;\n"
-	"in vec4 colorIn;\n"
-	"in vec2 texCoordsIn;\n"
+	"layout(location=0) in vec4 positionIn;\n"
+	"layout(location=1) in vec4 colorIn;\n"
+	"layout(location=2) in vec2 texCoordsIn;\n"
 	""
 	"out vec2 texCoords;\n"
 	"out vec4 color;\n"
