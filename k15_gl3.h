@@ -548,6 +548,19 @@ PFNGLMAPNAMEDBUFFERRANGEPROC			kglMapNamedBufferRange;
 PFNGLUNMAPNAMEDBUFFERPROC				kglUnmapNamedBuffer;
 /*********************************************************************************/
 
+void K15_GLResetState()
+{
+	K15_GL(glEnable(GL_DEPTH_TEST));
+	K15_GL(glEnable(GL_BLEND));
+	K15_GL(glEnable(GL_SCISSOR_TEST));
+	K15_GL(glEnable(GL_STENCIL_TEST));
+	K15_GL(glEnable(GL_CULL_FACE));
+	K15_GL(glCullFace(GL_BACK));
+	K15_GL(glPolygonMode(GL_FRONT_AND_BACK, GL_FILL));
+	K15_GL(glFrontFace(GL_CCW));
+	K15_GL(glClearColor(0.f, 0.f, 0.f, 1.f));
+}
+
 void K15_GL3RegisterGLFunctions()
 {
 	K15_GL3_CHECK_ASSIGNMENT(kglGetStringi, kglGetProcAddress("glGetStringi"));

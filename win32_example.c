@@ -364,8 +364,6 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
 		p_Width, p_Height, 0, 0, p_Instance, 0);
 
-	K15_GL3RegisterWGLFunctions(hwnd);
-
 	if (hwnd == INVALID_HANDLE_VALUE)
 		MessageBox(0, "Error creating Window.\n", "Error!", 0);
 	else
@@ -373,6 +371,11 @@ HWND setupWindow(HINSTANCE p_Instance, int p_Width, int p_Height)
 		allocateDebugConsole();
 		ShowWindow(hwnd, SW_SHOW);
 	}
+
+	K15_GL3RegisterWGLFunctions(hwnd);
+	K15_GLResetState();
+	
+
 	return hwnd;
 }
 
