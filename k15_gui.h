@@ -1652,7 +1652,7 @@ kg_internal void kg_set_vertex_3d(kg_render_vertices* pVertices, kg_u32 vertexIn
 
 kg_internal void kg_set_vertex_2d(kg_render_vertices* pVertices, kg_u32 vertexIndex, float x, float y, float u, float v, kg_color32 color)
 {
-	kg_set_vertex_3d(pVertices, vertexIndex, x, y, 1.f, 1.f, u, v, color);
+	kg_set_vertex_3d(pVertices, vertexIndex, x, y, 0.f, 1.f, u, v, color);
 }
 
 kg_internal void kg_add_render_geometry(kg_context* pContext, kg_render_vertices* pVertices)
@@ -1707,12 +1707,12 @@ kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_rect rect,
 		return result;
 	}
 
-	kg_set_vertex_2d(&vertices, 0, rect.position.x, 				rect.position.y, 				0.f, 0.f, color);	
-	kg_set_vertex_2d(&vertices, 1, rect.position.x + rect.size.x, 	rect.position.y, 				0.f, 0.f, color);	
-	kg_set_vertex_2d(&vertices, 2, rect.position.x, 				rect.position.y + rect.size.y, 	0.f, 0.f, color);	
-	kg_set_vertex_2d(&vertices, 3, rect.position.x, 				rect.position.y + rect.size.y, 	0.f, 0.f, color);	
-	kg_set_vertex_2d(&vertices, 4, rect.position.x + rect.size.x, 	rect.position.y, 				0.f, 0.f, color);	
-	kg_set_vertex_2d(&vertices, 5, rect.position.x + rect.size.x, 	rect.position.y + rect.size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 0, rect.position.x, 				rect.position.y + rect.size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 1, rect.position.x + rect.size.x, 	rect.position.y + rect.size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 2, rect.position.x, 				rect.position.y , 				0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 3, rect.position.x, 				rect.position.y , 				0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 4, rect.position.x + rect.size.x, 	rect.position.y + rect.size.y, 	0.f, 0.f, color);	
+	kg_set_vertex_2d(&vertices, 5, rect.position.x + rect.size.x, 	rect.position.y, 				0.f, 0.f, color);	
 
 	return K15_GUI_RESULT_SUCCESS;
 }
