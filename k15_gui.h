@@ -15,6 +15,10 @@
 # define kg_false 0
 #endif
 
+#ifndef K15_GUI_DEFAULT_BUCKET_COUNT
+# define K15_GUI_DEFAULT_BUCKET_COUNT 128u
+#endif
+
 typedef unsigned long long 	kg_u64;
 typedef unsigned int 		kg_u32;
 typedef unsigned short 		kg_u16;
@@ -231,14 +235,6 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	void*	pData;
-	kg_u32 	elementSizeInBytes;
-	kg_u32 	capacity;
-	kg_u32 	size;
-} kg_fixed_array;
-/*********************************************************************************/
-typedef struct
-{
 #ifdef K15_GUI_STORE_IDENTIFIER_STRING
 	const char* pIdentifier;
 #endif
@@ -258,25 +254,27 @@ typedef struct
 	kg_float4		border;
 } kg_element;
 /*********************************************************************************/
-typedef struct 
-{
-	kg_element	element;
-	void* 		pNext;
-	kg_crc32 	key;
-} kg_hash_map_bucket;
-/*********************************************************************************/
-typedef struct
-{
-	kg_fixed_array		bucketArray;
-	kg_u32 				size;
-} kg_hash_map;
-/*********************************************************************************/
 typedef struct
 {
 	void*	pMemory;
 	size_t	memorySizeInBytes;
 	size_t 	allocPosition;
 } kg_linear_allocator;
+/*********************************************************************************/
+typedef struct 
+{
+	void*		pElement;
+	void* 		pNext;
+	kg_crc32 	key;
+} kg_hash_map_bucket;
+/*********************************************************************************/
+typedef struct
+{
+	kg_linear_allocator*	pAllocator;
+	kg_hash_map_bucket*		buckets[K15_GUI_DEFAULT_BUCKET_COUNT];
+	kg_u32 					size;
+	size_t					elementSizeInBytes;
+} kg_hash_map;
 /*********************************************************************************/
 typedef struct 
 {
@@ -369,6 +367,8 @@ typedef struct
 {
 	char					fourCC[4];
 	kg_linear_allocator		allocator;
+	kg_linear_allocator		frameAllocators[2];
+	kg_hash_map				windows[2];
 	kg_hash_map				elements;
 	kg_input_system			inputSystem;
 	kg_viewport				viewport;
@@ -376,6 +376,7 @@ typedef struct
 	kg_render_context		renderContext;
 	kg_window*				pFirstWindow;
 	size_t					allocatorFrameDataPosition;
+	kg_u32					windowZIndex;
 	kg_u32 					frameCounter;
 	kg_u32					flags;
 } kg_context;
@@ -449,7 +450,7 @@ kg_def kg_result					kg_get_viewport(kg_context_handle contextHandle, kg_viewpor
 //*****************CONTROLS******************//
 kg_def kg_result 					kg_begin_frame(kg_context_handle contextHandle);
 kg_def void 						kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier);
-kg_def kg_bool 						kg_begin_window(kg_context_handle contextHandle, const char* pTextID);
+kg_def kg_bool 						kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
 kg_def kg_bool  					kg_begin_menu(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
 kg_def kg_bool 						kg_button(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
 kg_def void							kg_label(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier);
@@ -921,6 +922,16 @@ kg_internal kg_bool kg_is_invalid_linear_allocator(const kg_linear_allocator* pA
 	return kg_false;
 }
 
+kg_internal const kg_hash_map* kg_get_window_hash_map_from_last_frame(const kg_context* pContext)
+{
+	return &pContext->windows[pContext->frameCounter % 2 ? 1 : 0];
+}
+
+kg_internal kg_hash_map* kg_get_window_hash_map_from_current_frame(kg_context* pContext)
+{
+	return &pContext->windows[pContext->frameCounter % 2 ? 0 : 1];
+}
+
 kg_internal kg_result kg_create_linear_allocator(kg_linear_allocator* pOutAllocator, void* pMemory, size_t memorySizeInBytes)
 {
 	if (pOutAllocator == kg_nullptr)
@@ -961,6 +972,11 @@ kg_internal kg_result kg_reset_linear_allocator(kg_linear_allocator* pAllocator,
 	return K15_GUI_RESULT_SUCCESS;
 }
 
+kg_internal void kg_vacuum_linear_allocator(kg_linear_allocator* pAllocator)
+{
+	pAllocator->memorySizeInBytes = pAllocator->allocPosition;
+}
+
 kg_internal size_t kg_get_linear_allocator_position(const kg_linear_allocator* pAllocator)
 {
 	return pAllocator->allocPosition;
@@ -989,32 +1005,8 @@ kg_internal kg_result kg_allocate_from_linear_allocator(void** pOutPointer, kg_l
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_internal kg_result kg_create_fixed_array(kg_fixed_array* pOutArray, kg_linear_allocator* pAllocator, kg_u32 capacity, size_t elementSizeInBytes)
-{
-	if (kg_is_invalid_linear_allocator(pAllocator))
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	const size_t totalArraySizeInBytes = capacity * elementSizeInBytes;
-
-	void* pArrayData = kg_nullptr;
-	kg_result result = kg_allocate_from_linear_allocator(&pArrayData, pAllocator, totalArraySizeInBytes);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		return result;
-	}
-
-	pOutArray->size 				= 0u;
-	pOutArray->capacity 			= capacity;
-	pOutArray->elementSizeInBytes 	= elementSizeInBytes;
-	pOutArray->pData				= pArrayData;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
 kg_internal kg_result kg_create_input_system(kg_input_system* pOutinputSystem, kg_linear_allocator* pAllocator)
+
 {
 	if (kg_is_invalid_linear_allocator(pAllocator))
 	{
@@ -1125,97 +1117,114 @@ kg_internal kg_u32 kg_get_index_data_type_size_in_bytes(kg_index_data_type index
 
 kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
 {
-	if (kg_is_invalid_linear_allocator(pAllocator))
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	const kg_u32 bucketArrayLength = 256u;
-
-	kg_fixed_array bucketArray;
-	kg_result result = kg_create_fixed_array(&bucketArray, pAllocator, bucketArrayLength, kg_ptr_size_in_bytes);
-
-	if (result != K15_GUI_RESULT_SUCCESS)	
-	{
-		return result;
-	}
-
-	pOutHashMap->size 			= 0u;
-	pOutHashMap->bucketArray 	= bucketArray;
+	pOutHashMap->pAllocator 		= pAllocator;
+	pOutHashMap->size 				= 0u;
+	pOutHashMap->elementSizeInBytes = elementSizeInBytes;
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_internal kg_hash_map_bucket* kg_allocate_bucket(kg_hash_map* pHashMap, kg_crc32 identifier)
+kg_internal kg_hash_map_bucket* kg_allocate_hash_map_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier)
 {
-	#if 0
-	kg_buffer* pBucketBuffer = &pHashMap->bucketBuffer;
-
-	const kg_data_handle* pBucketHandle = kg_allocate_from_buffer(pBucketBuffer, sizeof(kg_hash_map_bucket));
-
-	if (kg_is_invalid_data_handle(pBucketHandle))
-	{
-		return kg_nullptr;
-	}
-
-	kg_hash_map_bucket* pBucket = (kg_hash_map_bucket*)kg_get_memory_from_buffer(pBucketBuffer, pBucketHandle);
-	pBucket->key = identifier;
-	return pBucket;
-	#endif
-
-	return kg_nullptr;
-}
-
-kg_internal kg_hash_map_bucket* kg_find_hash_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier, kg_bool* pOutIsNew)
-{
-	#if 0
 	if (pHashMap == kg_nullptr)
 	{
 		return kg_nullptr;
 	}
 
-	kg_hash_map_bucket* pBucket = pHashMap->pBuckets[ bucketIndex ];
+	kg_hash_map_bucket* pBucket = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pBucket, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
 
-	while (pBucket)
+	if (result != K15_GUI_RESULT_SUCCESS)
 	{
-		if (pBucket->key == identifier)
-		{
-			break;
-		}
-
-		pBucket = pBucket->pNext;
+		return kg_nullptr;
 	}
 
-	return pBucket;
-	#endif
+	pBucket->key = identifier;	
 
-	return kg_nullptr;
+	if (pHashMap->buckets[bucketIndex] != kg_nullptr)
+	{
+		pBucket->pNext = pHashMap->buckets[bucketIndex];
+	}
+
+	pHashMap->buckets[bucketIndex] = pBucket;
+
+	return pBucket;
+}
+
+kg_internal const kg_hash_map_bucket* kg_find_hash_bucket(const kg_hash_map_bucket* pBucket, kg_crc32 identifier)
+{
+	if (pBucket == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	if (pBucket->key == identifier)
+	{
+		return pBucket;
+	}
+
+	return kg_find_hash_bucket(pBucket->pNext, identifier);
+}
+
+kg_internal void* kg_find_hash_element(const kg_hash_map* pHashMap, kg_crc32 identifier)
+{
+	if (pHashMap == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	const kg_u32 hashIndex 				= identifier % K15_GUI_DEFAULT_BUCKET_COUNT;
+	const kg_hash_map_bucket* pBucket 	= pHashMap->buckets[hashIndex];
+
+	if (pBucket== kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	pBucket = kg_find_hash_bucket(pBucket, identifier);
+
+	if (pBucket == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	return pBucket->pElement;
 }
 
 kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identifier, kg_bool* pOutIsNew)
 {
-	#if 0
 	if (pHashMap == kg_nullptr)
 	{
 		return kg_nullptr;
 	}
 
-	const kg_u32 hashIndex = identifier % pHashMap->bucketCount;
-	kg_hash_map_bucket* pBucket = pHashMap->pBuckets[hashIndex];
+	const kg_u32 hashIndex 				= identifier % K15_GUI_DEFAULT_BUCKET_COUNT;
+	const kg_hash_map_bucket* pBucket 	= pHashMap->buckets[hashIndex];
 
-	if (pHashMap->pBuckets[hashIndex] != kg_nullptr)
+	if (pBucket != kg_nullptr)
 	{
-		pBucket = kg_find_hash_bucket(pHashMap, hashIndex, identifier, pOutIsNew);
+		pBucket = kg_find_hash_bucket(pBucket, identifier);
+
+		if (pBucket == kg_nullptr)
+		{
+			return kg_nullptr;
+		}
+		else
+		{
+			if (pOutIsNew != kg_nullptr) 
+			{
+				*pOutIsNew = kg_false;
+			}
+
+			return pBucket->pElement;
+		}
 	}
 
-	if (pBucket)
+	pBucket = kg_allocate_hash_map_bucket(pHashMap, hashIndex, identifier);
+	
+	if (pBucket == kg_nullptr)
 	{
-		if (pOutIsNew != kg_nullptr) 
-		{
-			*pOutIsNew = kg_false;
-		}
-
-		return &pBucket->element;
+		return kg_nullptr;
 	}
 
 	if (pOutIsNew != kg_nullptr)
@@ -1223,21 +1232,7 @@ kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identif
 		*pOutIsNew = kg_true;
 	}
 
-	pBucket = kg_allocate_bucket(pHashMap, identifier);
-
-	if( pBucket == kg_nullptr )
-	{
-		return kg_nullptr;
-	}
-
-	pBucket->pNext = pHashMap->pBuckets[hashIndex];
-
-	pHashMap->pBuckets[ hashIndex ] = pBucket;
-
-	return &pBucket->element;
-	#endif 
-
-	return kg_nullptr;
+	return pBucket->pElement;
 }
 
 
@@ -1961,13 +1956,6 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 	pContext->allocator = allocator;
 	pContext->frameCounter = 0u;
 
-	result = kg_create_hash_map(&pContext->elements, &pContext->allocator, sizeof(kg_element));
-	
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		return result;
-	}
-
 	result = kg_create_error_stack(&pContext->errorStack, &pContext->allocator);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
@@ -1989,7 +1977,40 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return result;
 	}
 
-	pContext->allocatorFrameDataPosition = kg_get_linear_allocator_position(&pContext->allocator);
+	const size_t allocatorPosition = kg_get_linear_allocator_position(&pContext->allocator);
+	kg_vacuum_linear_allocator(&pContext->allocator);
+
+	const size_t remainingMemorySizeInBytes = (pParameter->scratchBuffer.memorySizeInBytes - allocatorPosition);
+	const size_t sizePerFrameAllocator 		= remainingMemorySizeInBytes / 2u;
+
+	result = kg_create_linear_allocator(&pContext->frameAllocators[0], (kg_u8*)pParameter->scratchBuffer.pMemory + allocatorPosition, sizePerFrameAllocator);
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	result = kg_create_linear_allocator(&pContext->frameAllocators[1], (kg_u8*)pParameter->scratchBuffer.pMemory + allocatorPosition + sizePerFrameAllocator, sizePerFrameAllocator);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	result = kg_create_hash_map(&pContext->windows[0], &pContext->frameAllocators[0], sizeof(kg_window));
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	result = kg_create_hash_map(&pContext->windows[1], &pContext->frameAllocators[1], sizeof(kg_window));
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
 	pOutHandle->value = (size_t)pContext;
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -2066,7 +2087,7 @@ void kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier)
 	pContext->flags |= K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
 }
 
-kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
+kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
 	{
@@ -2080,7 +2101,22 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID)
 		return kg_false;
 	}
 
-	kg_window* pWindow = kg_nullptr;
+	const kg_crc32 identifier = kg_generate_crc32(pIdentifier);
+	const kg_hash_map* pHashMapLastFrame = kg_get_window_hash_map_from_last_frame(pContext);
+	kg_bool isNew = kg_false;
+
+	kg_window* pWindow = (kg_window*)kg_find_hash_element(pHashMapLastFrame, identifier);
+
+	if (isNew)
+	{
+		pWindow->rect.position 	= kg_create_float2(10.f, 10.f);
+		pWindow->rect.size		= kg_create_float2(150.f, 150.f);
+		pWindow->flags			= K15_GUI_WINDOW_FLAG_IS_OPEN;
+	}
+
+	pWindow->zOrder = pContext->windowZIndex++;
+
+
 	kg_result result = kg_allocate_from_linear_allocator(&pWindow, &pContext->allocator, sizeof(kg_window));
 
 	if (result != K15_GUI_RESULT_SUCCESS)

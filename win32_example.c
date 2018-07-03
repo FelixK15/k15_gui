@@ -72,7 +72,7 @@ void updateGUI()
 {
 	kg_begin_frame(contextHandle);
 
-	if (kg_begin_window(contextHandle, "TestWindow"))
+	if (kg_begin_window(contextHandle, "TestWindow", "TestWindow"))
 	{
 		kg_end_window(contextHandle);
 	}
