@@ -551,12 +551,12 @@ kg_def const kg_color32 kg_color_dark_grey;
 # define kg_memcmp(a, b, si) K15_GUI_MEMCMP(a, b, si)
 #endif //K15_GUI_MEMCMP
 
-#ifndef K15_GUI_VSNPRINTF_S
+#ifndef K15_GUI_FORMAT_STRING
 # include "string.h"
-# define kg_vsnprintf_s(b, c, s, f, a) vsnprintf_s(b, c, s, f, a);
+# define kg_format_string(buffer, bufferSize, format, list) vsnprintf_s(buffer, bufferSize, bufferSize, format, list);
 #else
-# define kg_vsnprintf_s(b, c, s, f, a) K15_GUI_VSNPRINTF_S(b, c, s, f, a)
-#endif K15_GUI_VSNPRINTF_S
+# define kg_vsnprintf_s(buffer, bufferSize, format, list) K15_GUI_FORMAT_STRING(buffer, bufferSize, format, list)
+#endif //K15_GUI_FORMAT_STRING
 
 #ifndef K15_GUI_CLAMP
 # define kg_clamp(v, min, max) ((v)>(max)?(max):(v)<(min)?(min):(v))
@@ -1638,7 +1638,7 @@ kg_internal void kg_render_pass(kg_context* pContext)
 {
 }
 
-kg_internal void kg_push_error_va(kg_context* pContext, kg_result errorResult, const char* pDescription, va_list vaList)
+kg_internal void kg_push_error_va(kg_context* pContext, kg_result errorResult, const char* pFormat, va_list vaList)
 {
 	if (pContext == kg_nullptr)
 	{
@@ -1655,17 +1655,19 @@ kg_internal void kg_push_error_va(kg_context* pContext, kg_result errorResult, c
 		return;
 	}
 
-	char* pFullDescription = kg_nullptr;
-	result = kg_allocate_from_linear_allocator(&pFullDescription, pContext->pAllocator, 256u);
+	char* pBuffer = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pBuffer, pContext->pAllocator, 256u);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return;
 	}
 
-	kg_vsnprintf_s(pFullDescription, 1u, 256u, pDescription, vaList);
+	va_start(vaList, pFormat);
+	kg_format_string(pBuffer, 256u, pFormat, vaList);
+	va_end(vaList);
 
-	pError->pDescription 	= pFullDescription;
+	pError->pDescription 	= pBuffer;
 	pError->result			= errorResult;
 
 	if (pErrorStack->pFirstError == kg_nullptr)
