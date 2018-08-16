@@ -45,20 +45,21 @@ typedef enum
 	K15_GUI_RESULT_NOT_SUPPORTED 						= 3,
 	K15_GUI_RESULT_FILE_NOT_FOUND 						= 4,
 	K15_GUI_RESULT_ARRAY_EMPTY							= 5,
-	K15_GUI_RESULT_INVALID_ARGUMENTS 					= 6,
-	K15_GUI_RESULT_OUT_OF_BOUNDS 						= 7,
-	K15_GUI_RESULT_NAME_ALREADY_IN_USE 					= 8,
-	K15_GUI_RESULT_RESOURCE_NOT_FOUND 					= 9,
-	K15_GUI_RESULT_IMAGE_DATA_ERROR 					= 10,
-	K15_GUI_RESULT_FILE_FORMAT_NOT_SUPPORTED 			= 11,
-	K15_GUI_RESULT_TOO_MANY_ICONS 						= 12,
-	K15_GUI_RESULT_NO_ICONS 							= 13,
-	K15_GUI_RESULT_HASH_CONFLICT 						= 14,
-	K15_GUI_RESULT_ELEMENT_NOT_FINISHED 				= 15,
-	K15_GUI_RESULT_ELEMENT_NOT_STARTED 					= 16,
-	K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER 			= 17,
-	K15_GUI_RESULT_INVALID_RENDER_CONTEXT_PARAMETER 	= 18,
-	K15_GUI_RESULT_NEED_MORE_MEMORY			 			= 19,
+	K15_GUI_RESULT_ARRAY_FULL							= 6,
+	K15_GUI_RESULT_INVALID_ARGUMENTS 					= 7,
+	K15_GUI_RESULT_OUT_OF_BOUNDS 						= 8,
+	K15_GUI_RESULT_NAME_ALREADY_IN_USE 					= 9,
+	K15_GUI_RESULT_RESOURCE_NOT_FOUND 					= 10,
+	K15_GUI_RESULT_IMAGE_DATA_ERROR 					= 11,
+	K15_GUI_RESULT_FILE_FORMAT_NOT_SUPPORTED 			= 12,
+	K15_GUI_RESULT_TOO_MANY_ICONS 						= 13,
+	K15_GUI_RESULT_NO_ICONS 							= 14,
+	K15_GUI_RESULT_HASH_CONFLICT 						= 15,
+	K15_GUI_RESULT_ELEMENT_NOT_FINISHED 				= 16,
+	K15_GUI_RESULT_ELEMENT_NOT_STARTED 					= 17,
+	K15_GUI_RESULT_INVALID_CONTEXT_PARAMETER 			= 18,
+	K15_GUI_RESULT_INVALID_RENDER_CONTEXT_PARAMETER 	= 19,
+	K15_GUI_RESULT_NEED_MORE_MEMORY			 			= 20,
 	K15_GUI_RESULT_UNKNOWN_ERROR 
 } kg_result;
 /*********************************************************************************/
@@ -186,7 +187,8 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
-	K15_GUI_MAX_RENDER_BUFFER_COUNT = 4u
+	K15_GUI_MAX_RENDER_BUFFER_COUNT = 4u,
+	K15_GUI_WINDOW_STACK_SIZE		= 64u
 } kg_array_sizes;
 /*********************************************************************************/
 
@@ -235,23 +237,21 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
+	size_t 	sizeInBytes;
+	void* 	pNext;
+	kg_u32	componentId;
+} kg_element_component_header;
+/*********************************************************************************/
+typedef struct
+{
 #ifdef K15_GUI_STORE_IDENTIFIER_STRING
 	const char* pIdentifier;
 #endif
-	
-	void*			componentHandles[K15_GUI_COMPONENT_COUNT];
-	kg_layout_type	layout;
-	kg_u32 			frameUseCounter;
-	kg_crc32 		identifier;
-	kg_float2		position;
-	kg_float2		size;
-	kg_float2		minSize;
-	kg_float2		maxSize;
-	kg_float2		prefSize;
-	kg_float2		offset;
-	kg_float4		margin;
-	kg_float4		padding;
-	kg_float4		border;
+	kg_element_component_header* 	pFirstComponent;			
+	kg_layout_type					layout;
+	kg_crc32 						identifier;
+	kg_float2						position;
+	kg_float2						size;
 } kg_element;
 /*********************************************************************************/
 typedef struct
@@ -272,7 +272,6 @@ typedef struct
 {
 	kg_linear_allocator*	pAllocator;
 	kg_hash_map_bucket*		buckets[K15_GUI_DEFAULT_BUCKET_COUNT];
-	kg_u32 					size;
 	size_t					elementSizeInBytes;
 } kg_hash_map;
 /*********************************************************************************/
@@ -297,10 +296,11 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_rect rect;
-	void* 	pNext;
-	kg_u32 	zOrder;
-	kg_u32 	flags;
+	void*		pNext;
+	kg_float2 	position;
+	kg_float2 	size;
+	kg_u32 		zOrder;
+	kg_u32 		flags;
 } kg_window;
 /*********************************************************************************/
 typedef struct
@@ -338,8 +338,8 @@ typedef struct
 {
 	kg_linear_allocator		allocator;
 	kg_input_event* 		pFirstEvent;
-	kg_window*				pActiveWindow;
-	kg_window*				pHotWindow;
+	kg_element*				pActiveElement;
+	kg_element*				pHotElement;
 } kg_input_system;
 /*********************************************************************************/
 typedef struct 
@@ -366,16 +366,19 @@ typedef struct
 typedef struct 
 {
 	char					fourCC[4];
-	kg_linear_allocator		allocator;
 	kg_linear_allocator		frameAllocators[2];
+	kg_hash_map				elements[2];
 	kg_hash_map				windows[2];
-	kg_hash_map				elements;
 	kg_input_system			inputSystem;
 	kg_viewport				viewport;
 	kg_error_stack	 		errorStack;
 	kg_render_context		renderContext;
+	kg_linear_allocator*	pAllocator;
+	kg_hash_map*			pWindowHashMap;
+	kg_hash_map*			pElementHashMap;
 	kg_window*				pFirstWindow;
 	size_t					allocatorFrameDataPosition;
+	kg_u32					currentWindowStackIndex;
 	kg_u32					windowZIndex;
 	kg_u32 					frameCounter;
 	kg_u32					flags;
@@ -548,6 +551,13 @@ kg_def const kg_color32 kg_color_dark_grey;
 # define kg_memcmp(a, b, si) K15_GUI_MEMCMP(a, b, si)
 #endif //K15_GUI_MEMCMP
 
+#ifndef K15_GUI_VSNPRINTF_S
+# include "string.h"
+# define kg_vsnprintf_s(b, c, s, f, a) vsnprintf_s(b, c, s, f, a);
+#else
+# define kg_vsnprintf_s(b, c, s, f, a) K15_GUI_VSNPRINTF_S(b, c, s, f, a)
+#endif K15_GUI_VSNPRINTF_S
+
 #ifndef K15_GUI_CLAMP
 # define kg_clamp(v, min, max) ((v)>(max)?(max):(v)<(min)?(min):(v))
 #else
@@ -600,15 +610,6 @@ typedef enum
 	K15_GUI_WINDOW_FLAG_MINIMIZE_BUTTON_CLICKED = 0x010,
 	K15_GUI_WINDOW_FLAG_CLOSE_BUTTON_CLICKED	= 0x020
 } kg_window_flag;
-
-typedef struct
-{
-	kg_u32			flags;
-	kg_float2		originalSize;
-	kg_float2		originalPosition;
-	const kg_utf8* 	pText;
-} kg_window_component;
-
 /*********************************************************************************/
 typedef struct
 {
@@ -922,14 +923,29 @@ kg_internal kg_bool kg_is_invalid_linear_allocator(const kg_linear_allocator* pA
 	return kg_false;
 }
 
-kg_internal const kg_hash_map* kg_get_window_hash_map_from_last_frame(const kg_context* pContext)
+kg_internal kg_linear_allocator* kg_get_frame_allocator_from_current_frame(kg_context* pContext)
 {
-	return &pContext->windows[pContext->frameCounter % 2 ? 1 : 0];
+	return &pContext->frameAllocators[pContext->frameCounter % 2 == 0 ? 0 : 1];
+}
+
+kg_internal kg_hash_map* kg_get_element_hash_map_from_current_frame(kg_context* pContext)
+{
+	return &pContext->elements[pContext->frameCounter % 2  == 0 ? 0 : 1];
 }
 
 kg_internal kg_hash_map* kg_get_window_hash_map_from_current_frame(kg_context* pContext)
 {
-	return &pContext->windows[pContext->frameCounter % 2 ? 0 : 1];
+	return &pContext->windows[pContext->frameCounter % 2  == 0 ? 0 : 1];
+}
+
+kg_internal const kg_hash_map* kg_get_element_hash_map_from_last_frame(const kg_context* pContext)
+{
+	return &pContext->elements[pContext->frameCounter % 2  != 0 ? 0 : 1];
+}
+
+kg_internal const kg_hash_map* kg_get_window_hash_map_from_last_frame(const kg_context* pContext)
+{
+	return &pContext->windows[pContext->frameCounter % 2  != 0 ? 0 : 1];
 }
 
 kg_internal kg_result kg_create_linear_allocator(kg_linear_allocator* pOutAllocator, void* pMemory, size_t memorySizeInBytes)
@@ -970,11 +986,6 @@ kg_internal kg_result kg_reset_linear_allocator(kg_linear_allocator* pAllocator,
 	pAllocator->allocPosition = position;
 
 	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal void kg_vacuum_linear_allocator(kg_linear_allocator* pAllocator)
-{
-	pAllocator->memorySizeInBytes = pAllocator->allocPosition;
 }
 
 kg_internal size_t kg_get_linear_allocator_position(const kg_linear_allocator* pAllocator)
@@ -1040,8 +1051,8 @@ kg_internal kg_result kg_create_input_system(kg_input_system* pOutinputSystem, k
 	kg_input_system inputSystem;
 	inputSystem.pFirstEvent 	= kg_nullptr;
 	inputSystem.allocator 		= allocator;
-	inputSystem.pHotWindow		= kg_nullptr;
-	inputSystem.pActiveWindow	= kg_nullptr;
+	inputSystem.pHotElement		= kg_nullptr;
+	inputSystem.pActiveElement	= kg_nullptr;
 	*pOutinputSystem = inputSystem;
 
 	return K15_GUI_RESULT_SUCCESS;
@@ -1118,10 +1129,17 @@ kg_internal kg_u32 kg_get_index_data_type_size_in_bytes(kg_index_data_type index
 kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
 {
 	pOutHashMap->pAllocator 		= pAllocator;
-	pOutHashMap->size 				= 0u;
 	pOutHashMap->elementSizeInBytes = elementSizeInBytes;
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+
+kg_internal void kg_reset_hash_map(kg_hash_map* pHashMap)
+{
+	for (kg_u32 bucketIndex = 0u; bucketIndex < K15_GUI_DEFAULT_BUCKET_COUNT; ++bucketIndex)
+	{
+		pHashMap->buckets[bucketIndex] = kg_nullptr;
+	}
 }
 
 kg_internal kg_hash_map_bucket* kg_allocate_hash_map_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier)
@@ -1133,6 +1151,13 @@ kg_internal kg_hash_map_bucket* kg_allocate_hash_map_bucket(kg_hash_map* pHashMa
 
 	kg_hash_map_bucket* pBucket = kg_nullptr;
 	kg_result result = kg_allocate_from_linear_allocator(&pBucket, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return kg_nullptr;
+	}
+
+	result = kg_allocate_from_linear_allocator(&pBucket->pElement, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -1211,11 +1236,7 @@ kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identif
 		}
 		else
 		{
-			if (pOutIsNew != kg_nullptr) 
-			{
-				*pOutIsNew = kg_false;
-			}
-
+			*pOutIsNew = kg_false;
 			return pBucket->pElement;
 		}
 	}
@@ -1227,10 +1248,7 @@ kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identif
 		return kg_nullptr;
 	}
 
-	if (pOutIsNew != kg_nullptr)
-	{
-		*pOutIsNew = kg_true;
-	}
+	*pOutIsNew = kg_true;
 
 	return pBucket->pElement;
 }
@@ -1320,7 +1338,8 @@ kg_internal kg_crc32 kg_generate_crc32(const char* pIdentifier)
 
 kg_internal kg_bool kg_element_has_component(kg_element* pElement, kg_component_type componentType)
 {
-	return pElement->componentHandles[componentType] != kg_nullptr;
+	return kg_false;
+	//return pElement->componentHandles[componentType] != kg_nullptr;
 }
 
 kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pIdentifier)
@@ -1386,9 +1405,10 @@ kg_internal void kg_process_mouse_movement(kg_context* pContext, const kg_input_
 	const kg_window* pHotWindow 	= kg_nullptr;
 	const kg_window* pWindow 		= pContext->pFirstWindow;
 	const kg_float2 mousePosition 	= kg_create_float2((float)pInputEvent->data.mouse_move.x, (float)pInputEvent->data.mouse_move.y);
-	while(pWindow)
+	
+	while( pWindow )
 	{
-		if (mousePosition.x > pWindow->rect.position.x && mousePosition.x < pWindow->rect.position.x + pWindow->rect.size.x && mousePosition.y > pWindow->rect.position.y && mousePosition.y < pWindow->rect.position.y + pWindow->rect.size.y)
+		if (mousePosition.x > pWindow->position.x && mousePosition.x < pWindow->position.x + pWindow->size.x && mousePosition.y > pWindow->position.y && mousePosition.y < pWindow->position.y + pWindow->size.y)
 		{
 			pHotWindow = pWindow;
 		}
@@ -1434,8 +1454,8 @@ kg_internal kg_float2 kg_calculate_element_layout_start_position(kg_element* pEl
 {
 	kg_float2 position = pElement->position;
 
-	position.x += pElement->padding.x;
-	position.y += pElement->padding.y;
+	//position.x += pElement->padding.x;
+	//position.y += pElement->padding.y;
 
 	return position;
 }
@@ -1444,12 +1464,12 @@ kg_internal kg_layout_state kg_create_layout_state(kg_element* pElement)
 {
 	//FK: Calculate position from where to start layouting.
 	kg_float2 layoutPosition = pElement->position;
-	layoutPosition.x += pElement->padding.x;
-	layoutPosition.y += pElement->padding.y;
+	//layoutPosition.x += pElement->padding.x;
+	//layoutPosition.y += pElement->padding.y;
 
 	kg_float2 layoutSize = pElement->size;
-	layoutSize.x -= (pElement->padding.x + pElement->padding.z);
-	layoutSize.y -= (pElement->padding.y + pElement->padding.w);
+	//layoutSize.x -= (pElement->padding.x + pElement->padding.z);
+	//layoutSize.y -= (pElement->padding.y + pElement->padding.w);
 
 	kg_layout_state layoutState;	
 	layoutState.origin 			= layoutPosition;
@@ -1465,8 +1485,8 @@ kg_internal kg_layout_state kg_create_layout_state(kg_element* pElement)
 kg_internal kg_float2 kg_calculate_element_position(kg_layout_state* pLayoutState, kg_element* pElement)
 {
 	kg_float2 position = pLayoutState->position;
-	position.x += pElement->margin.x;
-	position.y += pElement->margin.y;
+	//position.x += pElement->margin.x;
+	//position.y += pElement->margin.y;
 
 	return position;
 }
@@ -1474,8 +1494,8 @@ kg_internal kg_float2 kg_calculate_element_position(kg_layout_state* pLayoutStat
 kg_internal kg_float2 kg_calculate_element_size_with_margin(kg_element* pElement)
 {
 	kg_float2 size = pElement->size;
-	size.x += (pElement->margin.x + pElement->margin.z);
-	size.y += (pElement->margin.y + pElement->margin.w);
+	//size.x += (pElement->margin.x + pElement->margin.z);
+	//size.y += (pElement->margin.y + pElement->margin.w);
 
 	return size;
 }
@@ -1576,6 +1596,7 @@ kg_internal void kg_layout_horizontal(kg_element* pElement)
 
 kg_internal void kg_layout_pass(kg_element* pElement)
 {
+#if 0
 	const kg_float2 prefSize 	= pElement->prefSize;
 	const kg_float2 maxSize		= pElement->maxSize;
 	const kg_float2 minSize		= pElement->minSize;
@@ -1596,6 +1617,7 @@ kg_internal void kg_layout_pass(kg_element* pElement)
 	{
 		kg_layout_horizontal(pElement);
 	}
+#endif
 }
 
 kg_internal void kg_render_element(kg_context* pContext, kg_element* pElement)
@@ -1616,7 +1638,7 @@ kg_internal void kg_render_pass(kg_context* pContext)
 {
 }
 
-kg_internal void kg_push_error(kg_context* pContext, const char* pDescription, kg_result errorResult)
+kg_internal void kg_push_error_va(kg_context* pContext, kg_result errorResult, const char* pDescription, va_list vaList)
 {
 	if (pContext == kg_nullptr)
 	{
@@ -1633,7 +1655,17 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pDescription, k
 		return;
 	}
 
-	pError->pDescription 	= pDescription;
+	char* pFullDescription = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pFullDescription, pContext->pAllocator, 256u);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return;
+	}
+
+	kg_vsnprintf_s(pFullDescription, 1u, 256u, pDescription, vaList);
+
+	pError->pDescription 	= pFullDescription;
 	pError->result			= errorResult;
 
 	if (pErrorStack->pFirstError == kg_nullptr)
@@ -1646,6 +1678,16 @@ kg_internal void kg_push_error(kg_context* pContext, const char* pDescription, k
 		pError->pNext = pErrorStack->pFirstError;
 		pErrorStack->pFirstError = pError;
 	}
+}
+
+kg_internal void kg_push_error(kg_context* pContext, kg_result errorResult, const char* pDescription, ...)
+{
+	va_list list;
+	va_start(list, pDescription);
+
+	kg_push_error_va(pContext, errorResult, pDescription, list);
+
+	va_end(list);
 }
 
 /******************************RENDER LOGIC***************************************/
@@ -1818,21 +1860,21 @@ kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 ide
 	if (isNew == kg_true)
 	{
 		pElement->size			= kg_float2_zero();
-		pElement->maxSize		= kg_float2_zero();
-		pElement->minSize		= kg_float2_zero();
-		pElement->prefSize		= kg_float2_zero();
+		//pElement->maxSize		= kg_float2_zero();
+		//pElement->minSize		= kg_float2_zero();
+		//pElement->prefSize		= kg_float2_zero();
 		pElement->position		= kg_float2_zero();
-		pElement->offset		= kg_float2_zero();
-		pElement->border		= kg_float4_zero();
-		pElement->margin		= kg_float4_zero();
-		pElement->padding		= kg_float4_zero();
+		//pElement->offset		= kg_float2_zero();
+		//pElement->border		= kg_float4_zero();
+		//pElement->margin		= kg_float4_zero();
+		//pElement->padding		= kg_float4_zero();
 		pElement->layout		= K15_GUI_LAYOUT_VERTICAL;
 		pElement->identifier	= identifier;
 
-		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
-		{
-			pElement->componentHandles[componentIndex] = kg_nullptr;
-		}
+		//for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
+		//{
+		//	pElement->componentHandles[componentIndex] = kg_nullptr;
+		//}
 	}
 
 	return pElement;
@@ -1846,9 +1888,10 @@ kg_internal void kg_push_window(kg_context* pContext, kg_window* pWindow)
 
 kg_internal void kg_reset_context_state(kg_context* pContext)
 {
-	pContext->flags = 0u;
-	pContext->pFirstWindow = kg_nullptr;
-	kg_reset_linear_allocator(&pContext->allocator, pContext->allocatorFrameDataPosition);
+	pContext->pFirstWindow 		= kg_nullptr;
+	pContext->windowZIndex 		= 0u;
+	
+	kg_reset_linear_allocator(pContext->pAllocator, pContext->allocatorFrameDataPosition);
 }
 
 //TODO-LIST:
@@ -1949,21 +1992,14 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return result;
 	}
 
-	pContext->fourCC[0] = 'K';
-	pContext->fourCC[1] = 'G';
-	pContext->fourCC[2] = 'U';
-	pContext->fourCC[3] = 'I';
-	pContext->allocator = allocator;
-	pContext->frameCounter = 0u;
-
-	result = kg_create_error_stack(&pContext->errorStack, &pContext->allocator);
+	result = kg_create_error_stack(&pContext->errorStack, &allocator);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	result = kg_create_input_system(&pContext->inputSystem, &pContext->allocator);
+	result = kg_create_input_system(&pContext->inputSystem, &allocator);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -1977,8 +2013,7 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return result;
 	}
 
-	const size_t allocatorPosition = kg_get_linear_allocator_position(&pContext->allocator);
-	kg_vacuum_linear_allocator(&pContext->allocator);
+	const size_t allocatorPosition = kg_get_linear_allocator_position(&allocator);
 
 	const size_t remainingMemorySizeInBytes = (pParameter->scratchBuffer.memorySizeInBytes - allocatorPosition);
 	const size_t sizePerFrameAllocator 		= remainingMemorySizeInBytes / 2u;
@@ -1997,12 +2032,26 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 		return result;
 	}
 
-	result = kg_create_hash_map(&pContext->windows[0], &pContext->frameAllocators[0], sizeof(kg_window));
+	result = kg_create_hash_map(&pContext->elements[0], &pContext->frameAllocators[0], sizeof(kg_element));
 	
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
+
+	result = kg_create_hash_map(&pContext->elements[1], &pContext->frameAllocators[1], sizeof(kg_element));
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	result = kg_create_hash_map(&pContext->windows[0], &pContext->frameAllocators[0], sizeof(kg_window));
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}	
 
 	result = kg_create_hash_map(&pContext->windows[1], &pContext->frameAllocators[1], sizeof(kg_window));
 	
@@ -2010,6 +2059,17 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 	{
 		return result;
 	}
+
+	pContext->fourCC[0] 		= 'K';
+	pContext->fourCC[1] 		= 'G';
+	pContext->fourCC[2] 		= 'U';
+	pContext->fourCC[3] 		= 'I';
+	pContext->frameCounter 		= 0u;
+	pContext->windowZIndex 		= 0u;
+	pContext->pAllocator 		= &pContext->frameAllocators[0];
+	pContext->pElementHashMap 	= &pContext->elements[0];
+	pContext->pWindowHashMap 	= &pContext->windows[0];
+	pContext->pFirstWindow		= kg_nullptr;
 
 	pOutHandle->value = (size_t)pContext;
 
@@ -2059,6 +2119,7 @@ kg_result kg_begin_frame(kg_context_handle contextHandle)
 
 	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) > 0)
 	{
+		kg_push_error(pContext, K15_GUI_RESULT_ELEMENT_NOT_FINISHED, "[frame] called kg_begin_frame without calling kg_end_frame first." );
 		return K15_GUI_RESULT_ELEMENT_NOT_FINISHED;
 	}
 
@@ -2087,6 +2148,74 @@ void kg_begin_toolbar(kg_context_handle contextHandle, const char* p_Identifier)
 	pContext->flags |= K15_GUI_CONTEXT_INSIDE_TOOLBAR_FLAG;
 }
 
+kg_internal void* kg_allocate_element_component(kg_linear_allocator* pAllocator, kg_element* pElement, kg_u32 componentId, size_t componentSizeInBytes)
+{
+	kg_element_component_header* pHeader = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pHeader, pAllocator, sizeof(kg_element_component_header) + componentSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return kg_nullptr;
+	}
+
+	pHeader->sizeInBytes = componentSizeInBytes;
+	pHeader->componentId = componentId;
+	
+	if (pElement->pFirstComponent != kg_nullptr)
+	{
+		pElement->pFirstComponent->pNext = pHeader;
+	}
+
+	pHeader->pNext = pElement->pFirstComponent;
+
+	return (pHeader + 1u);
+}
+
+kg_internal void kg_copy_element(kg_linear_allocator* pAllocator, kg_element* pDestination, const kg_element* pSource)
+{
+	kg_memcpy(pDestination, pSource, sizeof(kg_element));
+	pDestination->pFirstComponent = kg_nullptr;
+
+	//FK: Copy components
+	const kg_element_component_header* pSourceComponentHeader = pSource->pFirstComponent;
+	while (pSourceComponentHeader)
+	{	
+		void* pComponent = kg_allocate_element_component(pAllocator, pDestination, pSourceComponentHeader->componentId, pSourceComponentHeader->sizeInBytes);
+		kg_memcpy(pComponent, pSourceComponentHeader + 1, pSourceComponentHeader->sizeInBytes);
+		pSourceComponentHeader = (kg_element_component_header*)pSourceComponentHeader->pNext;
+	}
+}
+
+kg_internal kg_window* kg_insert_window(kg_context* pContext, kg_crc32 identifier, kg_bool* pOutIsNew)
+{
+	const kg_hash_map* pWindowsLastFrame 	= kg_get_window_hash_map_from_last_frame(pContext);
+	const kg_window* pWindowLastFrame 		= (const kg_window*)kg_find_hash_element(pWindowsLastFrame, identifier);
+	kg_window* pWindow 						= (kg_window*)kg_insert_hash_element(pContext->pWindowHashMap, identifier, pOutIsNew);
+	
+	if (pWindowLastFrame != kg_nullptr)
+	{
+		*pOutIsNew = kg_false;
+		kg_memcpy(pWindow, pWindowLastFrame, sizeof(kg_window));
+	}
+
+	return pWindow;
+}
+
+kg_internal kg_element* kg_insert_element(kg_context* pContext, kg_crc32 identifier, kg_bool* pOutIsNew)
+{
+	const kg_hash_map* pElementsLastFrame = kg_get_element_hash_map_from_last_frame(pContext);
+	const kg_element* pElementLastFrame = (const kg_element*)kg_find_hash_element(pElementsLastFrame, identifier);
+	kg_element* pElement 				= (kg_element*)kg_insert_hash_element(pContext->pElementHashMap, identifier, pOutIsNew);
+	
+	if (pElementLastFrame != kg_nullptr)
+	{
+		*pOutIsNew = kg_false;
+		kg_copy_element(pContext->pAllocator, pElement, pElementLastFrame);
+	}
+
+	return pElement;
+}
+
 kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, const char* pIdentifier)
 {
 	if (kg_is_invalid_context_handle(contextHandle))
@@ -2098,37 +2227,24 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 	
 	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_WINDOW_FLAG) > 0)
 	{
+		kg_push_error(pContext, K15_GUI_RESULT_ELEMENT_NOT_FINISHED, "[window] called kg_begin_frame without having called kg_end_frame first." );
 		return kg_false;
 	}
 
 	const kg_crc32 identifier = kg_generate_crc32(pIdentifier);
-	const kg_hash_map* pHashMapLastFrame = kg_get_window_hash_map_from_last_frame(pContext);
 	kg_bool isNew = kg_false;
 
-	kg_window* pWindow = (kg_window*)kg_find_hash_element(pHashMapLastFrame, identifier);
+	kg_window* pWindow = kg_insert_window(pContext, identifier, &isNew);
 
 	if (isNew)
 	{
-		pWindow->rect.position 	= kg_create_float2(10.f, 10.f);
-		pWindow->rect.size		= kg_create_float2(150.f, 150.f);
-		pWindow->flags			= K15_GUI_WINDOW_FLAG_IS_OPEN;
+		pWindow->pNext		= kg_nullptr;
+		pWindow->position 	= kg_create_float2(10.f, 10.f);
+		pWindow->size		= kg_create_float2(150.f, 150.f);
+		pWindow->flags		= K15_GUI_WINDOW_FLAG_IS_OPEN;
 	}
 
 	pWindow->zOrder = pContext->windowZIndex++;
-
-
-	kg_result result = kg_allocate_from_linear_allocator(&pWindow, &pContext->allocator, sizeof(kg_window));
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		kg_push_error(pContext, "[kg_begin_window] could not allocate window.", result);
-		return kg_false;
-	}
-
-	pWindow->flags			= K15_GUI_WINDOW_FLAG_IS_OPEN;
-	pWindow->zOrder			= 1u;
-	pWindow->rect.position 	= kg_create_float2(10.f, 10.f);
-	pWindow->rect.size		= kg_create_float2(150.f, 150.f);
 
 	kg_push_window(pContext, pWindow);
 
@@ -2187,14 +2303,14 @@ void kg_end_window(kg_context_handle contextHandle)
 
 	if (pWindow == kg_nullptr)
 	{
-		kg_push_error(pContext, "[kg_end_window] no window has been created up until this point.", K15_GUI_RESULT_ELEMENT_NOT_STARTED);
+		kg_push_error(pContext, K15_GUI_RESULT_ELEMENT_NOT_STARTED, "[window] called kg_end_window without calling kg_begin_window first." );
 		return;
 	}
 
 	//pContext->pFirstWindow = (kg_window*)pWindow->pNext;
 
-	const kg_float2 titleArea 	= kg_create_float2(pWindow->rect.size.x, K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS);
-	const kg_rect titleRect 	= kg_create_rect(pWindow->rect.position.x, pWindow->rect.position.y, titleArea.x, titleArea.y);
+	const kg_float2 titleArea 	= kg_create_float2(pWindow->size.x, K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS);
+	const kg_rect titleRect 	= kg_create_rect(pWindow->position.x, pWindow->position.y, titleArea.x, titleArea.y);
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
@@ -2205,15 +2321,15 @@ void kg_end_window(kg_context_handle contextHandle)
 		goto kg_end_window_end;
 	}
 
-	const kg_float2 windowArea 	= kg_create_float2(pWindow->rect.size.x, kg_max(pWindow->rect.size.y - K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS)); 
-	const kg_rect windowRect	= kg_create_rect(pWindow->rect.position.x, pWindow->rect.position.y + K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, windowArea.x, windowArea.y);
+	const kg_float2 windowArea 	= kg_create_float2(pWindow->size.x, kg_max(pWindow->size.y - K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS)); 
+	const kg_rect windowRect	= kg_create_rect(pWindow->position.x, pWindow->position.y + K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, windowArea.x, windowArea.y);
 
 	result |= kg_render_element_rect(pContext, windowRect, kg_color_dark_green);
 
 kg_end_window_end:
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
-		kg_push_error(pContext, "[kg_end_window] could not render window.", result);
+		kg_push_error(pContext, result, "[kg_end_window] could not render window." );
 	}
 }
 
@@ -2236,6 +2352,7 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 	
 	if ((pContext->flags & K15_GUI_CONTEXT_INSIDE_FRAME_FLAG) == 0)
 	{
+		kg_push_error(pContext, K15_GUI_RESULT_ELEMENT_NOT_STARTED, "[frame] called kg_end_frame without calling kg_begin_frame first." );
 		return K15_GUI_RESULT_ELEMENT_NOT_STARTED;
 	}
 
@@ -2244,7 +2361,17 @@ kg_result kg_end_frame(kg_context_handle contextHandle)
 	kg_render_pass(pContext);
 	++pContext->frameCounter;
 
-	//kg_clear_buffer(&pContext->pErrorStack->errorBuffer);
+	kg_linear_allocator* pAllocator = kg_get_frame_allocator_from_current_frame(pContext);
+	kg_hash_map* pWindowHashMap 	= kg_get_window_hash_map_from_current_frame(pContext);
+	kg_hash_map* pElementHashMap	= kg_get_element_hash_map_from_current_frame(pContext);
+	kg_reset_linear_allocator(pAllocator, 0u);
+	kg_reset_hash_map(pWindowHashMap);
+
+	pContext->pAllocator 		= pAllocator;
+	pContext->pElementHashMap 	= pElementHashMap;
+	pContext->pWindowHashMap 	= pWindowHashMap;
+	pContext->flags				&= ~K15_GUI_CONTEXT_INSIDE_FRAME_FLAG;
+
 
 	return K15_GUI_RESULT_SUCCESS;
 }
