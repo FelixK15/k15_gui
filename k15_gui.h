@@ -33,6 +33,8 @@ typedef char 				kg_s8;
 typedef char 				kg_utf8;
 typedef unsigned int 		kg_crc32;
 typedef unsigned int 		kg_color32;
+typedef unsigned int 		kg_code_point;
+typedef unsigned int 		kg_glyph_id;
 typedef unsigned char 		kg_byte;
 typedef unsigned char 		kg_bool;
 
@@ -191,6 +193,56 @@ typedef enum
 	K15_GUI_WINDOW_STACK_SIZE		= 64u
 } kg_array_sizes;
 /*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_1_SFNT = 0x00010000,
+	K15_GUI_TRUETYPE_2_SFNT = 0x74727565,
+	K15_GUI_OPENTYPE_SFNT 	= ('O' << 0) | ('T' << 8) | ('T' << 16) | ('O' << 24)
+} kg_true_type_sfnt;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_TABLE_CFF,
+	K15_GUI_TRUETYPE_TABLE_CFF2,
+	K15_GUI_TRUETYPE_TABLE_GLYF,
+	K15_GUI_TRUETYPE_TABLE_KERN,
+	K15_GUI_TRUETYPE_TABLE_HEAD,
+	K15_GUI_TRUETYPE_TABLE_HHEA,
+	K15_GUI_TRUETYPE_TABLE_KERX,
+	K15_GUI_TRUETYPE_TABLE_LOCA,
+	K15_GUI_TRUETYPE_TABLE_MAXP,
+	K15_GUI_TRUETYPE_TABLE_HMTX,
+	K15_GUI_TRUETYPE_TABLE_VMTX,
+	K15_GUI_TRUETYPE_TABLE_CMAP,
+	K15_GUI_TRUETYPE_TABLE_SBIX,
+	K15_GUI_TRUETYPE_TABLE_NAME,
+	K15_GUI_TRUETYPE_TABLE_LTAG,
+	K15_GUI_TRUETYPE_TABLE_SVG,
+	K15_GUI_TRUETYPE_TABLE_EBDT,
+	K15_GUI_TRUETYPE_TABLE_EBLC,
+	K15_GUI_TRUETYPE_TABLE_EBSC,
+	K15_GUI_TRUETYPE_TABLE_COLR,
+	K15_GUI_TRUETYPE_TABLE_CBDT,
+	K15_GUI_TRUETYPE_TABLE_CBLC,
+	K15_GUI_TRUETYPE_TABLE_GSUB,
+	K15_GUI_TRUETYPE_TABLE_MORX,
+
+	K15_GUI_TRUETYPE_TABLE_COUNT
+} kg_true_type_table;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE,
+	K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC,
+	K15_GUI_TRUETYPE_VERTEX_TYPE_CUBIC
+} kg_true_type_vertex_type;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_PIXEL_FORMAT_R8 		= 1,
+	K15_GUI_PIXEL_FORMAT_R8G8B8A8 	= 4
+} kg_pixel_format;
+/*********************************************************************************/
 
 static const float 	K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS 		= 30.f;
 static const float 	K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS 	= 10.f;
@@ -296,11 +348,12 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	void*		pNext;
-	kg_float2 	position;
-	kg_float2 	size;
-	kg_u32 		zOrder;
-	kg_u32 		flags;
+	void*			pNext;
+	const kg_utf8* 	pTitle;
+	kg_float2 		position;
+	kg_float2 		size;
+	kg_u32 			zOrder;
+	kg_u32 			flags;
 } kg_window;
 /*********************************************************************************/
 typedef struct
@@ -350,6 +403,131 @@ typedef struct
 	int bottom;
 } kg_viewport;
 /*********************************************************************************/
+
+/*********************************************************************************/
+typedef struct
+{
+	const char* 	pString;
+	kg_u16 			length;
+} kg_true_type_font_name;
+/*********************************************************************************/
+typedef struct
+{
+	kg_true_type_font_name fontFamiliyName;
+	kg_true_type_font_name fontSubFamilyName;
+	kg_true_type_font_name fontName;
+} kg_true_type_font_familiy;
+/*********************************************************************************/
+typedef struct
+{
+	kg_byte* 	pMemory;
+	size_t 		memorySizeInBytes;
+} kg_buffer;
+/*********************************************************************************/
+typedef struct
+{
+	kg_true_type_font_familiy 	family;
+	kg_buffer 					data;
+	kg_true_type_sfnt 			sfnt;
+	size_t 						offset;
+	size_t 						tableOffsets[K15_GUI_TRUETYPE_TABLE_COUNT];
+	kg_u16 						tableCount;
+	kg_u16 						flags;
+	kg_s16 						indexLocaFormat;
+} kg_true_type_font;
+/*********************************************************************************/
+typedef struct
+{
+	kg_true_type_vertex_type 	type;
+	kg_u8					 	flags;
+	kg_u16						xCoordinate;
+	kg_u16						yCoordinate;
+} kg_true_type_vertex;
+/*********************************************************************************/
+typedef struct
+{
+	kg_u32 startIndex;
+	kg_u32 length;
+} kg_true_type_contour;
+/*********************************************************************************/
+typedef struct
+{
+	kg_true_type_contour* pContourBuffer;
+	kg_true_type_vertex* pVertexBuffer;
+	kg_u32 contourCount;
+	kg_u32 vertexCount;
+	kg_u32 contourCapacity; 
+	kg_u32 vertexCapacity;
+} kg_true_type_glyf_outline_context;
+/*********************************************************************************/
+typedef struct
+{
+	kg_true_type_contour* 	pContours;
+	kg_true_type_vertex* 	pVertices;
+
+	kg_u32 contourCount;
+	kg_u32 vertexCount;
+} kg_glyph_outline;
+/*********************************************************************************/
+typedef struct
+{
+	kg_float4	uvBounds;
+	kg_uint2	position;
+	kg_uint2	size;
+} kg_texture_atlas_slot;
+/*********************************************************************************/
+typedef struct
+{
+	void* 					pImageData;
+	kg_texture_atlas_slot* 	pSlots;
+	kg_uint2 				size;
+	kg_uint2				skyLine;
+	kg_u32					slotCount;
+	kg_pixel_format 		pixelFormat;
+} kg_texture_atlas;
+/*********************************************************************************/
+typedef struct
+{
+	kg_true_type_contour* 	pContours;
+	kg_true_type_vertex* 	pVertices;
+
+	kg_u32 contourCount;
+} kg_glyph;
+/*********************************************************************************/
+typedef struct
+{
+	const kg_texture_atlas_slot* 	pAtlasSlot;
+	kg_code_point 					codePoint;
+	kg_u32							lastUsedFrameIndex;
+} kg_glyph_cache_entry;
+/*********************************************************************************/
+typedef struct
+{
+	kg_glyph_cache_entry* 	pEntries;
+	kg_texture_atlas 		atlas;
+
+	kg_buffer				contourBuffer;
+	kg_buffer				vertexBuffer;
+
+	kg_u32 					size;
+	kg_u32 					capacity;
+} kg_glyph_cache;
+/*********************************************************************************/
+typedef struct
+{
+	kg_texture_atlas_slot* 	pAtlasSlot;
+	kg_crc32				identifier;
+#ifdef K15_GUI_STORE_IDENTIFIER_STRING
+	const char*				pIdentifier;
+#endif
+} kg_image_cache_entry;
+/*********************************************************************************/
+typedef struct
+{
+	kg_hash_map 		hashMap;
+	kg_texture_atlas 	atlas;
+} kg_image_cache;
+/*********************************************************************************/
 typedef struct
 {
 	kg_linear_allocator* pVertexAllocator;
@@ -369,10 +547,13 @@ typedef struct
 	kg_linear_allocator		frameAllocators[2];
 	kg_hash_map				elements[2];
 	kg_hash_map				windows[2];
+	kg_true_type_font		trueTypeFont;
 	kg_input_system			inputSystem;
 	kg_viewport				viewport;
 	kg_error_stack	 		errorStack;
 	kg_render_context		renderContext;
+	kg_glyph_cache			glyphCache;
+	kg_image_cache			imageCache;
 	kg_linear_allocator*	pAllocator;
 	kg_hash_map*			pWindowHashMap;
 	kg_hash_map*			pElementHashMap;
@@ -415,12 +596,6 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	void* 	pMemory;
-	size_t 	memorySizeInBytes;
-} kg_buffer;
-/*********************************************************************************/
-typedef struct
-{
 	kg_buffer 	vertexBuffer[K15_GUI_MAX_RENDER_BUFFER_COUNT];
 	kg_buffer 	indexBuffer[K15_GUI_MAX_RENDER_BUFFER_COUNT];
 	kg_u32 		vertexBufferCount;
@@ -431,7 +606,9 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_buffer scratchBuffer;
+	kg_buffer 	scratchBuffer;
+	kg_buffer 	fontData;
+	const char* pFontName;
 } kg_context_parameter;
 /*********************************************************************************/
 //how this should work:
@@ -483,17 +660,6 @@ kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_rend
 
 
 //*****************DEBUG*****************//
-
-kg_def const kg_color32 kg_color_white;
-kg_def const kg_color32 kg_color_black;
-kg_def const kg_color32 kg_color_light_red;
-kg_def const kg_color32 kg_color_light_green;
-kg_def const kg_color32 kg_color_light_blue;
-kg_def const kg_color32 kg_color_light_grey;
-kg_def const kg_color32 kg_color_dark_red;
-kg_def const kg_color32 kg_color_dark_green;
-kg_def const kg_color32 kg_color_dark_blue;
-kg_def const kg_color32 kg_color_dark_grey;
 
 #ifdef K15_GUI_IMPLEMENTATION
 
@@ -576,6 +742,12 @@ kg_def const kg_color32 kg_color_dark_grey;
 # define kg_max(a, b) K15_GUI_MAX(a, b)
 #endif //K15_GUI_MAX
 
+#ifndef K15_GUI_SQRT
+# define kg_sqrt(a) ::sqrt(a)
+#else
+# define kg_sqrt(a) K15_GUI_SQRT(a)
+#endif //K15_GUI_SQRT
+
 kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 
 #define kg_size_kilo_bytes(n) ((n)*1024)
@@ -587,20 +759,21 @@ kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 
 typedef kg_u32 kg_code_point;
 
-const kg_color32 kg_color_white 		= 0xFFFFFFFF;
-const kg_color32 kg_color_black 		= 0x000000FF;
-const kg_color32 kg_color_light_red		= 0xFF0000FF;
-const kg_color32 kg_color_light_green	= 0x00FF00FF;
-const kg_color32 kg_color_light_blue	= 0xFF00FFFF;
-const kg_color32 kg_color_light_grey 	= 0xDDDDDDFF;
-const kg_color32 kg_color_dark_red		= 0x40000FF;
-const kg_color32 kg_color_dark_green	= 0x004400FF;
-const kg_color32 kg_color_dark_blue		= 0x000044FF;
-const kg_color32 kg_color_dark_grey		= 0x444444FF;
-
-
-void kg_layout_pass(kg_element*);
-
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_COLOR_WHITE 		= 0xFFFFFFFF,
+	K15_GUI_COLOR_BLACK 		= 0x000000FF,
+	K15_GUI_COLOR_LIGHT_RED		= 0xFF0000FF,
+	K15_GUI_COLOR_LIGHT_GREEN	= 0x00FF00FF,
+	K15_GUI_COLOR_LIGHT_BLUE	= 0xFF00FFFF,
+	K15_GUI_COLOR_LIGHT_GREY 	= 0xDDDDDDFF,
+	K15_GUI_COLOR_DARK_RED		= 0x400000FF,
+	K15_GUI_COLOR_DARK_GREEN	= 0x004400FF,
+	K15_GUI_COLOR_DARK_BLUE		= 0x000044FF,
+	K15_GUI_COLOR_DARK_GREY		= 0x444444FF
+} kg_colors;
+/*********************************************************************************/
 typedef enum
 {
 	K15_GUI_WINDOW_FLAG_IS_OPEN 				= 0x001,
@@ -626,8 +799,6 @@ typedef struct
 	kg_bool 				dirty;
 } kg_render_vertices;
 /*********************************************************************************/
-
-/*********************************************************************************/
 enum
 {
 	VertexStride 		= sizeof(kg_render_vertex_data),
@@ -635,16 +806,1668 @@ enum
 	MinContextDataSize 	= kg_size_kilo_bytes(512)
 };
 /*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_MAGIC_NUMBER 					= 0x5F0F3CF5,
+	K15_GUI_TRUETYPE_OFFSET_HEAD_MAGIC_NUMBER 		= 12u, 	// Relative to 'head' table
+	K15_GUI_TRUETYPE_OFFSET_HEAD_INDEX_LOCA_FORMAT 	= 50u, 	// Relative to 'head' table
+	K15_GUI_TRUETYPE_OFFSET_HEAD_FLAGS 				= 16u, 	// Relative to 'head' table
+	K15_GUI_TRUETYPE_TABLE_DIRECTORY				= 12u  	// Absolute offset
+} kg_true_type_offsets;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_LANGUAGE_ID_ENGLISH = 0u
+} kg_true_type_language_id; 
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_NAME_ID_FONT_FAMILY 		= 1u << 0u,
+	K15_GUI_TRUETYPE_NAME_ID_FONT_SUB_FAMILY 	= 1u << 1u,
+	K15_GUI_TRUETYPE_NAME_ID_FONT 				= 1u << 2u
+} kg_true_type_name_id;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_PLATFORM_ID_UNICODE	= 0u,
+	K15_GUI_TRUETYPE_PLATFORM_ID_MICROSOFT	= 3u
+} kg_true_type_platform_id;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUETYPE_ENCODING_ID_SYMBOL 		= 0u,
+	K15_GUI_TRUETYPE_ENCODING_ID_UNICODE_BMP 	= 1u,
+	K15_GUI_TRUETYPE_ENCODING_ID_UNICODE_FULL 	= 10u
+} kg_true_type_encoding_id;
+/*********************************************************************************/
+typedef enum 
+{
+	K15_GUI_TRUE_TYPE_GLYPH_FLAG_ON_CURVE		= 0x01,
+	K15_GUI_TRUE_TYPE_GLYPH_FLAG_X_SHORT_VECTOR	= 0x02,
+	K15_GUI_TRUE_TYPE_GLYPH_FLAG_Y_SHORT_VECTOR	= 0x04,
+	K15_GUI_TRUE_TYPE_GLYPH_FLAG_REPEAT			= 0x08,
+	K15_GUI_TRUE_TYPE_GLYPH_FLAG_THIS_X_IS_SAME	= 0x10,
+	K15_GUI_TRUE_TYPE_GLYPH_FLAG_THIS_Y_IS_SAME	= 0x20
+} kg_true_type_glyph_flag;
+/*********************************************************************************/
+typedef enum
+{
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_ARG1_AND_2_ARE_WORDS		= 1 << 0u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_ARGS_ARE_XY_VALUES		= 1 << 1u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_ROUND_XY_TO_GRID			= 1 << 2u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_A_SCALE			= 1 << 3u,
+	//THIS_FLAG_IS_DEPRECATED						= 1 << 4u
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_MORE_COMPONENTS			= 1 << 5u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_AN_X_AND_Y_SCALE	= 1 << 6u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_A_TWO_BY_TWO		= 1 << 7u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_INSTRUCTIONS		= 1 << 8u, //FK: Do we really care?
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_USE_MY_METRICS			= 1 << 9u,
+	K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_OVERLAP_COMPOUNDS			= 1 << 10u
+} kg_true_type_compound_glyph_flag;
+/*********************************************************************************/
+
+
+#define kg_peek_data(t, b, o) kg_peek_data_from_buffer(t, sizeof(*t), b, o)
+#define kg_read_data(t, b, o) kg_read_data_from_buffer(t, sizeof(*t), b, o);
+
+
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_zero()
+{
+	static const kg_float2 zero = {0.f, 0.f};
+	return zero;
+}
+/*********************************************************************************/
+kg_internal kg_bool kg_float2_gt(const kg_float2* pA, const kg_float2* pB)
+{
+	return ( pA->x > pB->x && pA->y > pB->y );
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_clamp(const kg_float2* pValue, const kg_float2* pMin, const kg_float2* pMax)
+{
+	kg_float2 clamped = kg_float2_zero();
+	clamped.x = kg_clamp(pValue->x, pMin->x, pMax->x);
+	clamped.y = kg_clamp(pValue->y, pMin->y, pMax->y);
+
+	return clamped;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_max(const kg_float2* pA, const kg_float2* pB)
+{
+	kg_float2 maxValue = kg_float2_zero();
+	maxValue.x = kg_max(pA->x, pB->x);
+	maxValue.y = kg_max(pA->y, pB->y);
+
+	return maxValue;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_add(const kg_float2* pA, const kg_float2* pB)
+{
+	kg_float2 sum = *pA;
+	sum.x += pB->x;
+	sum.y += pB->y;
+
+	return sum;
+}
+/*********************************************************************************/
+kg_internal kg_float4 kg_float4_zero()
+{
+	static const kg_float4 zero = {0.f, 0.f, 0.f, 0.f};
+	return zero;
+}
+/*********************************************************************************/
+kg_internal kg_uint2 kg_uint2_zero()
+{
+	static const kg_uint2 zero = {0u, 0u};
+	return zero;
+}
+/*********************************************************************************/
+kg_internal kg_sint2 kg_sint2_zero()
+{
+	static const kg_sint2 zero = {0, 0};
+	return zero;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_create_float2(float x, float y)
+{
+	kg_float2 f2 = {x, y};
+	return f2;
+}
+/*********************************************************************************/
+kg_internal kg_float4 kg_create_float4(float x, float y, float z, float w)
+{
+	kg_float4 f4 = {x, y, z, w};
+	return f4;
+}
+/*********************************************************************************/
+kg_internal kg_uint2 kg_create_uint2(kg_u32 x, kg_u32 y)
+{
+	kg_uint2 u2 = {x, y};
+	return u2;
+}
+/*********************************************************************************/
+kg_internal kg_sint2 kg_create_sint2(kg_s32 x, kg_s32 y)
+{
+	kg_sint2 s2 = {x, y};
+	return s2;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_uint2_to_float2_cast(kg_uint2 u2)
+{
+	kg_float2 f2 = { (float)u2.x, (float)u2.y };
+	return f2;
+}
+/*********************************************************************************/
+kg_internal kg_bool kg_is_invalid_linear_allocator(const kg_linear_allocator* pAllocator)
+{
+	if (pAllocator == kg_nullptr)
+	{
+		return kg_true;
+	}
+
+	if (pAllocator->pMemory == kg_nullptr)
+	{
+		return kg_true;
+	}
+
+	if (pAllocator->memorySizeInBytes == 0u)
+	{
+		return kg_true;
+	}
+
+	return kg_false;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_create_linear_allocator(kg_linear_allocator* pOutAllocator, void* pMemory, size_t memorySizeInBytes)
+{
+	if (pOutAllocator == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pMemory == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (memorySizeInBytes == 0u)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	kg_linear_allocator linearAllocator;
+	linearAllocator.allocPosition 		= 0u;
+	linearAllocator.memorySizeInBytes 	= memorySizeInBytes;
+	linearAllocator.pMemory				= pMemory;
+
+	*pOutAllocator = linearAllocator;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_reset_linear_allocator(kg_linear_allocator* pAllocator, size_t position)
+{
+	if (kg_is_invalid_linear_allocator(pAllocator))
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	position = kg_clamp(position, 0u, pAllocator->allocPosition);
+	pAllocator->allocPosition = position;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal size_t kg_get_linear_allocator_position(const kg_linear_allocator* pAllocator)
+{
+	return pAllocator->allocPosition;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_allocate_from_linear_allocator(void** pOutPointer, kg_linear_allocator* pAllocator, size_t sizeInBytes)
+{
+	if (pAllocator == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (sizeInBytes == 0u)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pAllocator->allocPosition + sizeInBytes > pAllocator->memorySizeInBytes)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	*pOutPointer = ((kg_byte*)pAllocator->pMemory + pAllocator->allocPosition);
+	pAllocator->allocPosition += sizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_peek_data_from_buffer(void* pTarget, size_t targetSizeInBytes, const kg_buffer* pBuffer, size_t offsetInBytes)
+{
+	if (pTarget == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pBuffer == kg_nullptr)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (offsetInBytes + targetSizeInBytes > pBuffer->memorySizeInBytes)
+	{
+		return K15_GUI_RESULT_OUT_OF_BOUNDS;
+	}
+
+	const kg_byte* pBufferMemory = (const kg_byte*)pBuffer->pMemory;
+	kg_byte* pTargetByteBuffer = (kg_byte*)pTarget;
+	for (size_t byteIndex = 0u; byteIndex < targetSizeInBytes; ++byteIndex)
+	{
+		pTargetByteBuffer[byteIndex] = pBufferMemory[offsetInBytes + targetSizeInBytes - byteIndex - 1u]; 
+	}
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_read_data_from_buffer(void* pTarget, size_t targetSizeInBytes, const kg_buffer* pBuffer, size_t* pOffsetInBytes)
+{
+	kg_result result = kg_peek_data_from_buffer(pTarget, targetSizeInBytes, pBuffer, *pOffsetInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	*pOffsetInBytes += targetSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal size_t kg_count_string_length(const char* pString)
+{
+	const char* pStr = pString;
+	while(*pStr++ != 0u);
+	return (size_t)(pStr - pString);
+}
+/*********************************************************************************/
+kg_internal size_t kg_copy_string(char* pStringA, const char* pStringB, size_t length)
+{
+	size_t counter = 0u;
+	while (counter < length)
+	{
+		*pStringA++ = *pStringB++;
+		++counter;
+
+		if (*pStringA == 0u || *pStringB == 0u)
+		{
+			break;
+		}
+	}
+
+	return counter;
+}
+/*********************************************************************************/
+kg_internal kg_bool kg_string_equal(const char* pStringA, const char* pStringB, size_t length)
+{
+	size_t counter = 0u;
+
+	if (*pStringA  == 0u || *pStringB == 0u)
+	{
+		return kg_false;
+	}
+
+	while (*pStringA && *pStringB)
+	{
+		if (*pStringA++ != *pStringB++)
+		{
+			return kg_false;
+		}
+
+		if (length == counter++)
+		{
+			break;
+		}
+	}
+
+	return kg_true;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
+{
+	pOutHashMap->pAllocator 		= pAllocator;
+	pOutHashMap->elementSizeInBytes = elementSizeInBytes;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal void kg_reset_hash_map(kg_hash_map* pHashMap)
+{
+	for (kg_u32 bucketIndex = 0u; bucketIndex < K15_GUI_DEFAULT_BUCKET_COUNT; ++bucketIndex)
+	{
+		pHashMap->buckets[bucketIndex] = kg_nullptr;
+	}
+}
+/*********************************************************************************/
+kg_internal kg_hash_map_bucket* kg_allocate_hash_map_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier)
+{
+	if (pHashMap == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	kg_hash_map_bucket* pBucket = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pBucket, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return kg_nullptr;
+	}
+
+	result = kg_allocate_from_linear_allocator(&pBucket->pElement, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return kg_nullptr;
+	}
+
+	pBucket->key = identifier;	
+
+	if (pHashMap->buckets[bucketIndex] != kg_nullptr)
+	{
+		pBucket->pNext = pHashMap->buckets[bucketIndex];
+	}
+
+	pHashMap->buckets[bucketIndex] = pBucket;
+
+	return pBucket;
+}
+/*********************************************************************************/
+kg_internal const kg_hash_map_bucket* kg_find_hash_bucket(const kg_hash_map_bucket* pBucket, kg_crc32 identifier)
+{
+	if (pBucket == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	if (pBucket->key == identifier)
+	{
+		return pBucket;
+	}
+
+	return kg_find_hash_bucket(pBucket->pNext, identifier);
+}
+/*********************************************************************************/
+kg_internal void* kg_find_hash_element(const kg_hash_map* pHashMap, kg_crc32 identifier)
+{
+	if (pHashMap == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	const kg_u32 hashIndex 				= identifier % K15_GUI_DEFAULT_BUCKET_COUNT;
+	const kg_hash_map_bucket* pBucket 	= pHashMap->buckets[hashIndex];
+
+	if (pBucket== kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	pBucket = kg_find_hash_bucket(pBucket, identifier);
+
+	if (pBucket == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	return pBucket->pElement;
+}
+/*********************************************************************************/
+kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identifier, kg_bool* pOutIsNew)
+{
+	if (pHashMap == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	const kg_u32 hashIndex 				= identifier % K15_GUI_DEFAULT_BUCKET_COUNT;
+	const kg_hash_map_bucket* pBucket 	= pHashMap->buckets[hashIndex];
+
+	if (pBucket != kg_nullptr)
+	{
+		pBucket = kg_find_hash_bucket(pBucket, identifier);
+
+		if (pBucket == kg_nullptr)
+		{
+			return kg_nullptr;
+		}
+		else
+		{
+			*pOutIsNew = kg_false;
+			return pBucket->pElement;
+		}
+	}
+
+	pBucket = kg_allocate_hash_map_bucket(pHashMap, hashIndex, identifier);
+	
+	if (pBucket == kg_nullptr)
+	{
+		return kg_nullptr;
+	}
+
+	*pOutIsNew = kg_true;
+
+	return pBucket->pElement;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_create_texture_atlas(kg_texture_atlas* pOutTextureAtlas, kg_linear_allocator* pAllocator, kg_u32 width, kg_u32 height, kg_pixel_format pixelFormat)
+{
+	const size_t imageDataSizeInBytes 	= width * height * pixelFormat;
+	const size_t slotSizeInBytes 		= ((width * height) / 4u) * sizeof(kg_texture_atlas_slot);
+
+	void* pImageData = kg_nullptr;
+	kg_result result = kg_allocate_from_linear_allocator(&pImageData, pAllocator, imageDataSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	kg_texture_atlas_slot* pSlots = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pSlots, pAllocator, slotSizeInBytes);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pOutTextureAtlas->pImageData 	= pImageData;
+	pOutTextureAtlas->size.x 		= width;
+	pOutTextureAtlas->size.y 		= height;
+	pOutTextureAtlas->pixelFormat 	= pixelFormat;
+	pOutTextureAtlas->pSlots		= pSlots;
+	pOutTextureAtlas->slotCount	 	= 0u;
+	pOutTextureAtlas->skyLine 		= kg_uint2_zero();
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_clear_texture_atlas(kg_texture_atlas* pTextureAtlas)
+{
+	pTextureAtlas->slotCount 	= 0u;
+	pTextureAtlas->skyLine 		= kg_uint2_zero();
+}
+/*********************************************************************************/
+kg_internal kg_result kg_allocate_texture_atlas_slot(kg_texture_atlas_slot** pOutSlot, kg_texture_atlas* pTextureAtlas, kg_u32 width, kg_u32 height)
+{
+	if (height < 4u || width < 4u)
+	{
+		return K15_GUI_RESULT_INVALID_ARGUMENTS;
+	}
+
+	if (pTextureAtlas->skyLine.x + width > pTextureAtlas->size.x)
+	{
+		pTextureAtlas->skyLine.y = kg_max(pTextureAtlas->skyLine.y, height);
+	}
+	else if (pTextureAtlas->skyLine.y + height < pTextureAtlas->size.y)
+	{
+		pTextureAtlas->skyLine.x = width;
+		pTextureAtlas->skyLine.y += height;
+	}
+	else
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	const kg_u32 slotIndex = pTextureAtlas->slotCount++;
+	kg_texture_atlas_slot* pSlot = pTextureAtlas->pSlots + slotIndex;
+	pSlot->size.x 		= width;
+	pSlot->size.y 		= height;
+	pSlot->position 	= kg_create_uint2(pTextureAtlas->skyLine.x - width, pTextureAtlas->skyLine.y);
+	pSlot->uvBounds.x 	= (float)pTextureAtlas->skyLine.x / (float)pTextureAtlas->size.x; 
+	pSlot->uvBounds.y 	= (float)pTextureAtlas->skyLine.y / (float)pTextureAtlas->size.y; 
+	pSlot->uvBounds.z 	= (float)(pTextureAtlas->skyLine.x + width) / (float)pTextureAtlas->size.x; 
+	pSlot->uvBounds.w 	= (float)(pTextureAtlas->skyLine.y + height) / (float)pTextureAtlas->size.y; 
+
+	*pOutSlot = pSlot;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_u32 kg_calculate_true_type_table_checksum(kg_true_type_font* pTrueTypeFont, kg_u32 tableLength, kg_u32 tableOffset)
+{
+	if (tableOffset + tableLength > pTrueTypeFont->data.memorySizeInBytes)
+	{
+		return 0u;
+	}
+
+	//https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6.html#Overview
+	kg_u32 sum = 0;
+	kg_s32 count = (int)((tableLength + 3) & ~3) / 4;
+	while ( count-- > 0 && ( ( tableOffset + 4u ) < pTrueTypeFont->data.memorySizeInBytes ) )
+	{
+		kg_u32 part = 0u;
+		kg_peek_data(&part, &pTrueTypeFont->data, tableOffset);
+		
+		sum += part;
+		tableOffset += 4u;
+	}
+
+	return sum;
+}
+/*********************************************************************************/
+kg_internal size_t kg_query_true_type_table_offset(kg_true_type_font* pTrueTypeFont, kg_u16 tableCount, const char* pTableIdentifier)
+{
+	char tableTag[4u];
+
+	size_t offset = pTrueTypeFont->offset + K15_GUI_TRUETYPE_TABLE_DIRECTORY;
+
+	for (kg_u16 tableIndex = 0u; tableIndex < tableCount; ++tableIndex)
+	{
+		kg_read_data(&tableTag[0], &pTrueTypeFont->data, &offset);
+		kg_read_data(&tableTag[1], &pTrueTypeFont->data, &offset);
+		kg_read_data(&tableTag[2], &pTrueTypeFont->data, &offset);
+		kg_read_data(&tableTag[3], &pTrueTypeFont->data, &offset);
+
+		if (kg_string_equal(tableTag, pTableIdentifier, 4u))
+		{
+			kg_u32 tableChecksum 	= 0u;
+			kg_u32 tableOffset 		= 0u;
+			kg_u32 tableLength 		= 0u;
+
+			kg_read_data(&tableChecksum, &pTrueTypeFont->data, &offset);
+			kg_read_data(&tableOffset, &pTrueTypeFont->data, &offset);
+			kg_read_data(&tableLength, &pTrueTypeFont->data, &offset);
+
+			if (kg_string_equal(tableTag, "head", 4u) == kg_false)
+			{
+				const kg_u32 calculatedTableChecksum = kg_calculate_true_type_table_checksum(pTrueTypeFont, tableLength, tableOffset);
+				if (tableChecksum != calculatedTableChecksum)
+				{
+					return 0u;
+				}
+			}
+
+			return tableOffset;
+		}
+
+		offset += 12u;
+	}
+
+	return 0u;
+}
+/*********************************************************************************/
+kg_internal void kg_parse_true_type_table_offsets(kg_true_type_font* pTrueTypeFont)
+{
+	kg_u16 tableCount = 0u;
+	kg_peek_data(&tableCount, &pTrueTypeFont->data, pTrueTypeFont->offset + 4u);
+
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CFF ] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "cff ");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CFF2] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "cff2");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "glyf");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "head");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HHEA] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "hhea");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_KERN] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "kern");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_KERX] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "kerx");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_LOCA] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "loca");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_MAXP] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "maxp");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HMTX] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "htmx");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_VMTX] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "vmtx");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CMAP] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "cmap");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_SBIX] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "sbix");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_NAME] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "name");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_LTAG] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "ltag");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_SVG ] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "SVG ");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_EBDT] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "EBDT");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_EBLC] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "EBLC");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_EBSC] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "EBSC");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_COLR] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "COLR");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CBDT] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "CBDT");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CBLC] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "CBLC");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GSUB] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "GSUB");
+	pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_MORX] = kg_query_true_type_table_offset(pTrueTypeFont, tableCount, "morx");
+}
+/*********************************************************************************/
+kg_internal kg_result kg_verify_true_type_data(const kg_true_type_font* pTrueTypeFont)
+{
+	if (pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] == 0u	||
+		pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CMAP] == 0u)
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;	
+	}
+
+	if (pTrueTypeFont->sfnt == K15_GUI_OPENTYPE_SFNT)
+	{
+		if (pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CFF] == 0u)
+		{
+			return K15_GUI_RESULT_FONT_DATA_ERROR;	
+		}
+	}
+	else if (pTrueTypeFont->sfnt == K15_GUI_TRUETYPE_1_SFNT || pTrueTypeFont->sfnt == K15_GUI_TRUETYPE_2_SFNT)
+	{
+		if (pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF] == 0u)
+		{
+			return K15_GUI_RESULT_FONT_DATA_ERROR;
+		}
+	}	
+
+	const kg_u32 offset = pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] + K15_GUI_TRUETYPE_OFFSET_HEAD_MAGIC_NUMBER;
+	kg_u32 magicNumber 	= 0u;
+	kg_result result 	= kg_peek_data(&magicNumber, &pTrueTypeFont->data, offset);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+
+	if (magicNumber != K15_GUI_TRUETYPE_MAGIC_NUMBER)
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+
+	//IndexLocaFormat can only have 2 valid values
+	if (pTrueTypeFont->indexLocaFormat != 0u && pTrueTypeFont->indexLocaFormat != 1u)
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal void kg_read_true_type_name_utf8( kg_true_type_font_name* pOutName, const kg_true_type_font* pTrueTypeFont, kg_u16 length, kg_u32 offset)
+{
+	pOutName->pString = (const kg_utf8*)( pTrueTypeFont->data.pMemory + offset );
+	pOutName->length  = length;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_read_true_type_name( kg_true_type_font_name* pOutName, const kg_true_type_font* pTrueTypeFont, kg_u16 length, kg_u32 offset, kg_u16 platformId, kg_u16 platformSpecificId)
+{
+	if( platformId == 0u || ( platformId == 3u && platformSpecificId == 1u ) || ( platformId == 3u && platformSpecificId == 10u ) )
+	{
+		return K15_GUI_RESULT_NOT_SUPPORTED;
+		//kg_read_true_type_name_utf16(pOutName, pTrueTypeFont, length, offset);
+	}
+	else if ( platformId == 1u )
+	{
+		kg_read_true_type_name_utf8(pOutName, pTrueTypeFont, length, offset);
+		return K15_GUI_RESULT_SUCCESS;
+	}
+
+	return K15_GUI_RESULT_NOT_SUPPORTED;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_font_names(kg_true_type_font* pTrueTypeFont)
+{
+	size_t offset = pTrueTypeFont->tableOffsets[ K15_GUI_TRUETYPE_TABLE_NAME ];
+	offset += 2u; //FK: skip version
+
+	kg_u16 nameRecordCount 	= 0u;
+	kg_u16 stringOffset 	= 0u;
+
+	kg_result result = K15_GUI_RESULT_SUCCESS; 
+	result |= kg_read_data(&nameRecordCount, &pTrueTypeFont->data, &offset);
+	result |= kg_read_data(&stringOffset, &pTrueTypeFont->data, &offset);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	for( kg_u16 nameRecordIndex = 0u; nameRecordIndex < nameRecordCount; ++nameRecordIndex )
+	{
+		//FK: Skip platformId and platformSpecificId for now...
+		kg_u32 nameRecordOffset = offset;
+
+		kg_u16 platformId 			= 0u;
+		kg_u16 platformSpecificId 	= 0u;
+		kg_u16 languageId 			= 0u;
+
+		result |= kg_read_data(&platformId, &pTrueTypeFont->data, &nameRecordOffset);
+		result |= kg_read_data(&platformSpecificId, &pTrueTypeFont->data, &nameRecordOffset);
+		result |= kg_read_data(&languageId, &pTrueTypeFont->data, &nameRecordOffset);
+
+		if (result != K15_GUI_RESULT_SUCCESS)
+		{
+			return result;
+		}
+
+		//FK: we're only interested in english names...I guess
+		if( languageId == K15_GUI_TRUETYPE_LANGUAGE_ID_ENGLISH || ( pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_LTAG] > 0u && languageId == 0xFFFF ) )
+		{
+			kg_u16 nameId 			= 0u;
+			kg_u16 lengthInBytes 	= 0u;
+			kg_u16 localOffset		= 0u;
+
+			result |= kg_read_data(&nameId, &pTrueTypeFont->data, &nameRecordOffset);
+			result |= kg_read_data(&lengthInBytes, &pTrueTypeFont->data, &nameRecordOffset);
+			result |= kg_read_data(&localOffset, &pTrueTypeFont->data, &nameRecordOffset);
+
+			if (result != K15_GUI_RESULT_SUCCESS)
+			{
+				return result;
+			}
+
+			if (lengthInBytes > 0u)
+			{
+				if( nameId == K15_GUI_TRUETYPE_NAME_ID_FONT_FAMILY ||
+					nameId == K15_GUI_TRUETYPE_NAME_ID_FONT_SUB_FAMILY ||
+					nameId == K15_GUI_TRUETYPE_NAME_ID_FONT_FAMILY )
+				{
+					const size_t offsetToStringData = pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_NAME] + (size_t)stringOffset + (size_t)localOffset;
+					if( nameId == K15_GUI_TRUETYPE_NAME_ID_FONT_FAMILY )
+					{
+						kg_read_true_type_name( &pTrueTypeFont->family.fontFamiliyName, pTrueTypeFont, lengthInBytes, offsetToStringData, platformId, platformSpecificId );
+					}
+					else if( nameId == K15_GUI_TRUETYPE_NAME_ID_FONT_SUB_FAMILY )
+					{
+						kg_read_true_type_name( &pTrueTypeFont->family.fontSubFamilyName, pTrueTypeFont, lengthInBytes, offsetToStringData, platformId, platformSpecificId );
+					}
+					else if( nameId == K15_GUI_TRUETYPE_NAME_ID_FONT )
+					{
+						kg_read_true_type_name( &pTrueTypeFont->family.fontFamiliyName, pTrueTypeFont, lengthInBytes, offsetToStringData, platformId, platformSpecificId );
+					}
+				}
+			}
+		}
+		offset += 12u; //FK: Skip to next name record
+	}
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal void kg_parse_true_type_index_loca_format(kg_true_type_font* pTrueTypeFont)
+{
+	if (pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] == 0u)
+	{
+		return;
+	}
+
+	size_t offset = 0u;
+
+	offset = pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] + K15_GUI_TRUETYPE_OFFSET_HEAD_INDEX_LOCA_FORMAT;
+	kg_peek_data(&pTrueTypeFont->indexLocaFormat, &pTrueTypeFont->data, offset);
+
+	offset = pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] + K15_GUI_TRUETYPE_OFFSET_HEAD_FLAGS;
+	kg_peek_data(&pTrueTypeFont->flags, &pTrueTypeFont->data, offset);
+}
+/*********************************************************************************/
+kg_internal kg_bool kg_true_type_check_font_name(const kg_true_type_font* pTrueTypeFont, const char* pFontName)
+{
+	if (kg_string_equal(pTrueTypeFont->family.fontName.pString, pFontName, pTrueTypeFont->family.fontName.length))
+	{
+		return kg_true;
+	}
+
+	//FK: create temporary font names for further checks
+	static const char separators[] = {
+		'-', ' ', '_'
+	};
+
+	enum
+	{
+		maxStringLength = 256u
+	};
+	char temporaryFontName[ maxStringLength ];
+
+	for( kg_u32 separatorIndex = 0u; separatorIndex < 3u; ++separatorIndex )
+	{
+		size_t stringLength = kg_copy_string(temporaryFontName, pTrueTypeFont->family.fontFamiliyName.pString, maxStringLength);
+		temporaryFontName[ stringLength ] = separators[separatorIndex];
+
+		stringLength += kg_copy_string( temporaryFontName + stringLength + 1u, pTrueTypeFont->family.fontSubFamilyName.pString, maxStringLength - ( stringLength + 1u ));     
+
+		if (kg_string_equal(pFontName, temporaryFontName, stringLength))
+		{
+			return kg_true;
+		}
+	}
+
+	return kg_false;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_init_true_type_font_from_offset(kg_true_type_font* pOutTrueTypeFont, const kg_buffer* pTrueTypeData, size_t offset)
+{
+	kg_true_type_sfnt sfnt;
+	kg_result result = kg_peek_data(&sfnt, pTrueTypeData, offset);
+
+	if (result != K15_GUI_RESULT_SUCCESS || ( sfnt != K15_GUI_TRUETYPE_1_SFNT && sfnt != K15_GUI_TRUETYPE_2_SFNT && sfnt != K15_GUI_OPENTYPE_SFNT))
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+
+	pOutTrueTypeFont->offset 	= offset;
+	pOutTrueTypeFont->data 		= *pTrueTypeData;
+	pOutTrueTypeFont->sfnt 		= sfnt;
+
+	kg_parse_true_type_table_offsets(pOutTrueTypeFont);
+	kg_parse_true_type_index_loca_format(pOutTrueTypeFont);
+
+	result |= kg_parse_true_type_font_names(pOutTrueTypeFont);
+	result |= kg_verify_true_type_data(pOutTrueTypeFont);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	return K15_GUI_RESULT_SUCCESS;
+
+}
+/*********************************************************************************/
+kg_internal void kg_query_true_type_font_offset_in_collection(size_t* pOutOffset, const kg_buffer* pFontData, const char* pFontName)
+{
+	size_t offset = 8u; //FK: skip fourCC and version
+	kg_u32 fontCount = 0u;
+
+	kg_peek_data(&fontCount, pFontData, offset);
+	offset += 4u;
+
+	kg_true_type_font tempFont;
+
+	for (kg_u32 fontIndex = 0u; fontIndex < fontCount; ++fontIndex)
+	{
+		kg_u32 offsetToFontData = 0u;
+		kg_peek_data(&offsetToFontData, pFontData, offset);
+	
+		kg_result result = kg_init_true_type_font_from_offset(&tempFont, pFontData, offsetToFontData);
+
+		if (result != K15_GUI_RESULT_SUCCESS)
+		{
+			continue;
+		}
+
+		if (kg_true_type_check_font_name(&tempFont, pFontName))
+		{
+			*pOutOffset = (size_t)offsetToFontData;
+			break;
+		}
+	}
+}
+/*********************************************************************************/
+kg_internal kg_result kg_init_true_type_font(kg_true_type_font* pOutTrueTypeFont, const kg_buffer* pTrueTypeData, const char* pFontName)
+{
+	size_t offset = 0u;
+
+	if (pFontName != kg_nullptr)
+	{
+		const kg_u8* pFontMemory = (const kg_u8*)pTrueTypeData->pMemory;
+		if (pTrueTypeData->memorySizeInBytes >= 4u &&
+			pFontMemory[0] == 't' && 
+			pFontMemory[1] == 't' &&
+			pFontMemory[2] == 'c' &&
+			pFontMemory[3] == 'f')
+			{
+				kg_query_true_type_font_offset_in_collection(&offset, pTrueTypeData, pFontName);
+			}
+	}
+
+	return kg_init_true_type_font_from_offset(pOutTrueTypeFont, pTrueTypeData, offset);
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_glyph_index_format_4(const kg_true_type_font* pTrueTypeFont, kg_glyph_id* pOutGlyphId, size_t offset, kg_code_point codePoint)
+{
+	if (codePoint > 0xFFFF)
+	{
+		return K15_GUI_RESULT_NOT_SUPPORTED;
+	}
+
+	const size_t cmapOffset = offset;
+
+	//FK: skip format
+	offset += 2u;
+
+	kg_u16 tableLength = 0u;
+	kg_read_data(&tableLength, &pTrueTypeFont->data, &offset);
+
+	//FK:	Skip language
+	//		https://docs.microsoft.com/de-de/typography/opentype/spec/cmap#language
+	//		The language field must be set to zero for all cmap subtables whose platform IDs are other than Macintosh (platform ID 1)
+	offset += 2u;
+
+	if (tableLength < 14u)
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+
+	kg_u16 segCount = 0u;
+	kg_read_data(&segCount, &pTrueTypeFont->data, &offset);
+	segCount >>= 1u;
+
+	if (tableLength < (16u + segCount * 8u))
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+
+	kg_u16 searchRange 		= 0u;
+	kg_u16 entrySelector 	= 0u;
+	kg_u16 rangeShift 		= 0u;
+
+	kg_read_data(&searchRange, &pTrueTypeFont->data, &offset);
+	kg_read_data(&entrySelector, &pTrueTypeFont->data, &offset);
+	kg_read_data(&rangeShift, &pTrueTypeFont->data, &offset);
+
+	const kg_u32 endCountPosition = offset;
+	kg_u32 search = endCountPosition;
+
+	kg_u16 cp = 0u;
+	kg_peek_data(&cp, &pTrueTypeFont->data, offset);
+
+	if (codePoint >= (kg_code_point)cp)
+	{
+		search += rangeShift * 2u;
+	}
+
+	search -= 2u;
+
+	while( entrySelector )
+	{
+		kg_u16 end = 0u;
+		searchRange >>= 1u;
+
+		kg_peek_data(&end, &pTrueTypeFont->data, search + searchRange * 2u);
+
+		if (codePoint > (kg_code_point)end)
+		{
+			search += searchRange * 2u;
+		}
+
+		--entrySelector;
+	}
+
+	search += 2u;
+
+	const kg_u32 item = ((search - endCountPosition) >> 1u);
+	kg_u16 start = 0u;
+
+	kg_peek_data(&start, &pTrueTypeFont->data, cmapOffset + 14u + segCount * 2u + 2u + 2u * item);
+
+	if (codePoint < (kg_code_point)start)
+	{
+		return K15_GUI_RESULT_OUT_OF_BOUNDS;
+	}
+
+	kg_u16 idOffset = 0u;
+	kg_peek_data(&idOffset, &pTrueTypeFont->data, cmapOffset + 14u + segCount * 6u + 2u * item);	
+
+	offset = (size_t)idOffset;
+
+	kg_u16 codePointOffset = 0u;
+	
+	if (offset == 0u)
+	{
+		kg_peek_data(&codePointOffset, &pTrueTypeFont->data, cmapOffset + 14u + segCount * 4u + 2u + 2u * item);
+		*pOutGlyphId = codePoint + (kg_code_point)codePointOffset;
+		return K15_GUI_RESULT_SUCCESS;
+	}
+
+	kg_peek_data(&codePointOffset, &pTrueTypeFont->data, offset + (codePoint - (kg_code_point)start) * 2u + cmapOffset + 14u + segCount * 6u + 2u + 2u * item);
+	*pOutGlyphId = (kg_code_point)codePointOffset;
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_glyph_index_format_12_and_13(const kg_true_type_font* pTrueTypeFont, kg_glyph_id* pOutGlyphId, size_t offset, kg_u16 format, kg_code_point codePoint)
+{
+	//FK: Skip format, ength, language and reserved
+	offset += 12u;
+
+	kg_u32 segCount = 0u;
+	kg_read_data(&segCount, &pTrueTypeFont->data, &offset);
+
+	for (kg_u32 segId = 0u; segId < segCount; ++segId)
+	{
+		kg_u32 startChar = 0u;
+		kg_u32 endChar = 0u;
+
+		kg_read_data(&startChar, &pTrueTypeFont->data, &offset);
+		kg_read_data(&endChar, &pTrueTypeFont->data, &offset);
+	
+		if (codePoint < startChar || codePoint > endChar)
+		{
+			offset += 4u;
+			continue;
+		}
+
+		kg_u32 startGlyphId = 0u;
+		kg_read_data(&startGlyphId, &pTrueTypeFont->data, &offset);
+
+		if (format == 12u)
+		{
+			*pOutGlyphId = startGlyphId + codePoint - startChar;
+			return K15_GUI_RESULT_SUCCESS;
+		}
+		else if (format == 13u)
+		{
+			*pOutGlyphId = startGlyphId;
+			return K15_GUI_RESULT_SUCCESS;
+		}		
+	}
+
+	return K15_GUI_RESULT_OUT_OF_BOUNDS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_code_point_glyph_id(const kg_true_type_font* pTrueTypeFont, kg_glyph_id* pOutGlyphId, kg_code_point codePoint)
+{
+	if (((codePoint & 0xFFFFu) == 0xFFFFu) || ((codePoint & 0xFFFFu) == 0xFFFEu) || ((codePoint >= 0xFDD0u) && (codePoint <= 0xFDEFu)))
+	{
+		return K15_GUI_RESULT_OUT_OF_BOUNDS;
+	}
+
+	kg_result result = K15_GUI_RESULT_NOT_SUPPORTED; 
+	size_t offset = pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CMAP];
+	
+	//FK: Skip version entry in cmpa table
+	offset += 2u;
+
+	kg_u16 encodingTableCount = 0u;
+	kg_read_data(&encodingTableCount, &pTrueTypeFont->data, &offset);
+
+	kg_u32 cmapBlockOffset = 0u;
+
+	for (kg_u16 encodingTableIndex = 0u; encodingTableIndex < encodingTableCount; ++encodingTableIndex)
+	{
+		size_t 	encodingEntryOffset = (size_t)(pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CMAP] + 4u + 8u * encodingTableIndex);
+		kg_u16 	encodingPlatform = 0u;
+
+		kg_read_data(&encodingPlatform, &pTrueTypeFont->data, &encodingEntryOffset);
+	
+		switch(encodingPlatform)
+		{
+			case K15_GUI_TRUETYPE_PLATFORM_ID_MICROSOFT:
+				kg_u16 encodingId = 0u;
+				kg_read_data(&encodingId, &pTrueTypeFont->data, &encodingEntryOffset);
+
+				switch(encodingId)
+				{
+					case K15_GUI_TRUETYPE_ENCODING_ID_UNICODE_BMP:
+					case K15_GUI_TRUETYPE_ENCODING_ID_UNICODE_FULL:
+						kg_peek_data(&cmapBlockOffset, &pTrueTypeFont->data, encodingEntryOffset);
+						break;
+				}
+				break;
+
+			case K15_GUI_TRUETYPE_PLATFORM_ID_UNICODE:
+				encodingEntryOffset += 2u;
+				kg_peek_data(&cmapBlockOffset, &pTrueTypeFont->data, encodingEntryOffset);
+				break;
+		}
+
+		if (cmapBlockOffset == 0u)
+		{
+			continue;
+		}
+
+		const kg_u32 cmapBlockPosition = cmapBlockOffset + pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CMAP];
+		offset = cmapBlockPosition;
+
+		kg_u16 format = 0u;
+		kg_peek_data(&format, &pTrueTypeFont->data, offset);
+
+		kg_result result;
+
+		switch (format)
+		{
+			case 4u:
+				result = kg_parse_glyph_index_format_4( pTrueTypeFont, pOutGlyphId, offset, codePoint);
+				break;
+
+			case 12u:
+			case 13u:
+				result = kg_parse_glyph_index_format_12_and_13( pTrueTypeFont, pOutGlyphId, offset, format, codePoint);
+				break;
+		}
+
+		if (result == K15_GUI_RESULT_SUCCESS)
+		{
+			return K15_GUI_RESULT_SUCCESS;
+		}
+	}
+
+	return K15_GUI_RESULT_NOT_SUPPORTED;
+}
+/*********************************************************************************/
+
+/*********************************************************************************/
+kg_internal kg_glyph_cache_entry* kg_find_glyph_r(kg_code_point codePoint, const kg_glyph_cache_entry* pStart, const kg_glyph_cache_entry* pEnd)
+{
+	if (pStart->codePoint == codePoint)
+	{
+		return (kg_glyph_cache_entry*)pStart;
+	}
+	else if (pEnd->codePoint == codePoint)
+	{
+		return (kg_glyph_cache_entry*)pEnd;
+	}
+	else if (pStart == pEnd)
+	{
+		return kg_nullptr;
+	}
+
+	const size_t range = (size_t)(pEnd - pStart);
+	const kg_glyph_cache_entry* pMid = pStart + (range >> 1u);
+
+	if (codePoint > pMid->codePoint)
+	{
+		return kg_find_glyph_r(codePoint, pMid, pEnd);
+	}
+	
+	return kg_find_glyph_r(codePoint, pStart, pMid);
+	
+}
+/*********************************************************************************/
+kg_internal kg_glyph_cache_entry* kg_find_glyph(kg_glyph_cache* pGlyphCache, kg_code_point codePoint)
+{
+	if (pGlyphCache->size == 0u)
+	{
+		return kg_nullptr;
+	}
+
+	//FK: binary search
+	return kg_find_glyph_r(codePoint, pStart, pEnd);
+} 
+/*********************************************************************************/
+kg_internal kg_glyph_cache_entry* kg_push_glyph(kg_glyph_cache* pGlyphCache)
+{
+	if (pGlyphCache->size + 1 == pGlyphCache->capacity)
+	{
+		return kg_nullptr;
+	}
+
+	return &pGlyphCache->pEntries[pGlyphCache->size++];
+}
+/*********************************************************************************/
+kg_internal void kg_evict_least_used_glyph(kg_glyph_cache* pGlyphCache)
+{
+	typedef struct
+	{
+		kg_glyph_cache_entry* 	pEntry;
+		kg_u32					frameIndex;
+	} kg_least_used_glyph;
+
+	kg_least_used_glyph leastUsedGlyph;
+	leastUsedGlyph.pEntry 		= &pGlyphCache->pEntries[0];
+	leastUsedGlyph.frameIndex 	= pGlyphCache->pEntries[0].lastUsedFrameIndex;
+
+	for (kg_u32 glyphIndex = 0u; glyphIndex < pGlyphCache->size; ++glyphIndex)
+	{
+		if (leastUsedGlyph.frameIndex > pGlyphCache->pEntries[glyphIndex].lastUsedFrameIndex)
+		{
+			leastUsedGlyph.frameIndex 	= pGlyphCache->pEntries[glyphIndex].lastUsedFrameIndex;
+			leastUsedGlyph.pEntry 		= &pGlyphCache->pEntries[glyphIndex];
+		}
+	}
+
+	const kg_u32 glyphIndex = (size_t)(leastUsedGlyph.pEntry - pGlyphCache->pEntries) / sizeof(kg_glyph_cache_entry);
+
+	if (glyphIndex < (pGlyphCache->size - 1u))
+	{
+		kg_memcpy(pGlyphCache->pEntries + glyphIndex, pGlyphCache->pEntries + glyphIndex + 1u, (pGlyphCache->size - glyphIndex - 1u)* sizeof(kg_glyph_cache_entry));
+	}
+
+	--pGlyphCache->size;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_glyf_offset(kg_u32* pOutGlyfOffset, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
+{
+	const kg_u32 offset = pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_LOCA];
+
+	if ( offset == 0u )
+	{
+		return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
+	}
+
+	if ( pTrueTypeFont->indexLocaFormat == 0u )
+	{
+		kg_u16 glyfOffset 		= 0u;
+		kg_u16 nextGlyfOffset 	= 0u;
+
+		kg_peek_data(&glyfOffset, 		&pTrueTypeFont->data, offset + (glyphId + 0u) * 2u);
+		kg_peek_data(&nextGlyfOffset, 	&pTrueTypeFont->data, offset + (glyphId + 1u) * 2u);
+
+		if (glyfOffset == nextGlyfOffset)
+		{
+			return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
+		}
+
+		*pOutGlyfOffset = glyfOffset * 2u;
+
+		return K15_GUI_RESULT_SUCCESS;
+	}
+	else
+	{
+		kg_u32 glyfOffset 		= 0u;
+		kg_u32 nextGlyfOffset 	= 0u;
+
+		kg_peek_data(&glyfOffset,		&pTrueTypeFont->data, offset + (glyphId + 0u) * 4u);
+		kg_peek_data(&nextGlyfOffset,	&pTrueTypeFont->data, offset + (glyphId + 1u) * 4u);
+
+		if (glyfOffset == nextGlyfOffset)
+		{
+			return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
+		}
+
+		*pOutGlyfOffset = glyfOffset;
+
+		return K15_GUI_RESULT_SUCCESS;
+	}
+
+	return K15_GUI_RESULT_FONT_DATA_ERROR;
+}
+/*********************************************************************************/
+kg_internal kg_true_type_contour* kg_allocate_true_type_glyf_contours(kg_true_type_glyf_outline_context* pOutlineContext, kg_u32 contourCount)
+{
+	if (pOutlineContext->contourCount + contourCount >= pOutlineContext->contourCapacity)
+	{
+		return kg_nullptr;
+	}
+
+	kg_true_type_contour* pContours = pOutlineContext->pContourBuffer + pOutlineContext->contourCount;
+	pOutlineContext->contourCount += contourCount;
+
+	return pContours;
+}
+/*********************************************************************************/
+kg_internal kg_true_type_vertex* kg_allocate_true_type_glyf_vertices(kg_true_type_glyf_outline_context* pOutlineContext, kg_u32 vertexCount)
+{
+	if (pOutlineContext->vertexCount + vertexCount >= pOutlineContext->vertexCapacity)
+	{
+		return kg_nullptr;
+	}
+
+	kg_true_type_vertex* pVertices = pOutlineContext->pVertexBuffer + pOutlineContext->vertexCount;
+	pOutlineContext->vertexCount += vertexCount;
+
+	return pVertices;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_simple_glyph_outline_glyf(kg_glyph_outline* pOutGlyphOutline, kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_u32 glyfOffset)
+{
+	kg_u32 offset = glyfOffset + pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF];
+	kg_u16 contourCount = 0u;
+
+	kg_read_data(&contourCount, &pTrueTypeFont->data, &offset);
+	offset += 8u; //FK: skip bounding box
+
+	kg_u16 endPointsOfPreviousContour 	= 0u;
+	kg_u32 totalVertexCount 			= 0u;
+	const kg_u32 startVertexIndex 		= pOutGlyphOutline->vertexCount;
+
+	kg_true_type_contour* pContours = kg_allocate_true_type_glyf_contours(pOutlineContext, contourCount);
+
+	if (pContours == kg_nullptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	for (kg_u16 contourIndex = 0u; contourIndex < contourCount; ++contourIndex)
+	{
+		kg_u16 endPointOfContour = 0u;
+		kg_u32 vertexCount = 0u;
+
+		kg_read_data(&endPointOfContour, &pTrueTypeFont->data, &offset);
+		endPointOfContour += 1u;
+
+		const kg_u32 vertexCount = ((kg_s32)endPointOfContour - (kg_s32)endPointsOfPreviousContour) < 0 ? 0u : endPointOfContour - endPointsOfPreviousContour;
+
+		pContours[ contourIndex ].startIndex 	= startVertexIndex + totalVertexCount;
+		pContours[ contourIndex ].length		= vertexCount;
+
+		totalVertexCount += vertexCount;
+
+		endPointsOfPreviousContour = endPointOfContour;
+	}
+
+	kg_u16 instructionCount = 0u;
+	kg_read_data(&instructionCount, &pTrueTypeFont->data, &offset);
+	offset += instructionCount;
+
+	kg_u8 flags = 0u;
+	kg_u8 flagRepeatCount = 0u;
+
+	kg_true_type_vertex* pVertices = kg_allocate_true_type_vertices(pOutlineContext, totalVertexCount);
+
+	if (pVertices == kg_nullptr)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY;
+	}
+
+	for (kg_u32 vertexIndex = 0u; vertexIndex < totalVertexCount; ++vertexIndex)
+	{
+		if (flagRepeatCount > 0u)
+		{
+			--flagRepeatCount;
+		}
+		else
+		{
+			kg_read_data(&flags, &pTrueTypeFont->data, &offset);
+
+			if ((flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_REPEAT) > 0u)
+			{
+				if (flagRepeatCount == 0u)
+				{
+					kg_read_data(&flagRepeatCount, &pTrueTypeFont->data, &offset);
+				}
+			}
+		}
+
+		pVertices[ vertexIndex ].flags 	= flags;
+		pVertices[ vertexIndex ].type 	= (flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_ON_CURVE) > 0u ? K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE : K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC;
+	}
+
+	kg_s16 previousXCoordinate = 0u;
+	kg_s16 previousYCoordinate = 0u;
+	kg_s16 xCoordinate = 0u;
+	kg_s16 yCoordinate = 0u;
+
+	for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < totalVertexCount; ++vertexIndex)
+	{
+		kg_true_type_vertex* pVertex = pVertices + vertexIndex;
+
+		if ((pVertex->flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_X_SHORT_VECTOR) > 0u)
+		{
+			kg_u8 xScale = 0u;
+			kg_read_data(&xScale, &pTrueTypeFont->data, &offset);
+
+			xCoordinate = ((pVertex->flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_THIS_X_IS_SAME) > 0u ? 1 : -1);
+			xCoordinate *= xScale;
+			xCoordinate = previousXCoordinate + xCoordinate;
+		}
+		else if ((pVertex->flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_THIS_X_IS_SAME) == 0u)
+		{
+			kg_read_data(&xCoordinate, &pTrueTypeFont->data, &offset);
+			xCoordinate = previousXCoordinate + xCoordinate;
+		}
+
+		pVertex->xCoordinate 	= xCoordinate;
+		previousXCoordinate 	= xCoordinate;
+	}
+
+	for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < totalVertexCount; ++vertexIndex)
+	{
+		kg_true_type_vertex* pVertex = pVertices + vertexIndex;
+
+		if ((pVertex->flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_Y_SHORT_VECTOR) > 0u)
+		{
+			kg_u8 scale = 0u;
+			kg_read_data(&scale, &pTrueTypeFont->data, &offset);
+
+			yCoordinate = ((pVertex->flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_THIS_Y_IS_SAME) > 0u ? 1 : -1);
+			yCoordinate *= scale;
+			yCoordinate = previousYCoordinate + yCoordinate;
+		}
+		else if ((pVertex->flags & K15_GUI_TRUE_TYPE_GLYPH_FLAG_THIS_Y_IS_SAME) == 0u)
+		{
+			kg_read_data(&yCoordinate, &pTrueTypeFont->data, &offset);
+			yCoordinate = previousYCoordinate + yCoordinate;
+		}
+
+		pVertex->yCoordinate 	= yCoordinate;
+		previousYCoordinate 	= yCoordinate;
+	}
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal float kg_convert_fixed_point_to_float(kg_s16 fixedPoint)
+{
+	return (float)fixedPoint / 16384.0f;
+}
+/*********************************************************************************/
+kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformation, kg_u32* pInOutOffset, const kg_true_type_font* pTrueTypeFont, kg_u16 flags)
+{
+	if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_ARGS_ARE_XY_VALUES) > 0u )
+	{
+		if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_ARG1_AND_2_ARE_WORDS) > 0u )
+		{
+			kg_u16 arg1 = 0u;
+			kg_u16 arg2 = 0u;
+
+			kg_read_data(&arg1, &pTrueTypeFont->data, pInOutOffset);
+			kg_read_data(&arg2, &pTrueTypeFont->data, pInOutOffset);
+
+			pOutTransformation[4] = (float)arg1;
+			pOutTransformation[5] = (float)arg2;
+		}
+		else
+		{
+			kg_u8 arg1 = 0u;
+			kg_u8 arg2 = 0u;
+
+			kg_read_data(&arg1, &pTrueTypeFont->data, pInOutOffset);
+			kg_read_data(&arg2, &pTrueTypeFont->data, pInOutOffset);
+
+			pOutTransformation[4] = (float)arg1;
+			pOutTransformation[5] = (float)arg2;
+		}
+	}
+
+	if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_A_SCALE) > 0u )
+	{
+		kg_s16 fixedPointScale = 0u;
+		kg_read_data(&fixedPointScale, &pTrueTypeFont->data, pInOutOffset);
+
+		const float scaleFloat = kg_convert_fixed_point_to_float(fixedPointScale);
+
+		pOutTransformation[0] = scaleFloat;
+		pOutTransformation[1] = 0.0f;
+		pOutTransformation[2] = 0.0f;
+		pOutTransformation[3] = scaleFloat;
+	}
+	else if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_AN_X_AND_Y_SCALE) > 0u )
+	{
+		kg_s16 fixedPointScaleX = 0u;
+		kg_s16 fixedPointScaleY = 0u;
+
+		kg_read_data(&fixedPointScaleX, &pTrueTypeFont->data, pInOutOffset);
+		kg_read_data(&fixedPointScaleY, &pTrueTypeFont->data, pInOutOffset);
+
+		pOutTransformation[0] = kg_convert_fixed_point_to_float(fixedPointScaleX);
+		pOutTransformation[1] = 0.f;
+		pOutTransformation[2] = 0.f;
+		pOutTransformation[3] = kg_convert_fixed_point_to_float(fixedPointScaleY);
+	}
+	else if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_A_TWO_BY_TWO) > 0u )
+	{
+		kg_s16 fixedPointScaleX = 0u;
+		kg_s16 fixedPointScaleY = 0u;
+		kg_s16 fixedPointPosX 	= 0u;
+		kg_s16 fixedPointPosY 	= 0u;
+
+		kg_read_data(&fixedPointScaleX, &pTrueTypeFont->data, pInOutOffset);
+		kg_read_data(&fixedPointPosX, 	&pTrueTypeFont->data, pInOutOffset);
+		kg_read_data(&fixedPointPosY, 	&pTrueTypeFont->data, pInOutOffset);
+		kg_read_data(&fixedPointScaleY, &pTrueTypeFont->data, pInOutOffset);
+
+		pOutTransformation[0] = convertFixedPointToFloat( fixedPointScaleX );
+		pOutTransformation[1] = convertFixedPointToFloat( fixedPointPosX );
+		pOutTransformation[2] = convertFixedPointToFloat( fixedPointPosY );
+		pOutTransformation[3] = convertFixedPointToFloat( fixedPointScaleY );
+	}
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_compound_glyf_outline(kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_u32 offset)
+{
+	offset = offset + pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF];
+	offset += 10u; //FK: Skip contour count and bounding box
+	while ( kg_true )
+	{
+		kg_u16 flags 				= 0u;
+		kg_u16 contourGlyphIndex 	= 0u;
+		
+		kg_read_data(&flags, &pTrueTypeFont->data, &offset);
+		kg_read_data(&contourGlyphIndex, &pTrueTypeFont->data, &offset);
+
+		const kg_u32 startVertexIndex = pOutlineContext->vertexCount;
+		kg_result result = kg_parse_true_type_glyf_outline(pOutlineContext, pTrueTypeFont, contourGlyphIndex);			
+		
+		if (result != K15_GUI_RESULT_SUCCESS)
+		{
+			return result;
+		}
+		
+		float transformation[6] = { 1.f, 0.f, 0.f, 1.f, 0.f, 0.f };
+		kg_parse_true_type_glyf_transformation( transformation, pTrueTypeFont, &offset, flags);
+
+		const float xScale = kg_sqrt( transformation[0] * transformation[0] + transformation[1] * transformation[1] )
+		const float yScale = kg_sqrt( transformation[2] * transformation[2] + transformation[3] * transformation[3] )
+
+		//FK: Apply transformation to contour glyph vertices
+		for ( uint32 vertexIndex = startVertexIndex; vertexIndex < pOutVertices->getSize(); ++vertexIndex )
+		{
+			TrueTypeVertex* pVertex = pOutVertices->getStart() + vertexIndex;
+			float x = (float)pVertex->xCoordinate;
+			float y = (float)pVertex->yCoordinate;
+			pVertex->xCoordinate = (sint16)(xScale * (transformation[0] * x + transformation[2] * y + transformation[4]));
+			pVertex->yCoordinate = (sint16)(yScale * (transformation[1] * x + transformation[3] * y + transformation[5]));
+		}
+		if ( (flags & TrueTypeComponentFlag_More_components) == 0u )
+		{
+			break;
+		}
+	}
+	return ErrorId_Ok;
+
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_glyf_outline(kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
+{
+	kg_u32 glyfOffset = 0u;
+	kg_result result = kg_parse_true_type_glyf_offset(&glyfOffset, pTrueTypeFont, glyphId);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	kg_u32 offset = glyfOffset + pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF];
+
+	kg_s16 contourCount = 0u;
+	kg_read_data(&contourCount, &pTrueTypeFont->data, &offset);
+
+	kg_result result = K15_GUI_RESULT_NOT_SUPPORTED;
+
+	if (contourCount < 0)
+	{
+		result = kg_parse_true_type_compound_glyf_outline(pOutlineContext, pTrueTypeFont, offset);
+	}
+	else
+	{
+		result = kg_parse_true_type_simple_glyf_outline(pOutlineContext, pTrueTypeFont, offset);
+	}
+
+	return result;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_begin_true_type_glyf_outline_parse(kg_glyph_outline* pOutGlyphOutline, kg_linear_allocator* pAllocator, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
+{
+	kg_true_type_contour* pContourBuffer = kg_nullptr;
+	kg_true_type_vertex* pVertexBuffer = kg_nullptr;
+
+	const size_t maxVertexCount = 512u;
+	const size_t maxContourCount = 256u;
+
+	result |= kg_allocate_from_linear_allocator(&pContourBuffer, pAllocator, sizeof(kg_true_type_contour) * 512u);
+	result |= kg_allocate_from_linear_allocator(&pVertexBuffer, pAllocator, sizeof(kg_true_type_vertex) * 512u);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	kg_true_type_glyf_outline_context outlineContext;
+	outlineContext.pContourBuffer 	= pContourBuffer;
+	outlineContext.pVertexBuffer 	= pVertexBuffer;
+	outlineContext.vertexCount 		= 0u;
+	outlineContext.contourCount 	= 0u;
+	outlineContext.vertexCapacity 	= maxVertexCount;
+	outlineContext.contourCapacity 	= maxContourCount;
+
+	return kg_parse_true_type_glyf_outline(&outlineContext, pTrueTypeFont, glyphId)
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_glyph_outline(kg_glyph_outline* pOutGlyphOutline, kg_linear_allocator* pAllocator, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
+{
+	if ( pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF] > 0u )
+	{
+		return kg_begin_true_type_glyf_outline_prase(pOutGlyphOutline, pAllocator, pTrueTypeFont, glyphId);
+	}
+	else if( pTrueTypeFont-tableOffsets[K15_GUI_TRUETYPE_TABLE_CFF] > 0u )
+	{
+		return kg_parse_true_type_glyph_outline_cff(pOutGlyphOutline, pAllocator, pTrueTypeFont, glyphId);
+	}
+
+	return K15_GUI_RESULT_FONT_DATA_ERROR;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocator, kg_glyph_cache_entry* pGlyph, kg_texture_atlas* pAtlas, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId, float fontSize)
+{
+	kg_glyph_outline glyphOutline;
+	kg_result result = kg_parse_true_type_glyph_outline(&glyphOutline, pAllocator, pTrueTypeFont, glyphId);
+}
+/*********************************************************************************/
+kg_internal kg_result kg_create_glyph_cache(kg_glyph_cache* pOutGlyphCache, kg_linear_allocator* pAllocator, kg_u32 glyphCacheSize, kg_u16 glyphAtlasDimension)
+{
+	kg_texture_atlas glyphAtlas;
+	kg_result result = kg_create_texture_atlas(&glyphAtlas, pAllocator, glyphAtlasDimension, glyphAtlasDimension, K15_GUI_PIXEL_FORMAT_R8);
+	
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	const size_t glyphArraySize = sizeof(kg_glyph_cache_entry) * glyphCacheSize;
+	kg_glyph_cache_entry* pGlyphEntries = kg_nullptr;
+
+	result = kg_allocate_from_linear_allocator(&pGlyphEntries, pAllocator, glyphArraySize);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pOutGlyphCache->capacity 	= glyphCacheSize;
+	pOutGlyphCache->size		= 0u;
+	pOutGlyphCache->pEntries	= pGlyphEntries;
+	pOutGlyphCache->atlas		= glyphAtlas;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_create_image_cache(kg_image_cache* pOutImageCache, kg_linear_allocator* pAllocator, kg_u32 imageAtlasDimension)
+{
+	kg_texture_atlas imageAtlas;
+	kg_result result = kg_create_texture_atlas(&imageAtlas, pAllocator, imageAtlasDimension, imageAtlasDimension, K15_GUI_PIXEL_FORMAT_R8G8B8A8);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	kg_hash_map imageHashMap;
+	result = kg_create_hash_map(&imageHashMap, pAllocator, sizeof(kg_image_cache_entry));
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pOutImageCache->hashMap = imageHashMap;
+	pOutImageCache->atlas 	= imageAtlas;
+
+	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
 kg_internal const kg_context_parameter* kg_get_default_context_parameter()
 {
 	static kg_context_parameter defaultParameter;
 	static const size_t defaultDataMemorySize = kg_size_mega_bytes(5);
-
+		
 	void* pMemory = kg_malloc(defaultDataMemorySize, kg_nullptr);
 
 	if (pMemory == kg_nullptr)
 	{
-		
 	}
 
 	defaultParameter.scratchBuffer = kg_create_buffer(pMemory, defaultDataMemorySize);
@@ -659,7 +2482,7 @@ kg_internal const kg_render_context_parameter* kg_get_default_render_context_par
 	
 	static kg_render_context_parameter defaultParameter;
 
-	void* pVertexMemory 	= kg_malloc(defaultVertexMemorySize, kg_nullptr);
+	void* pVertexMemory = kg_malloc(defaultVertexMemorySize, kg_nullptr);
 	void* pIndexMemory 	= kg_malloc(defaultIndexMemorySize, kg_nullptr);
 
 	defaultParameter.vertexBufferCount 	= 1u;
@@ -788,90 +2611,17 @@ kg_internal kg_u32 kg_read_code_point(const kg_utf8* pUtf8Text, kg_code_point* p
 	return 0u;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_zero()
+kg_internal kg_u32 kg_get_text_length(const kg_utf8* pUtf8Text)
 {
-	static const kg_float2 zero = {0.f, 0.f};
-	return zero;
-}
+	kg_u32 length = 0u;
+	while(*pUtf8Text)
+	{
+		kg_code_point codePoint;
+		pUtf8Text += kg_read_code_point(pUtf8Text, &codePoint);
+		++length;
+	}
 
-kg_internal kg_bool kg_float2_gt(const kg_float2* pA, const kg_float2* pB)
-{
-	return ( pA->x > pB->x && pA->y > pB->y );
-}
-
-kg_internal kg_float2 kg_float2_clamp(const kg_float2* pValue, const kg_float2* pMin, const kg_float2* pMax)
-{
-	kg_float2 clamped = kg_float2_zero();
-	clamped.x = kg_clamp(pValue->x, pMin->x, pMax->x);
-	clamped.y = kg_clamp(pValue->y, pMin->y, pMax->y);
-
-	return clamped;
-}
-
-kg_internal kg_float2 kg_float2_max(const kg_float2* pA, const kg_float2* pB)
-{
-	kg_float2 maxValue = kg_float2_zero();
-	maxValue.x = kg_max(pA->x, pB->x);
-	maxValue.y = kg_max(pA->y, pB->y);
-
-	return maxValue;
-}
-
-kg_internal kg_float2 kg_float2_add(const kg_float2* pA, const kg_float2* pB)
-{
-	kg_float2 sum = *pA;
-	sum.x += pB->x;
-	sum.y += pB->y;
-
-	return sum;
-}
-
-kg_internal kg_float4 kg_float4_zero()
-{
-	static const kg_float4 zero = {0.f, 0.f, 0.f, 0.f};
-	return zero;
-}
-
-kg_internal kg_uint2 kg_uint2_zero()
-{
-	static const kg_uint2 zero = {0u, 0u};
-	return zero;
-}
-
-kg_internal kg_sint2 kg_sint2_zero()
-{
-	static const kg_sint2 zero = {0, 0};
-	return zero;
-}
-
-kg_internal kg_float2 kg_create_float2(float x, float y)
-{
-	kg_float2 f2 = {x, y};
-	return f2;
-}
-
-kg_internal kg_float4 kg_create_float4(float x, float y, float z, float w)
-{
-	kg_float4 f4 = {x, y, z, w};
-	return f4;
-}
-
-kg_internal kg_uint2 kg_create_uint2(kg_u32 x, kg_u32 y)
-{
-	kg_uint2 u2 = {x, y};
-	return u2;
-}
-
-kg_internal kg_sint2 kg_create_sint2(kg_s32 x, kg_s32 y)
-{
-	kg_sint2 s2 = {x, y};
-	return s2;
-}
-
-kg_internal kg_float2 kg_uint2_to_float2_cast(kg_uint2 u2)
-{
-	kg_float2 f2 = { (float)u2.x, (float)u2.y };
-	return f2;
+	return length;
 }
 
 kg_internal kg_bool kg_is_invalid_context_handle(kg_context_handle contextHandle)
@@ -903,26 +2653,6 @@ kg_internal kg_bool kg_is_invalid_viewport(const kg_viewport* pViewport)
 	return kg_false;
 }
 
-kg_internal kg_bool kg_is_invalid_linear_allocator(const kg_linear_allocator* pAllocator)
-{
-	if (pAllocator == kg_nullptr)
-	{
-		return kg_true;
-	}
-
-	if (pAllocator->pMemory == kg_nullptr)
-	{
-		return kg_true;
-	}
-
-	if (pAllocator->memorySizeInBytes == 0u)
-	{
-		return kg_true;
-	}
-
-	return kg_false;
-}
-
 kg_internal kg_linear_allocator* kg_get_frame_allocator_from_current_frame(kg_context* pContext)
 {
 	return &pContext->frameAllocators[pContext->frameCounter % 2 == 0 ? 0 : 1];
@@ -946,74 +2676,6 @@ kg_internal const kg_hash_map* kg_get_element_hash_map_from_last_frame(const kg_
 kg_internal const kg_hash_map* kg_get_window_hash_map_from_last_frame(const kg_context* pContext)
 {
 	return &pContext->windows[pContext->frameCounter % 2  != 0 ? 0 : 1];
-}
-
-kg_internal kg_result kg_create_linear_allocator(kg_linear_allocator* pOutAllocator, void* pMemory, size_t memorySizeInBytes)
-{
-	if (pOutAllocator == kg_nullptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (pMemory == kg_nullptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (memorySizeInBytes == 0u)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	kg_linear_allocator linearAllocator;
-	linearAllocator.allocPosition 		= 0u;
-	linearAllocator.memorySizeInBytes 	= memorySizeInBytes;
-	linearAllocator.pMemory				= pMemory;
-
-	*pOutAllocator = linearAllocator;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal kg_result kg_reset_linear_allocator(kg_linear_allocator* pAllocator, size_t position)
-{
-	if (kg_is_invalid_linear_allocator(pAllocator))
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	position = kg_clamp(position, 0u, pAllocator->allocPosition);
-	pAllocator->allocPosition = position;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal size_t kg_get_linear_allocator_position(const kg_linear_allocator* pAllocator)
-{
-	return pAllocator->allocPosition;
-}
-
-kg_internal kg_result kg_allocate_from_linear_allocator(void** pOutPointer, kg_linear_allocator* pAllocator, size_t sizeInBytes)
-{
-	if (pAllocator == kg_nullptr)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (sizeInBytes == 0u)
-	{
-		return K15_GUI_RESULT_INVALID_ARGUMENTS;
-	}
-
-	if (pAllocator->allocPosition + sizeInBytes > pAllocator->memorySizeInBytes)
-	{
-		return K15_GUI_RESULT_OUT_OF_MEMORY;
-	}
-
-	*pOutPointer = ((kg_byte*)pAllocator->pMemory + pAllocator->allocPosition);
-	pAllocator->allocPosition += sizeInBytes;
-
-	return K15_GUI_RESULT_SUCCESS;
 }
 
 kg_internal kg_result kg_create_input_system(kg_input_system* pOutinputSystem, kg_linear_allocator* pAllocator)
@@ -1125,134 +2787,6 @@ kg_internal kg_u32 kg_get_index_data_type_size_in_bytes(kg_index_data_type index
 
 	return 0u;
 }
-
-kg_internal kg_result kg_create_hash_map(kg_hash_map* pOutHashMap, kg_linear_allocator* pAllocator, size_t elementSizeInBytes)
-{
-	pOutHashMap->pAllocator 		= pAllocator;
-	pOutHashMap->elementSizeInBytes = elementSizeInBytes;
-
-	return K15_GUI_RESULT_SUCCESS;
-}
-
-kg_internal void kg_reset_hash_map(kg_hash_map* pHashMap)
-{
-	for (kg_u32 bucketIndex = 0u; bucketIndex < K15_GUI_DEFAULT_BUCKET_COUNT; ++bucketIndex)
-	{
-		pHashMap->buckets[bucketIndex] = kg_nullptr;
-	}
-}
-
-kg_internal kg_hash_map_bucket* kg_allocate_hash_map_bucket(kg_hash_map* pHashMap, kg_u32 bucketIndex, kg_crc32 identifier)
-{
-	if (pHashMap == kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	kg_hash_map_bucket* pBucket = kg_nullptr;
-	kg_result result = kg_allocate_from_linear_allocator(&pBucket, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		return kg_nullptr;
-	}
-
-	result = kg_allocate_from_linear_allocator(&pBucket->pElement, pHashMap->pAllocator, pHashMap->elementSizeInBytes);
-
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		return kg_nullptr;
-	}
-
-	pBucket->key = identifier;	
-
-	if (pHashMap->buckets[bucketIndex] != kg_nullptr)
-	{
-		pBucket->pNext = pHashMap->buckets[bucketIndex];
-	}
-
-	pHashMap->buckets[bucketIndex] = pBucket;
-
-	return pBucket;
-}
-
-kg_internal const kg_hash_map_bucket* kg_find_hash_bucket(const kg_hash_map_bucket* pBucket, kg_crc32 identifier)
-{
-	if (pBucket == kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	if (pBucket->key == identifier)
-	{
-		return pBucket;
-	}
-
-	return kg_find_hash_bucket(pBucket->pNext, identifier);
-}
-
-kg_internal void* kg_find_hash_element(const kg_hash_map* pHashMap, kg_crc32 identifier)
-{
-	if (pHashMap == kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	const kg_u32 hashIndex 				= identifier % K15_GUI_DEFAULT_BUCKET_COUNT;
-	const kg_hash_map_bucket* pBucket 	= pHashMap->buckets[hashIndex];
-
-	if (pBucket== kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	pBucket = kg_find_hash_bucket(pBucket, identifier);
-
-	if (pBucket == kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	return pBucket->pElement;
-}
-
-kg_internal void* kg_insert_hash_element(kg_hash_map* pHashMap, kg_crc32 identifier, kg_bool* pOutIsNew)
-{
-	if (pHashMap == kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	const kg_u32 hashIndex 				= identifier % K15_GUI_DEFAULT_BUCKET_COUNT;
-	const kg_hash_map_bucket* pBucket 	= pHashMap->buckets[hashIndex];
-
-	if (pBucket != kg_nullptr)
-	{
-		pBucket = kg_find_hash_bucket(pBucket, identifier);
-
-		if (pBucket == kg_nullptr)
-		{
-			return kg_nullptr;
-		}
-		else
-		{
-			*pOutIsNew = kg_false;
-			return pBucket->pElement;
-		}
-	}
-
-	pBucket = kg_allocate_hash_map_bucket(pHashMap, hashIndex, identifier);
-	
-	if (pBucket == kg_nullptr)
-	{
-		return kg_nullptr;
-	}
-
-	*pOutIsNew = kg_true;
-
-	return pBucket->pElement;
-}
-
 
 kg_internal kg_result kg_create_error_stack(kg_error_stack* pOutErrorStack, kg_linear_allocator* pAllocator)
 {
@@ -1716,9 +3250,12 @@ kg_internal void kg_set_vertex_2d(kg_render_vertices* pVertices, kg_u32 vertexIn
 	kg_set_vertex_3d(pVertices, vertexIndex, x, y, 0.f, 1.f, u, v, color);
 }
 
+#if 0
 kg_internal void kg_add_render_geometry(kg_context* pContext, kg_render_vertices* pVertices)
 {
+	
 }
+#endif
 
 kg_internal kg_result kg_allocate_vertices(kg_render_vertices* pOutVertices, kg_linear_allocator* pAllocator, kg_u32 vertexCount)
 {
@@ -1776,6 +3313,77 @@ kg_internal kg_result kg_render_element_rect(kg_context* pContext, kg_rect rect,
 	kg_set_vertex_2d(&vertices, 5, rect.position.x + rect.size.x, 	rect.position.y, 				0.f, 0.f, color);	
 
 	return K15_GUI_RESULT_SUCCESS;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_render_element_text(kg_context* pContext, kg_rect textRect, const kg_utf8* pText, kg_color32 color)
+{
+	kg_code_point codePoint;
+	kg_glyph_cache_entry* pGlyph = kg_nullptr;
+
+	const kg_u32 textSize = kg_get_text_length(pText);
+	const kg_u32 vertexCount = textSize * 6u;
+
+	kg_render_vertices vertices;
+	const kg_result result = kg_allocate_vertices(&vertices, pContext->renderContext.pVertexAllocator, vertexCount);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	};
+
+	kg_float4 uvBounds  = kg_float4_zero();
+	kg_float2 size 		= kg_float2_zero();
+	kg_float2 position  = textRect.position;
+	float advance 		= 0.f;
+
+	while (*pText != 0)
+	{
+		const kg_u32  offset = kg_read_code_point(pText, &codePoint);
+		pGlyph = kg_find_glyph(&pContext->glyphCache, codePoint);
+
+		if (!pGlyph)
+		{
+			pGlyph = kg_push_glyph(&pContext->glyphCache);
+
+			if (pGlyph == kg_nullptr)
+			{
+				kg_evict_least_used_glyph(&pContext->glyphCache);
+				pGlyph = kg_push_glyph(&pContext->glyphCache);
+			}
+
+			kg_glyph_id glyphId = 0u;
+			kg_result result = kg_parse_true_type_code_point_glyph_id(&pContext->trueTypeFont, &glyphId, codePoint); 
+			//FK: consider result
+
+			kg_linear_allocator* pAllocator = kg_get_frame_allocator_from_current_frame(pContext);
+			const size_t allocatorPosition = kg_get_linear_allocator_position(pAllocator);
+		
+			result = kg_rasterize_true_type_glyph(pAllocator, pGlyph, &pContext->glyphCache.atlas, &pContext->trueTypeFont, glyphId, 24.f);
+		
+			kg_reset_linear_allocator(pAllocator, allocatorPosition);
+
+			//FK: consider result
+		}
+
+		pGlyph->lastUsedFrameIndex = pContext->frameCounter;
+
+		uvBounds 	= pGlyph->pAtlasSlot->uvBounds;
+		size 		= kg_uint2_to_float2_cast(pGlyph->pAtlasSlot->size);
+		advance 	= 0.0f;//pGlyph->metrics.advanceWidth;
+
+		kg_set_vertex_2d(&vertices, 0, position.x, 				position.y + size.y, uvBounds.x, uvBounds.w, color);	
+		kg_set_vertex_2d(&vertices, 1, position.x + size.x, 	position.y + size.y, uvBounds.z, uvBounds.w, color);	
+		kg_set_vertex_2d(&vertices, 2, position.x, 				position.y, 		 uvBounds.x, uvBounds.y, color);	
+		kg_set_vertex_2d(&vertices, 3, position.x, 				position.y, 		 uvBounds.x, uvBounds.y, color);	
+		kg_set_vertex_2d(&vertices, 4, position.x + size.x, 	position.y + size.y, uvBounds.z, uvBounds.w, color);	
+		kg_set_vertex_2d(&vertices, 5, position.x + size.x, 	position.y, 		 uvBounds.z, uvBounds.y, color);	
+
+		position.x += advance;
+		
+		pText += offset;
+	}
+
+	return K15_GUI_RESULT_NOT_SUPPORTED;	
 }
 /******************************INPUT LOGIC****************************************/
 kg_internal kg_input_event* kg_allocate_input_event(kg_input_system* pInputSystem, kg_input_type inputType)
@@ -1896,6 +3504,11 @@ kg_internal void kg_reset_context_state(kg_context* pContext)
 	kg_reset_linear_allocator(pContext->pAllocator, pContext->allocatorFrameDataPosition);
 }
 
+kg_internal kg_buffer kg_invalid_buffer()
+{
+	return kg_create_buffer(kg_nullptr, 0u);
+}
+
 //TODO-LIST:
 //	1. Proper layouting (currently broken as PopLayout pops layouts from the stack that
 //						later get references via the layoutIndex in the K15_GUIElement
@@ -1916,16 +3529,20 @@ kg_internal void kg_reset_context_state(kg_context* pContext)
 //							Only need JPE G, PNG and maybe TIFF support).
 //  12. provide more style options other  than just different colors.
 //		Imagesets and icons come to mind.
+
+
+/*********************************************************************************/
 kg_context_parameter kg_create_context_parameter()
 { 
 	kg_context_parameter parameter;
 
 	parameter.scratchBuffer.pMemory 			= kg_nullptr;
 	parameter.scratchBuffer.memorySizeInBytes 	= 0u;
-
+	parameter.pFontName = kg_nullptr;
+	parameter.fontData 	= kg_invalid_buffer();
 	return parameter;	
 }
-
+/*********************************************************************************/
 kg_render_context_parameter kg_create_render_context_parameter()
 {
 	kg_render_context_parameter parameter;
@@ -1935,14 +3552,14 @@ kg_render_context_parameter kg_create_render_context_parameter()
 
 	return parameter;
 }
-
+/*********************************************************************************/
 kg_result kg_create_context(kg_context_handle* pOutHandle)
 {
 	const kg_context_parameter* pParameter = kg_get_default_context_parameter();
 	const kg_render_context_parameter* pRenderParameter = kg_get_default_render_context_parameter();
 	return kg_create_context_with_custom_parameter( pOutHandle, pParameter, pRenderParameter, kg_nullptr);
 }
-
+/*********************************************************************************/
 kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter, const kg_render_context_parameter* pRenderParameter, const char** pOutError)
 {
 	if (pOutHandle == kg_nullptr)
@@ -2009,6 +3626,34 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 	}
 
 	result = kg_create_render_context(&pContext->renderContext, pRenderParameter);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	result = kg_init_true_type_font(&pContext->trueTypeFont, &pParameter->fontData, pParameter->pFontName);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		kg_set_str(pOutError, "Could not load provided font - will fall back to default font.");
+		//result = kg_init_true_type_font(&pContext->trueTypeFont, defaultFontData, kg_nullptr);
+
+		if (result != K15_GUI_RESULT_SUCCESS)
+		{
+			kg_set_str(pOutError, "Could not load default font.");
+			return result;
+		}
+	}
+
+	result = kg_create_glyph_cache(&pContext->glyphCache, &allocator, 64u, 512u);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	result = kg_create_image_cache(&pContext->imageCache, &allocator, 256u);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -2240,14 +3885,13 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 
 	if (isNew)
 	{
-		pWindow->pNext		= kg_nullptr;
 		pWindow->position 	= kg_create_float2(10.f, 10.f);
 		pWindow->size		= kg_create_float2(150.f, 150.f);
 		pWindow->flags		= K15_GUI_WINDOW_FLAG_IS_OPEN;
 	}
 
 	pWindow->zOrder = pContext->windowZIndex++;
-
+	pWindow->pTitle = kg_find_text(pContext, pTextID);
 	kg_push_window(pContext, pWindow);
 
 	return kg_window_logic(pContext, pWindow);
@@ -2309,14 +3953,12 @@ void kg_end_window(kg_context_handle contextHandle)
 		return;
 	}
 
-	//pContext->pFirstWindow = (kg_window*)pWindow->pNext;
-
 	const kg_float2 titleArea 	= kg_create_float2(pWindow->size.x, K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS);
 	const kg_rect titleRect 	= kg_create_rect(pWindow->position.x, pWindow->position.y, titleArea.x, titleArea.y);
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
 
-	result |= kg_render_element_rect(pContext, titleRect, kg_color_white);
+	result |= kg_render_element_rect(pContext, titleRect, K15_GUI_COLOR_WHITE);
 
 	if ( ( pWindow->flags & K15_GUI_WINDOW_FLAG_IS_OPEN ) == 0 )
 	{
@@ -2326,7 +3968,8 @@ void kg_end_window(kg_context_handle contextHandle)
 	const kg_float2 windowArea 	= kg_create_float2(pWindow->size.x, kg_max(pWindow->size.y - K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS)); 
 	const kg_rect windowRect	= kg_create_rect(pWindow->position.x, pWindow->position.y + K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, windowArea.x, windowArea.y);
 
-	result |= kg_render_element_rect(pContext, windowRect, kg_color_dark_green);
+	result |= kg_render_element_rect(pContext, windowRect, K15_GUI_COLOR_DARK_GREEN);
+	result |= kg_render_element_text(pContext, titleRect, pWindow->pTitle, K15_GUI_COLOR_WHITE);
 
 kg_end_window_end:
 	if (result != K15_GUI_RESULT_SUCCESS)

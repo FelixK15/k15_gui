@@ -458,20 +458,71 @@ uint8 shaderLinkingFailed(GLuint program)
 	return kg_true;
 }
 
+kg_bool mapFontFile( kg_buffer* pOutBuffer, const char* pFontFileName )
+{
+	HANDLE fileHandle = CreateFileA( pFontFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_RANDOM_ACCESS, NULL );
+
+	if( fileHandle == INVALID_HANDLE_VALUE )
+	{
+		if( GetLastError() == ERROR_ACCESS_DENIED )
+		{
+			return kg_false;
+		}
+		
+		return kg_false;
+	}
+
+	//FK:	When you do not want the size of the file to change (for example, when mapping read-only files), 
+	//		call CreateFileMapping and specify zero for both dwMaximumSizeHigh and dwMaximumSizeLow.
+	HANDLE mappingHandle = CreateFileMappingA( fileHandle, NULL, PAGE_READONLY, 0u, 0u, NULL );
+
+	if( mappingHandle == INVALID_HANDLE_VALUE )
+	{
+		if( GetLastError() == ERROR_ACCESS_DENIED )
+		{
+			return kg_false;
+		}
+
+		return kg_false;
+	}
+
+	const void* pMappedFileMemory = MapViewOfFile( mappingHandle, FILE_MAP_READ, 0u, 0u, 0u );
+
+	if( pMappedFileMemory == NULL )
+	{
+		if( GetLastError() == ERROR_ACCESS_DENIED )
+		{
+			return kg_false;
+		}
+
+		return kg_false;
+	}
+
+	const size_t fileSize = (size_t)GetFileSize( fileHandle, NULL );
+
+	*pOutBuffer = kg_create_buffer((void*)pMappedFileMemory, fileSize);
+
+	//FK: We can close the handles after calling MapViewOfFile
+	CloseHandle( mappingHandle );
+	CloseHandle( fileHandle );
+
+	return kg_true;
+}
+
 void setup(HWND p_HWND)
 {
 	pVertexMemory 	= malloc(vertexMemorySize);
 	pIndexMemory 	= malloc(indexMemorySize);
 	pDataMemory		= malloc(dataMemorySize);
-
 	memset(pDataMemory, 0, dataMemorySize);
 
-	char fcc[4] = {'F', 'U', 'C', 'K'};
-	char* bla = (char*)pDataMemory;
-	memcpy(bla + dataMemorySize - 4, fcc, 4);
+	kg_buffer mappedFontBuffer;
+	//mapFontFile(&mappedFontBuffer, "Cousine-Regular.ttf");
+	mapFontFile(&mappedFontBuffer, "C:/Windows/Fonts/arial.ttf");
 
 	kg_context_parameter parameter = kg_create_context_parameter();
 	parameter.scratchBuffer = kg_create_buffer(pDataMemory, dataMemorySize);
+	parameter.fontData 		= mappedFontBuffer;
 
 	kg_render_context_parameter renderParameter = kg_create_render_context_parameter();
 	renderParameter.vertexBufferCount 	= 1u;
@@ -573,7 +624,7 @@ void setup(HWND p_HWND)
 
 	const char* pError = NULL;
 	kg_result result = kg_create_context_with_custom_parameter(&contextHandle, &parameter, &renderParameter, &pError);
-
+	
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		printf("could not create gui context. error = %s\n", kg_result_to_string(result));
