@@ -743,7 +743,8 @@ kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_rend
 #endif //K15_GUI_MAX
 
 #ifndef K15_GUI_SQRT
-# define kg_sqrt(a) ::sqrt(a)
+# include "math.h"
+# define kg_sqrt(a) sqrtf(a)
 #else
 # define kg_sqrt(a) K15_GUI_SQRT(a)
 #endif //K15_GUI_SQRT
@@ -1964,6 +1965,9 @@ kg_internal kg_glyph_cache_entry* kg_find_glyph(kg_glyph_cache* pGlyphCache, kg_
 		return kg_nullptr;
 	}
 
+	const kg_glyph_cache_entry* pStart 	= pGlyphCache->pEntries + 0u;
+	const kg_glyph_cache_entry* pEnd 	= pGlyphCache->pEntries + (pGlyphCache->size - 1u);
+
 	//FK: binary search
 	return kg_find_glyph_r(codePoint, pStart, pEnd);
 } 
@@ -2082,7 +2086,7 @@ kg_internal kg_true_type_vertex* kg_allocate_true_type_glyf_vertices(kg_true_typ
 	return pVertices;
 }
 /*********************************************************************************/
-kg_internal kg_result kg_parse_true_type_simple_glyph_outline_glyf(kg_glyph_outline* pOutGlyphOutline, kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_u32 glyfOffset)
+kg_internal kg_result kg_parse_true_type_simple_glyf_outline(kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_u32 glyfOffset)
 {
 	kg_u32 offset = glyfOffset + pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF];
 	kg_u16 contourCount = 0u;
@@ -2092,7 +2096,7 @@ kg_internal kg_result kg_parse_true_type_simple_glyph_outline_glyf(kg_glyph_outl
 
 	kg_u16 endPointsOfPreviousContour 	= 0u;
 	kg_u32 totalVertexCount 			= 0u;
-	const kg_u32 startVertexIndex 		= pOutGlyphOutline->vertexCount;
+	const kg_u32 startVertexIndex 		= pOutlineContext->vertexCount;
 
 	kg_true_type_contour* pContours = kg_allocate_true_type_glyf_contours(pOutlineContext, contourCount);
 
@@ -2104,7 +2108,6 @@ kg_internal kg_result kg_parse_true_type_simple_glyph_outline_glyf(kg_glyph_outl
 	for (kg_u16 contourIndex = 0u; contourIndex < contourCount; ++contourIndex)
 	{
 		kg_u16 endPointOfContour = 0u;
-		kg_u32 vertexCount = 0u;
 
 		kg_read_data(&endPointOfContour, &pTrueTypeFont->data, &offset);
 		endPointOfContour += 1u;
@@ -2126,7 +2129,7 @@ kg_internal kg_result kg_parse_true_type_simple_glyph_outline_glyf(kg_glyph_outl
 	kg_u8 flags = 0u;
 	kg_u8 flagRepeatCount = 0u;
 
-	kg_true_type_vertex* pVertices = kg_allocate_true_type_vertices(pOutlineContext, totalVertexCount);
+	kg_true_type_vertex* pVertices = kg_allocate_true_type_glyf_vertices(pOutlineContext, totalVertexCount);
 
 	if (pVertices == kg_nullptr)
 	{
@@ -2280,12 +2283,14 @@ kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformatio
 		kg_read_data(&fixedPointPosY, 	&pTrueTypeFont->data, pInOutOffset);
 		kg_read_data(&fixedPointScaleY, &pTrueTypeFont->data, pInOutOffset);
 
-		pOutTransformation[0] = convertFixedPointToFloat( fixedPointScaleX );
-		pOutTransformation[1] = convertFixedPointToFloat( fixedPointPosX );
-		pOutTransformation[2] = convertFixedPointToFloat( fixedPointPosY );
-		pOutTransformation[3] = convertFixedPointToFloat( fixedPointScaleY );
+		pOutTransformation[0] = kg_convert_fixed_point_to_float( fixedPointScaleX );
+		pOutTransformation[1] = kg_convert_fixed_point_to_float( fixedPointPosX );
+		pOutTransformation[2] = kg_convert_fixed_point_to_float( fixedPointPosY );
+		pOutTransformation[3] = kg_convert_fixed_point_to_float( fixedPointScaleY );
 	}
 }
+/*********************************************************************************/
+kg_result kg_parse_true_type_glyf_outline(kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId);
 /*********************************************************************************/
 kg_internal kg_result kg_parse_true_type_compound_glyf_outline(kg_true_type_glyf_outline_context* pOutlineContext, const kg_true_type_font* pTrueTypeFont, kg_u32 offset)
 {
@@ -2308,26 +2313,27 @@ kg_internal kg_result kg_parse_true_type_compound_glyf_outline(kg_true_type_glyf
 		}
 		
 		float transformation[6] = { 1.f, 0.f, 0.f, 1.f, 0.f, 0.f };
-		kg_parse_true_type_glyf_transformation( transformation, pTrueTypeFont, &offset, flags);
+		kg_parse_true_type_glyf_transformation(transformation, &offset, pTrueTypeFont, flags);
 
-		const float xScale = kg_sqrt( transformation[0] * transformation[0] + transformation[1] * transformation[1] )
-		const float yScale = kg_sqrt( transformation[2] * transformation[2] + transformation[3] * transformation[3] )
+		const float xScale = kg_sqrt( transformation[0] * transformation[0] + transformation[1] * transformation[1] );
+		const float yScale = kg_sqrt( transformation[2] * transformation[2] + transformation[3] * transformation[3] );
 
-		//FK: Apply transformation to contour glyph vertices
-		for ( uint32 vertexIndex = startVertexIndex; vertexIndex < pOutVertices->getSize(); ++vertexIndex )
+		for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < pOutlineContext->vertexCount; ++vertexIndex)
 		{
-			TrueTypeVertex* pVertex = pOutVertices->getStart() + vertexIndex;
-			float x = (float)pVertex->xCoordinate;
-			float y = (float)pVertex->yCoordinate;
-			pVertex->xCoordinate = (sint16)(xScale * (transformation[0] * x + transformation[2] * y + transformation[4]));
-			pVertex->yCoordinate = (sint16)(yScale * (transformation[1] * x + transformation[3] * y + transformation[5]));
+			kg_true_type_vertex* pVertex = pOutlineContext->pVertexBuffer + vertexIndex;
+			const float x = (float)pVertex->xCoordinate;
+			const float y = (float)pVertex->yCoordinate;
+		
+			pVertex->xCoordinate = (kg_s16)(xScale * (transformation[0] * x + transformation[2] * y + transformation[4]));
+			pVertex->yCoordinate = (kg_s16)(yScale * (transformation[1] * x + transformation[3] * y + transformation[5]));
 		}
-		if ( (flags & TrueTypeComponentFlag_More_components) == 0u )
+
+		if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_MORE_COMPONENTS) == 0u )
 		{
 			break;
 		}
 	}
-	return ErrorId_Ok;
+	return K15_GUI_RESULT_SUCCESS;
 
 }
 /*********************************************************************************/
@@ -2346,18 +2352,23 @@ kg_internal kg_result kg_parse_true_type_glyf_outline(kg_true_type_glyf_outline_
 	kg_s16 contourCount = 0u;
 	kg_read_data(&contourCount, &pTrueTypeFont->data, &offset);
 
-	kg_result result = K15_GUI_RESULT_NOT_SUPPORTED;
+	result = K15_GUI_RESULT_NOT_SUPPORTED;
 
 	if (contourCount < 0)
 	{
-		result = kg_parse_true_type_compound_glyf_outline(pOutlineContext, pTrueTypeFont, offset);
+		result = kg_parse_true_type_compound_glyf_outline(pOutlineContext, pTrueTypeFont, glyfOffset);
 	}
 	else
 	{
-		result = kg_parse_true_type_simple_glyf_outline(pOutlineContext, pTrueTypeFont, offset);
+		result = kg_parse_true_type_simple_glyf_outline(pOutlineContext, pTrueTypeFont, glyfOffset);
 	}
 
 	return result;
+}
+/*********************************************************************************/
+kg_internal kg_result kg_parse_true_type_glyph_outline_cff(kg_glyph_outline* pOutGlyphOutline, kg_linear_allocator* pAllocator, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
+{
+	return K15_GUI_RESULT_NOT_SUPPORTED;
 }
 /*********************************************************************************/
 kg_internal kg_result kg_begin_true_type_glyf_outline_parse(kg_glyph_outline* pOutGlyphOutline, kg_linear_allocator* pAllocator, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
@@ -2368,6 +2379,7 @@ kg_internal kg_result kg_begin_true_type_glyf_outline_parse(kg_glyph_outline* pO
 	const size_t maxVertexCount = 512u;
 	const size_t maxContourCount = 256u;
 
+	kg_result result = K15_GUI_RESULT_SUCCESS;
 	result |= kg_allocate_from_linear_allocator(&pContourBuffer, pAllocator, sizeof(kg_true_type_contour) * 512u);
 	result |= kg_allocate_from_linear_allocator(&pVertexBuffer, pAllocator, sizeof(kg_true_type_vertex) * 512u);
 
@@ -2384,16 +2396,28 @@ kg_internal kg_result kg_begin_true_type_glyf_outline_parse(kg_glyph_outline* pO
 	outlineContext.vertexCapacity 	= maxVertexCount;
 	outlineContext.contourCapacity 	= maxContourCount;
 
-	return kg_parse_true_type_glyf_outline(&outlineContext, pTrueTypeFont, glyphId)
+	result = kg_parse_true_type_glyf_outline(&outlineContext, pTrueTypeFont, glyphId);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	pOutGlyphOutline->pContours 	= outlineContext.pContourBuffer;
+	pOutGlyphOutline->pVertices 	= outlineContext.pVertexBuffer;
+	pOutGlyphOutline->contourCount 	= outlineContext.contourCount;
+	pOutGlyphOutline->vertexCount 	= outlineContext.vertexCount;
+
+	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result kg_parse_true_type_glyph_outline(kg_glyph_outline* pOutGlyphOutline, kg_linear_allocator* pAllocator, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId)
 {
 	if ( pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_GLYF] > 0u )
 	{
-		return kg_begin_true_type_glyf_outline_prase(pOutGlyphOutline, pAllocator, pTrueTypeFont, glyphId);
+		return kg_begin_true_type_glyf_outline_parse(pOutGlyphOutline, pAllocator, pTrueTypeFont, glyphId);
 	}
-	else if( pTrueTypeFont-tableOffsets[K15_GUI_TRUETYPE_TABLE_CFF] > 0u )
+	else if( pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CFF] > 0u )
 	{
 		return kg_parse_true_type_glyph_outline_cff(pOutGlyphOutline, pAllocator, pTrueTypeFont, glyphId);
 	}
@@ -2405,6 +2429,15 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 {
 	kg_glyph_outline glyphOutline;
 	kg_result result = kg_parse_true_type_glyph_outline(&glyphOutline, pAllocator, pTrueTypeFont, glyphId);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	//FK: TODO rasterize
+
+	return result;
 }
 /*********************************************************************************/
 kg_internal kg_result kg_create_glyph_cache(kg_glyph_cache* pOutGlyphCache, kg_linear_allocator* pAllocator, kg_u32 glyphCacheSize, kg_u16 glyphAtlasDimension)
