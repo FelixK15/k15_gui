@@ -254,6 +254,8 @@ typedef struct
 	float y;
 } kg_float2;
 /*********************************************************************************/
+typedef kg_float2 kg_point_float_2d;
+/*********************************************************************************/
 typedef struct
 {
 	float x;
@@ -273,6 +275,12 @@ typedef struct
 	kg_s32 x;
 	kg_s32 y;
 } kg_sint2;
+/*********************************************************************************/
+typedef struct
+{
+	kg_point_float_2d p0;
+	kg_point_float_2d p1;
+} kg_line_float_2d;
 /*********************************************************************************/
 typedef struct
 {
@@ -749,6 +757,13 @@ kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_rend
 # define kg_sqrt(a) K15_GUI_SQRT(a)
 #endif //K15_GUI_SQRT
 
+#ifndef K15_GUI_FABS
+# include "math.h"
+# define kg_fabs(a) fabsf(a)
+#else
+# define kg_fabs(a) K15_GUI_FABS(a)
+#endif //K15_GUI_FABS
+
 kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 
 #define kg_size_kilo_bytes(n) ((n)*1024)
@@ -873,6 +888,12 @@ typedef enum
 
 
 /*********************************************************************************/
+kg_internal kg_float2 kg_float2_init(float x, float y)
+{
+	kg_float2 value = {x, y};
+	return value;
+}
+/*********************************************************************************/
 kg_internal kg_float2 kg_float2_zero()
 {
 	static const kg_float2 zero = {0.f, 0.f};
@@ -909,6 +930,15 @@ kg_internal kg_float2 kg_float2_add(const kg_float2* pA, const kg_float2* pB)
 	sum.y += pB->y;
 
 	return sum;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_scale(kg_float2* pValue, float scale)
+{
+	kg_float2 scaledValue = *pValue;
+	scaledValue.x *= scale;
+	scaledValue.y *= scale;
+
+	return scaledValue;
 }
 /*********************************************************************************/
 kg_internal kg_float4 kg_float4_zero()
@@ -957,6 +987,17 @@ kg_internal kg_float2 kg_uint2_to_float2_cast(kg_uint2 u2)
 {
 	kg_float2 f2 = { (float)u2.x, (float)u2.y };
 	return f2;
+}
+/*********************************************************************************/
+kg_internal kg_line_float_2d kg_init_line_float_2d(float xP0, float yP0, float xP1, float yP1)
+{
+	kg_line_float_2d line;
+	line.p0.x = xP0;
+	line.p0.y = yP0;
+	line.p1.x = xP1;
+	line.p1.y = yP1;
+
+	return line;
 }
 /*********************************************************************************/
 kg_internal kg_bool kg_is_invalid_linear_allocator(const kg_linear_allocator* pAllocator)
@@ -2425,6 +2466,190 @@ kg_internal kg_result kg_parse_true_type_glyph_outline(kg_glyph_outline* pOutGly
 	return K15_GUI_RESULT_FONT_DATA_ERROR;
 }
 /*********************************************************************************/
+kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2** pOutPoints, kg_linear_allocator* pAllocator, kg_float2 p0, kg_float2 p1, kg_float2 cp)
+{
+	const kg_u32 stepCount = 64u;
+	const float error = 0.1f;
+	const float dt = 1.0f / (float)stepCount;
+
+	kg_float2* pPoints = kg_nullptr;
+	const size_t batchCount = 32u;
+	
+	kg_result result = kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_point_float_2d) * batchCount);
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return 0u;
+	}
+
+	float t = dt;
+	size_t batchIndex = 1u;
+	kg_float2 lp = p0;
+	float lm = 0.0f;
+
+	size_t pointCount = 1u;
+
+	*pOutPoints = pPoints;
+	pPoints[0u] = p0;
+
+	for (kg_u32 stepIndex = 0u; stepIndex < stepCount - 1u; ++stepIndex, t += dt)
+	{
+		kg_point_float_2d a0 = kg_float2_zero();
+		kg_point_float_2d a1 = kg_float2_zero();
+		kg_point_float_2d a2 = kg_float2_zero();
+
+		a0.x = p0.x * (1.0f - t) + cp.x * t;
+		a0.y = p0.y * (1.0f - t) + cp.y * t;
+
+		a1.x = cp.x * (1.0f - t) + p1.x * t;
+		a1.y = cp.y * (1.0f - t) + p1.y * t;
+
+		a2.x = a0.x * (1.0f - t) + a1.x * t;
+		a2.y = a0.y * (1.0f - t) + a1.y * t;
+
+		const float m = (a2.y - lp.y) / (a2.x - lp.x);
+		if (kg_fabs(m - lm) > error)
+		{
+			pPoints[batchIndex++] = a2;
+			++pointCount;
+			lp = a2;
+			lm = m;
+
+			if (batchIndex == batchCount)
+			{
+				batchIndex = 0u;
+				result = kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_point_float_2d) * batchCount);
+
+				if (result != K15_GUI_RESULT_SUCCESS)
+				{
+					break;
+				}				
+			}
+		}
+	}
+
+	if (batchIndex == batchCount)
+	{
+		batchIndex = 0u;
+		result = kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_point_float_2d));
+
+		if (result != K15_GUI_RESULT_SUCCESS)
+		{
+			return pointCount;
+		}
+	}
+
+	pPoints[batchIndex] = p1;
+	++pointCount;
+	return pointCount;
+}
+/*********************************************************************************/
+kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
+{
+	const size_t lineBatchCount = 256u;
+	kg_line_float_2d* pLines = kg_nullptr;
+
+	kg_result result = kg_allocate_from_linear_allocator(&pLines, pAllocator, sizeof(kg_line_float_2d) * lineBatchCount);
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{	
+		return 0u;
+	}
+
+	size_t lineIndex = 0u;
+	for (kg_u32 contourIndex = 0u; contourIndex < pOutline->contourCount; ++contourIndex)
+	{
+		const kg_true_type_contour* pContour 	= pOutline->pContours + contourIndex;
+		const kg_true_type_vertex* pV0 			= pOutline->pVertices + pContour->startIndex; 
+		for (kg_u32 vertexIndex = pContour->startIndex; vertexIndex < pContour->startIndex + pContour->length; )
+		{
+			const kg_true_type_vertex* pV1 = pOutline->pVertices + vertexIndex + 1u;
+			const kg_true_type_vertex* pV2 = pOutline->pVertices + vertexIndex + 2u;
+			
+			if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
+			{
+				pLines[lineIndex] = kg_init_line_float_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->xCoordinate);
+				pV0 = pV1;
+
+				vertexIndex += 1u;
+				++lineIndex;
+				continue;
+			}
+			else if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC && pV2->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
+			{
+				const kg_point_float_2d p0 = {pV0->xCoordinate, pV0->yCoordinate};
+				const kg_point_float_2d cp = {pV1->xCoordinate, pV1->yCoordinate};
+				const kg_point_float_2d p1 = {pV2->xCoordinate, pV2->yCoordinate};
+
+				kg_point_float_2d* pPoints = kg_nullptr;
+				const size_t pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, pAllocator, p0, p1, cp);
+
+				if (pointCount == 0u)
+				{
+					continue;
+				}
+
+				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
+				{
+					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
+					lineIndex++;
+				}
+
+				pV0 = pV2;
+				vertexIndex += 2u;
+			}
+			else if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC && pV2->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC)
+			{
+				const kg_true_type_vertex* pV3 = pOutline->pVertices + vertexIndex + 3u;
+				
+				const kg_point_float_2d cp1 = {pV1->xCoordinate, pV1->yCoordinate};
+				const kg_point_float_2d cp2 = {pV2->yCoordinate, pV2->yCoordinate};
+
+				const kg_point_float_2d p0 = {pV0->xCoordinate, pV0->yCoordinate};
+				const kg_point_float_2d p1 = {(cp1.x + cp2.x) * 0.5f, (cp2.y + cp2.y) * 0.5f};
+				const kg_point_float_2d p2 = {pV3->xCoordinate, pV3->yCoordinate};
+				
+				vertexIndex += 3u;
+				pV0 = pV3;
+
+				kg_float2* pPoints = kg_nullptr;
+				size_t pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, pAllocator, p0, p1, cp1);
+
+				if (pointCount == 0u)
+				{
+					continue;
+				}
+				
+				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
+				{
+					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
+					lineIndex++;
+				}
+
+				pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, pAllocator, p1, p2, cp2);
+
+				if (pointCount == 0u)
+				{
+					continue;
+				}
+				
+				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
+				{
+					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
+					lineIndex++;
+				}
+
+				if (lineIndex == lineBatchCount)
+				{
+					break;
+				}
+
+			}
+		}
+	}
+
+	*pOutLines = pLines;
+	return lineIndex;
+}
+/*********************************************************************************/
 kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocator, kg_glyph_cache_entry* pGlyph, kg_texture_atlas* pAtlas, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId, float fontSize)
 {
 	kg_glyph_outline glyphOutline;
@@ -2435,7 +2660,22 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 		return result;
 	}
 
+	const size_t maxLineCount = 1024;
+	kg_line_float_2d* pLiness = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pLiness, pAllocator, sizeof(kg_line_float_2d) * maxLineCount);
+
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		return result;
+	}
+
+	kg_line_float_2d* pLines = kg_nullptr;
+	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLiness, pAllocator, &glyphOutline);
+
+
+
 	//FK: TODO rasterize
+
 
 	return result;
 }
@@ -3368,6 +3608,8 @@ kg_internal kg_result kg_render_element_text(kg_context* pContext, kg_rect textR
 	kg_float2 size 		= kg_float2_zero();
 	kg_float2 position  = textRect.position;
 	float advance 		= 0.f;
+
+	pText = "gG";
 
 	while (*pText != 0)
 	{
