@@ -254,8 +254,6 @@ typedef struct
 	float y;
 } kg_float2;
 /*********************************************************************************/
-typedef kg_float2 kg_point_float_2d;
-/*********************************************************************************/
 typedef struct
 {
 	float x;
@@ -278,8 +276,8 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_point_float_2d p0;
-	kg_point_float_2d p1;
+	kg_float2 p0;
+	kg_float2 p1;
 } kg_line_float_2d;
 /*********************************************************************************/
 typedef struct
@@ -752,9 +750,9 @@ kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_rend
 
 #ifndef K15_GUI_SQRT
 # include "math.h"
-# define kg_sqrt(a) sqrtf(a)
+# define kg_sqrtf(a) sqrtf(a)
 #else
-# define kg_sqrt(a) K15_GUI_SQRT(a)
+# define kg_sqrtf(a) K15_GUI_SQRTF(a)
 #endif //K15_GUI_SQRT
 
 #ifndef K15_GUI_FABS
@@ -900,45 +898,60 @@ kg_internal kg_float2 kg_float2_zero()
 	return zero;
 }
 /*********************************************************************************/
-kg_internal kg_bool kg_float2_gt(const kg_float2* pA, const kg_float2* pB)
+kg_internal kg_bool kg_float2_gt(kg_float2 a, kg_float2 b)
 {
-	return ( pA->x > pB->x && pA->y > pB->y );
+	return ( a.x > b.x && a.y > b.y );
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_clamp(const kg_float2* pValue, const kg_float2* pMin, const kg_float2* pMax)
+kg_internal kg_float2 kg_float2_clamp(kg_float2 value, kg_float2 min, kg_float2 max)
 {
 	kg_float2 clamped = kg_float2_zero();
-	clamped.x = kg_clamp(pValue->x, pMin->x, pMax->x);
-	clamped.y = kg_clamp(pValue->y, pMin->y, pMax->y);
+	clamped.x = kg_clamp(value.x, min.x, max.x);
+	clamped.y = kg_clamp(value.y, min.y, max.y);
 
 	return clamped;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_max(const kg_float2* pA, const kg_float2* pB)
+kg_internal kg_float2 kg_float2_max(kg_float2 a, kg_float2 b)
 {
 	kg_float2 maxValue = kg_float2_zero();
-	maxValue.x = kg_max(pA->x, pB->x);
-	maxValue.y = kg_max(pA->y, pB->y);
+	maxValue.x = kg_max(a.x, b.x);
+	maxValue.y = kg_max(a.y, b.y);
 
 	return maxValue;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_add(const kg_float2* pA, const kg_float2* pB)
+kg_internal kg_float2 kg_float2_add(kg_float2 a, kg_float2 b)
 {
-	kg_float2 sum = *pA;
-	sum.x += pB->x;
-	sum.y += pB->y;
+	a.x += b.x;
+	a.y += b.y;
 
-	return sum;
+	return a;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_scale(kg_float2* pValue, float scale)
+kg_internal kg_float2 kg_float2_sub(kg_float2 a, kg_float2 b)
 {
-	kg_float2 scaledValue = *pValue;
-	scaledValue.x *= scale;
-	scaledValue.y *= scale;
+	a.x = a.x - b.x;
+	a.y = a.y - b.y;
 
-	return scaledValue;
+	return a;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_scale(kg_float2 value, float scale)
+{
+	value.x *= scale;
+	value.y *= scale;
+
+	return value;
+}
+/*********************************************************************************/
+kg_internal kg_float2 kg_float2_normalize(kg_float2 value)
+{
+	const float length = kg_sqrtf(value.x * value.x + value.y * value.y);
+	value.x /= length;
+	value.y /= length;
+
+	return value;
 }
 /*********************************************************************************/
 kg_internal kg_float4 kg_float4_zero()
@@ -2356,8 +2369,8 @@ kg_internal kg_result kg_parse_true_type_compound_glyf_outline(kg_true_type_glyf
 		float transformation[6] = { 1.f, 0.f, 0.f, 1.f, 0.f, 0.f };
 		kg_parse_true_type_glyf_transformation(transformation, &offset, pTrueTypeFont, flags);
 
-		const float xScale = kg_sqrt( transformation[0] * transformation[0] + transformation[1] * transformation[1] );
-		const float yScale = kg_sqrt( transformation[2] * transformation[2] + transformation[3] * transformation[3] );
+		const float xScale = kg_sqrtf( transformation[0] * transformation[0] + transformation[1] * transformation[1] );
+		const float yScale = kg_sqrtf( transformation[2] * transformation[2] + transformation[3] * transformation[3] );
 
 		for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < pOutlineContext->vertexCount; ++vertexIndex)
 		{
@@ -2466,85 +2479,60 @@ kg_internal kg_result kg_parse_true_type_glyph_outline(kg_glyph_outline* pOutGly
 	return K15_GUI_RESULT_FONT_DATA_ERROR;
 }
 /*********************************************************************************/
-kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2** pOutPoints, kg_linear_allocator* pAllocator, kg_float2 p0, kg_float2 p1, kg_float2 cp)
+kg_internal kg_float2 kg_generate_line_points_on_quadratic_curve_step(kg_float2 p0, kg_float2 p1, kg_float2 cp, float t)
 {
-	const kg_u32 stepCount = 64u;
-	const float error = 0.1f;
-	const float dt = 1.0f / (float)stepCount;
+	kg_float2 a0 = kg_float2_zero();
+	kg_float2 a1 = kg_float2_zero();
+	kg_float2 a2 = kg_float2_zero();
 
-	kg_float2* pPoints = kg_nullptr;
-	const size_t batchCount = 32u;
-	
-	kg_result result = kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_point_float_2d) * batchCount);
-	if (result != K15_GUI_RESULT_SUCCESS)
+	a0.x = p0.x * (1.0f - t) + cp.x * t;
+	a0.y = p0.y * (1.0f - t) + cp.y * t;
+
+	a1.x = cp.x * (1.0f - t) + p1.x * t;
+	a1.y = cp.y * (1.0f - t) + p1.y * t;
+
+	a2.x = a0.x * (1.0f - t) + a1.x * t;
+	a2.y = a0.y * (1.0f - t) + a1.y * t;
+
+	return a2;
+}
+/*********************************************************************************/
+kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints, size_t pointCount, kg_float2 p0, kg_float2 p1, kg_float2 cp, float error)
+{
+	if (pointCount == 0u)
 	{
 		return 0u;
 	}
 
-	float t = dt;
-	size_t batchIndex = 1u;
-	kg_float2 lp = p0;
-	float lm = 0.0f;
-
-	size_t pointCount = 1u;
-
-	*pOutPoints = pPoints;
-	pPoints[0u] = p0;
-
-	for (kg_u32 stepIndex = 0u; stepIndex < stepCount - 1u; ++stepIndex, t += dt)
+	if (pPoints == kg_nullptr)
 	{
-		kg_point_float_2d a0 = kg_float2_zero();
-		kg_point_float_2d a1 = kg_float2_zero();
-		kg_point_float_2d a2 = kg_float2_zero();
-
-		a0.x = p0.x * (1.0f - t) + cp.x * t;
-		a0.y = p0.y * (1.0f - t) + cp.y * t;
-
-		a1.x = cp.x * (1.0f - t) + p1.x * t;
-		a1.y = cp.y * (1.0f - t) + p1.y * t;
-
-		a2.x = a0.x * (1.0f - t) + a1.x * t;
-		a2.y = a0.y * (1.0f - t) + a1.y * t;
-
-		const float m = (a2.y - lp.y) / (a2.x - lp.x);
-		if (kg_fabs(m - lm) > error)
-		{
-			pPoints[batchIndex++] = a2;
-			++pointCount;
-			lp = a2;
-			lm = m;
-
-			if (batchIndex == batchCount)
-			{
-				batchIndex = 0u;
-				result = kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_point_float_2d) * batchCount);
-
-				if (result != K15_GUI_RESULT_SUCCESS)
-				{
-					break;
-				}				
-			}
-		}
+		return 0u;
 	}
 
-	if (batchIndex == batchCount)
+	if (pointCount == 2u)
 	{
-		batchIndex = 0u;
-		result = kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_point_float_2d));
+		pPoints[0u] = p0;
+		pPoints[1u] = p1;
 
-		if (result != K15_GUI_RESULT_SUCCESS)
-		{
-			return pointCount;
-		}
+		return 2u;
 	}
 
-	pPoints[batchIndex] = p1;
-	++pointCount;
+	size_t pointIndex = 0u;
+	const size_t segmentCount = pointCount;
+	const float dt = 1.f / (float)(segmentCount - 1u);
+	float t = 0.f;
+
+	for (size_t segmentIndex = 0u; segmentIndex < segmentCount; ++segmentIndex, t += dt)
+	{
+		pPoints[segmentIndex] = kg_generate_line_points_on_quadratic_curve_step(p0, p1, cp, t);
+	}
+	
 	return pointCount;
 }
 /*********************************************************************************/
 kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
 {
+	const float defaultError = 0.01f;
 	const size_t lineBatchCount = 256u;
 	kg_line_float_2d* pLines = kg_nullptr;
 
@@ -2575,13 +2563,13 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 			}
 			else if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC && pV2->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
 			{
-				const kg_point_float_2d p0 = {pV0->xCoordinate, pV0->yCoordinate};
-				const kg_point_float_2d cp = {pV1->xCoordinate, pV1->yCoordinate};
-				const kg_point_float_2d p1 = {pV2->xCoordinate, pV2->yCoordinate};
+				const kg_float2 p0 = {pV0->xCoordinate, pV0->yCoordinate};
+				const kg_float2 cp = {pV1->xCoordinate, pV1->yCoordinate};
+				const kg_float2 p1 = {pV2->xCoordinate, pV2->yCoordinate};
 
-				kg_point_float_2d* pPoints = kg_nullptr;
-				const size_t pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, pAllocator, p0, p1, cp);
-
+				kg_float2* pPoints = kg_nullptr;
+				kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_float2) * 32u);
+				const size_t pointCount = kg_generate_line_points_on_quadratic_curve(pPoints, 32u, p0, p1, cp, defaultError);
 				if (pointCount == 0u)
 				{
 					continue;
@@ -2600,31 +2588,19 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 			{
 				const kg_true_type_vertex* pV3 = pOutline->pVertices + vertexIndex + 3u;
 				
-				const kg_point_float_2d cp1 = {pV1->xCoordinate, pV1->yCoordinate};
-				const kg_point_float_2d cp2 = {pV2->yCoordinate, pV2->yCoordinate};
+				const kg_float2 cp1 = {pV1->xCoordinate, pV1->yCoordinate};
+				const kg_float2 cp2 = {pV2->yCoordinate, pV2->yCoordinate};
 
-				const kg_point_float_2d p0 = {pV0->xCoordinate, pV0->yCoordinate};
-				const kg_point_float_2d p1 = {(cp1.x + cp2.x) * 0.5f, (cp2.y + cp2.y) * 0.5f};
-				const kg_point_float_2d p2 = {pV3->xCoordinate, pV3->yCoordinate};
+				const kg_float2 p0 = {pV0->xCoordinate, pV0->yCoordinate};
+				const kg_float2 p1 = {(cp1.x + cp2.x) * 0.5f, (cp2.y + cp2.y) * 0.5f};
+				const kg_float2 p2 = {pV3->xCoordinate, pV3->yCoordinate};
 				
 				vertexIndex += 3u;
 				pV0 = pV3;
 
 				kg_float2* pPoints = kg_nullptr;
-				size_t pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, pAllocator, p0, p1, cp1);
-
-				if (pointCount == 0u)
-				{
-					continue;
-				}
-				
-				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
-				{
-					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
-					lineIndex++;
-				}
-
-				pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, pAllocator, p1, p2, cp2);
+				kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_float2) * 32u);
+				size_t pointCount = kg_generate_line_points_on_quadratic_curve(pPoints, 32u, p0, p1, cp1, defaultError);
 
 				if (pointCount == 0u)
 				{
@@ -3312,7 +3288,7 @@ kg_internal void kg_advance_layout_vertical(kg_layout_state* pLayoutState, kg_el
 	pElement->position = kg_calculate_element_position(pLayoutState, pElement);
 
 	const kg_float2 elementSize = kg_calculate_element_size_with_margin(pElement);
-	pLayoutState->maxSize = kg_float2_max(&pLayoutState->maxSize, &elementSize);
+	pLayoutState->maxSize = kg_float2_max(pLayoutState->maxSize, elementSize);
 
 	if (pLayoutState->accumulatedSize.y + elementSize.y > pLayoutState->maxSize.y)
 	{
@@ -3320,7 +3296,7 @@ kg_internal void kg_advance_layout_vertical(kg_layout_state* pLayoutState, kg_el
 		pLayoutState->position.y = pLayoutState->origin.y;
 	}
 
-	if (kg_float2_gt(&elementSize, &pLayoutState->maxSize))
+	if (kg_float2_gt(elementSize, pLayoutState->maxSize))
 	{
 		//FK: Don't set element - too big
 		return;
@@ -3359,7 +3335,7 @@ kg_internal void kg_advance_layout_horizontal(kg_layout_state* pLayoutState, kg_
 	pElement->position = kg_calculate_element_position(pLayoutState, pElement);
 
 	const kg_float2 elementSize = kg_calculate_element_size_with_margin(pElement);
-	pLayoutState->maxSize = kg_float2_max(&pLayoutState->maxSize, &elementSize);
+	pLayoutState->maxSize = kg_float2_max(pLayoutState->maxSize, elementSize);
 
 	if (pLayoutState->accumulatedSize.x + elementSize.x > pLayoutState->maxSize.x)
 	{
@@ -3367,7 +3343,7 @@ kg_internal void kg_advance_layout_horizontal(kg_layout_state* pLayoutState, kg_
 		pLayoutState->position.x = pLayoutState->origin.x;
 	}
 
-	if (kg_float2_gt(&elementSize, &pLayoutState->maxSize))
+	if (kg_float2_gt(elementSize, pLayoutState->maxSize))
 	{
 		//FK: Don't set element - too big
 		return;

@@ -21,8 +21,40 @@ typedef unsigned char 	uint8;
 
 typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 
-kg_point_float_2d* pPoints;
+kg_float2* pPoints;
+size_t normalCount;
 size_t pointCount;
+const size_t maxPointCount = 8u;
+float error = 0.01f;
+
+
+void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
+
+HDC backbufferDC = 0;
+HBITMAP backbufferBitmap = 0;
+uint32 screenWidth = 1024;
+uint32 screenHeight = 768;
+uint32 timePerFrameInMS = 16;
+
+
+
+kg_linear_allocator allocator;
+
+void generateCurvePoints()
+{
+#if 1
+	kg_float2 p0 = {30.0f, 30.0f};
+	kg_float2 p1 = {(float)screenWidth - 30.f, 30.0f};
+	kg_float2 cp = {(float)screenWidth*0.5f, (float)screenHeight};
+#else
+	kg_float2 p0 = {0.0f, 0.0f};
+	kg_float2 p1 = {(float)screenWidth, (float)screenHeight};
+	kg_float2 cp = {(float)screenWidth, 0.0f};
+#endif
+
+	pointCount = kg_generate_line_points_on_quadratic_curve(pPoints, maxPointCount, p0, p1, cp, error);
+}
+
 
 void printErrorToFile(const char* p_FileName)
 {
@@ -51,14 +83,6 @@ void allocateDebugConsole()
 	freopen("CONOUT$", "w", stdout);
 }
 
-void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
-
-HDC backbufferDC = 0;
-HBITMAP backbufferBitmap = 0;
-uint32 screenWidth = 1024;
-uint32 screenHeight = 768;
-uint32 timePerFrameInMS = 16;
-
 void K15_WindowCreated(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
 
@@ -71,7 +95,39 @@ void K15_WindowClosed(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lPa
 
 void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 {
+	if (p_Message == WM_KEYDOWN)
+	{
+		if (p_wParam == VK_DOWN)
+		{
+			if (error > 0.f)
+			{
+				error -= 0.001f;
+				if (error < 0.f)
+				{
+					error = 0.f;
+				}
 
+				generateCurvePoints();
+			}
+		}
+		else if (p_wParam == VK_UP)
+		{
+			if (error < 1.f)
+			{
+				error += 0.001f;
+				if (error > 1.f)
+				{
+					error = 1.f;
+				}
+				
+				generateCurvePoints();
+			}
+		}
+		else if (p_wParam == VK_F5)
+		{
+			generateCurvePoints();
+		}
+	}
 }
 
 void K15_MouseButtonInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
@@ -195,23 +251,14 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 	SelectObject(backbufferDC, backbufferBitmap);
 }
 
-void generateCurvePoints()
-{
-	kg_buffer allocatorBuffer = kg_create_buffer(malloc(1024*1024), 1024*1024);
-	kg_linear_allocator allocator;
-
-	kg_create_linear_allocator(&allocator, allocatorBuffer.pMemory, allocatorBuffer.memorySizeInBytes);
-
-	kg_point_float_2d p0 = {0.0f, 0.0f};
-	kg_point_float_2d p1 = {(float)screenWidth, 0.0f};
-	kg_point_float_2d cp = {(float)screenWidth*0.5f, (float)screenHeight};
-
-	pointCount = kg_generate_line_points_on_quadratic_curve(&pPoints, &allocator, p0, p1, cp);
-}
-
 void setup(HWND p_HWND)
 {
 	allocateDebugConsole();
+
+	kg_buffer allocatorBuffer = kg_create_buffer(malloc(1024*1024), 1024*1024);
+	kg_create_linear_allocator(&allocator, allocatorBuffer.pMemory, allocatorBuffer.memorySizeInBytes);
+
+	kg_allocate_from_linear_allocator(&pPoints, &allocator, sizeof(kg_float2) * maxPointCount);
 
 	generateCurvePoints();
 
@@ -236,6 +283,14 @@ void drawLinePoints()
 	const float width = 10.f;
 	const float height = 10.f;
 
+	kg_float2 v[2];
+	v[0] = kg_float2_zero();
+	v[1] = kg_float2_zero();
+	
+	int i = 0u;
+
+	static char text[20];
+
 	for (size_t pointIndex = 0u; pointIndex < pointCount; ++pointIndex)
 	{
 		Rectangle(backbufferDC, 
@@ -243,14 +298,59 @@ void drawLinePoints()
 			(int)(pPoints[pointIndex].y - height * 0.5f),
 			(int)(pPoints[pointIndex].x + width  * 0.5f),
 			(int)(pPoints[pointIndex].y + height * 0.5f));
+	
+		if (pointIndex != 0u)
+		{
+			if (pointIndex == 1)
+			{
+				v[0] = kg_float2_init(pPoints[pointIndex].x - pPoints[pointIndex - 1u].x,
+									pPoints[pointIndex].y - pPoints[pointIndex - 1].y);
+			}
+			else 
+			{
+				v[1] = kg_float2_init(pPoints[pointIndex].x - pPoints[pointIndex - 1u].x,
+									pPoints[pointIndex].y - pPoints[pointIndex - 1].y);
+			
+				v[0] = kg_float2_normalize(v[0]);
+				v[1] = kg_float2_normalize(v[1]);
+
+				float d = v[0].x * v[1].x + v[0].y * v[1].y;
+				sprintf(text, "d:%.3f", d);
+
+				RECT textRect;
+				textRect.left 	= (LONG)(pPoints[pointIndex - 1].x + 0.f);
+				textRect.top 	= (LONG)(pPoints[pointIndex - 1].y + 0.f);
+				textRect.right 	= (LONG)(pPoints[pointIndex - 1].x + 80.f);
+				textRect.bottom = (LONG)(pPoints[pointIndex - 1].y + 80.f);
+
+				DrawTextA(backbufferDC, text, -1, &textRect, DT_LEFT | DT_TOP);
+			
+				v[0] = v[1];
+			}
+		}
 	}
+}
+
+void drawLines()
+{
+	HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+	HPEN oldPen = (HPEN)SelectObject(backbufferDC, pen);
+
+	for(size_t pointIndex = 0u; pointIndex < pointCount; ++pointIndex)
+	{
+		MoveToEx(backbufferDC, (int)pPoints[pointIndex].x, (int)pPoints[pointIndex].y, 0u);
+		LineTo(backbufferDC, (int)pPoints[pointIndex + 1].x, (int)pPoints[pointIndex + 1].y);
+	}
+
+	SelectObject(backbufferDC, oldPen);
+	DeleteObject(pen);
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
 {
 	RECT textRect;
-	textRect.left = 70;
-	textRect.top = 70;
+	textRect.left = 200;
+	textRect.top = 20;
 	textRect.bottom = screenHeight;
 	textRect.right = screenWidth;
 
@@ -258,13 +358,14 @@ void drawDeltaTime(uint32 p_DeltaTimeInMS)
 	SetTextColor(backbufferDC, RGB(255, 255, 255));
 	SetBkColor(backbufferDC, RGB(0, 0, 0));
 
-	sprintf_s(messageBuffer, 64, "MS: %d", p_DeltaTimeInMS);
+	sprintf_s(messageBuffer, 64, "error: %.3f", error);
 	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
 }
 
 void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 {
 	drawLinePoints();
+	drawLines();
 	drawDeltaTime(p_DeltaTimeInMS);
 	swapBuffers(p_HWND);
 }
