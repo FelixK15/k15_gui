@@ -24,8 +24,8 @@ typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 kg_float2* pPoints;
 size_t normalCount;
 size_t pointCount;
-const size_t maxPointCount = 8u;
-float error = 0.01f;
+const size_t maxPointCount = 20u;
+float error = 0.95f;
 
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
@@ -253,8 +253,6 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 
 void setup(HWND p_HWND)
 {
-	allocateDebugConsole();
-
 	kg_buffer allocatorBuffer = kg_create_buffer(malloc(1024*1024), 1024*1024);
 	kg_create_linear_allocator(&allocator, allocatorBuffer.pMemory, allocatorBuffer.memorySizeInBytes);
 
@@ -314,7 +312,7 @@ void drawLinePoints()
 				v[0] = kg_float2_normalize(v[0]);
 				v[1] = kg_float2_normalize(v[1]);
 
-				float d = v[0].x * v[1].x + v[0].y * v[1].y;
+				const float d = kg_float2_dot(v[0], v[1]);
 				sprintf(text, "d:%.3f", d);
 
 				RECT textRect;
@@ -336,7 +334,7 @@ void drawLines()
 	HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
 	HPEN oldPen = (HPEN)SelectObject(backbufferDC, pen);
 
-	for(size_t pointIndex = 0u; pointIndex < pointCount; ++pointIndex)
+	for(size_t pointIndex = 0u; pointIndex < pointCount - 1; ++pointIndex)
 	{
 		MoveToEx(backbufferDC, (int)pPoints[pointIndex].x, (int)pPoints[pointIndex].y, 0u);
 		LineTo(backbufferDC, (int)pPoints[pointIndex + 1].x, (int)pPoints[pointIndex + 1].y);
@@ -376,6 +374,8 @@ int CALLBACK WinMain(HINSTANCE hInstance,
 {
 	LARGE_INTEGER performanceFrequency;
 	QueryPerformanceFrequency(&performanceFrequency);
+
+	allocateDebugConsole();
 
 	HWND hwnd = setupWindow(hInstance, screenWidth, screenHeight);
 

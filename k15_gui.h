@@ -24,6 +24,7 @@ typedef unsigned int 		kg_u32;
 typedef unsigned short 		kg_u16;
 typedef unsigned char		kg_u8;
 typedef float 				kg_f32;
+typedef double 				kg_f64;
 
 typedef long long 			kg_s64;
 typedef int 				kg_s32;
@@ -177,7 +178,7 @@ typedef enum
 /*********************************************************************************/
 typedef enum 
 {
-	K15_GUI_FLOAT_DATA_TYPE = 0,
+	K15_GUI_kg_f32_DATA_TYPE = 0,
 	K15_GUI_UINT_DATA_TYPE,
 } kg_vertex_attribute_data_type;
 /*********************************************************************************/
@@ -244,23 +245,23 @@ typedef enum
 } kg_pixel_format;
 /*********************************************************************************/
 
-static const float 	K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS 		= 30.f;
-static const float 	K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS 	= 10.f;
+static const kg_f32 	K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS 		= 30.f;
+static const kg_f32 	K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS 	= 10.f;
 
 /*********************************************************************************/
 typedef struct
 {
-	float x;
-	float y;
+	kg_f32 x;
+	kg_f32 y;
 } kg_float2;
 /*********************************************************************************/
 typedef struct
 {
-	float x;
-	float y;
-	float z;
-	float w;
-} kg_float4;
+	kg_f32 x;
+	kg_f32 y;
+	kg_f32 z;
+	kg_f32 w;
+} kg_kg_f324;
 /*********************************************************************************/
 typedef struct
 {
@@ -278,7 +279,7 @@ typedef struct
 {
 	kg_float2 p0;
 	kg_float2 p1;
-} kg_line_float_2d;
+} kg_line_kg_f32_2d;
 /*********************************************************************************/
 typedef struct
 {
@@ -477,7 +478,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_float4	uvBounds;
+	kg_kg_f324	uvBounds;
 	kg_uint2	position;
 	kg_uint2	size;
 } kg_texture_atlas_slot;
@@ -655,8 +656,8 @@ kg_def kg_result					kg_add_input_key_button_up(kg_context_handle contextHandle,
 
 //*****************UTIL******************//
 kg_def const char*					kg_result_to_string(kg_result p_Result);
-kg_def void 						kg_calculate_row_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
-kg_def void 						kg_calculate_column_major_projection_matrix(float* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def void 						kg_calculate_row_major_projection_matrix(kg_f32* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
+kg_def void 						kg_calculate_column_major_projection_matrix(kg_f32* pProjectionMatrix, int screenWidth, int screenHeight, unsigned int flags);
 kg_def kg_bool 						kg_pop_error(kg_context_handle contextHandle, kg_error** pOutError);
 kg_def kg_buffer					kg_create_buffer(void* pMemory, size_t memorySizeInBytes);
 
@@ -800,8 +801,8 @@ typedef enum
 /*********************************************************************************/
 typedef struct
 {
-	kg_float4	position;  	
-	kg_float4 	color;		
+	kg_kg_f324	position;  	
+	kg_kg_f324 	color;		
 	kg_float2 	texcoord;	
 	kg_float2	padding[3];		
 } kg_render_vertex_data; 
@@ -886,7 +887,7 @@ typedef enum
 
 
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_init(float x, float y)
+kg_internal kg_float2 kg_float2_init(kg_f32 x, kg_f32 y)
 {
 	kg_float2 value = {x, y};
 	return value;
@@ -896,6 +897,11 @@ kg_internal kg_float2 kg_float2_zero()
 {
 	static const kg_float2 zero = {0.f, 0.f};
 	return zero;
+}
+/*********************************************************************************/
+kg_internal kg_f32 kg_float2_dot(kg_float2 a, kg_float2 b)
+{
+	return a.x * b.x + a.y * b.y;
 }
 /*********************************************************************************/
 kg_internal kg_bool kg_float2_gt(kg_float2 a, kg_float2 b)
@@ -937,7 +943,7 @@ kg_internal kg_float2 kg_float2_sub(kg_float2 a, kg_float2 b)
 	return a;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_float2_scale(kg_float2 value, float scale)
+kg_internal kg_float2 kg_float2_scale(kg_float2 value, kg_f32 scale)
 {
 	value.x *= scale;
 	value.y *= scale;
@@ -947,16 +953,18 @@ kg_internal kg_float2 kg_float2_scale(kg_float2 value, float scale)
 /*********************************************************************************/
 kg_internal kg_float2 kg_float2_normalize(kg_float2 value)
 {
-	const float length = kg_sqrtf(value.x * value.x + value.y * value.y);
+	kg_f32 length = kg_sqrtf(value.x * value.x + value.y * value.y);
+	length = length == 0.0f ? 1.0f : length;
+
 	value.x /= length;
 	value.y /= length;
 
 	return value;
 }
 /*********************************************************************************/
-kg_internal kg_float4 kg_float4_zero()
+kg_internal kg_kg_f324 kg_kg_f324_zero()
 {
-	static const kg_float4 zero = {0.f, 0.f, 0.f, 0.f};
+	static const kg_kg_f324 zero = {0.f, 0.f, 0.f, 0.f};
 	return zero;
 }
 /*********************************************************************************/
@@ -972,15 +980,15 @@ kg_internal kg_sint2 kg_sint2_zero()
 	return zero;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_create_float2(float x, float y)
+kg_internal kg_float2 kg_create_kg_f322(kg_f32 x, kg_f32 y)
 {
 	kg_float2 f2 = {x, y};
 	return f2;
 }
 /*********************************************************************************/
-kg_internal kg_float4 kg_create_float4(float x, float y, float z, float w)
+kg_internal kg_kg_f324 kg_create_kg_f324(kg_f32 x, kg_f32 y, kg_f32 z, kg_f32 w)
 {
-	kg_float4 f4 = {x, y, z, w};
+	kg_kg_f324 f4 = {x, y, z, w};
 	return f4;
 }
 /*********************************************************************************/
@@ -996,15 +1004,15 @@ kg_internal kg_sint2 kg_create_sint2(kg_s32 x, kg_s32 y)
 	return s2;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_uint2_to_float2_cast(kg_uint2 u2)
+kg_internal kg_float2 kg_uint2_to_kg_f322_cast(kg_uint2 u2)
 {
-	kg_float2 f2 = { (float)u2.x, (float)u2.y };
+	kg_float2 f2 = { (kg_f32)u2.x, (kg_f32)u2.y };
 	return f2;
 }
 /*********************************************************************************/
-kg_internal kg_line_float_2d kg_init_line_float_2d(float xP0, float yP0, float xP1, float yP1)
+kg_internal kg_line_kg_f32_2d kg_init_line_kg_f32_2d(kg_f32 xP0, kg_f32 yP0, kg_f32 xP1, kg_f32 yP1)
 {
-	kg_line_float_2d line;
+	kg_line_kg_f32_2d line;
 	line.p0.x = xP0;
 	line.p0.y = yP0;
 	line.p1.x = xP1;
@@ -1382,10 +1390,10 @@ kg_internal kg_result kg_allocate_texture_atlas_slot(kg_texture_atlas_slot** pOu
 	pSlot->size.x 		= width;
 	pSlot->size.y 		= height;
 	pSlot->position 	= kg_create_uint2(pTextureAtlas->skyLine.x - width, pTextureAtlas->skyLine.y);
-	pSlot->uvBounds.x 	= (float)pTextureAtlas->skyLine.x / (float)pTextureAtlas->size.x; 
-	pSlot->uvBounds.y 	= (float)pTextureAtlas->skyLine.y / (float)pTextureAtlas->size.y; 
-	pSlot->uvBounds.z 	= (float)(pTextureAtlas->skyLine.x + width) / (float)pTextureAtlas->size.x; 
-	pSlot->uvBounds.w 	= (float)(pTextureAtlas->skyLine.y + height) / (float)pTextureAtlas->size.y; 
+	pSlot->uvBounds.x 	= (kg_f32)pTextureAtlas->skyLine.x / (kg_f32)pTextureAtlas->size.x; 
+	pSlot->uvBounds.y 	= (kg_f32)pTextureAtlas->skyLine.y / (kg_f32)pTextureAtlas->size.y; 
+	pSlot->uvBounds.z 	= (kg_f32)(pTextureAtlas->skyLine.x + width) / (kg_f32)pTextureAtlas->size.x; 
+	pSlot->uvBounds.w 	= (kg_f32)(pTextureAtlas->skyLine.y + height) / (kg_f32)pTextureAtlas->size.y; 
 
 	*pOutSlot = pSlot;
 
@@ -2267,12 +2275,12 @@ kg_internal kg_result kg_parse_true_type_simple_glyf_outline(kg_true_type_glyf_o
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_internal float kg_convert_fixed_point_to_float(kg_s16 fixedPoint)
+kg_internal kg_f32 kg_convert_fixed_point_to_kg_f32(kg_s16 fixedPoint)
 {
-	return (float)fixedPoint / 16384.0f;
+	return (kg_f32)fixedPoint / 16384.0f;
 }
 /*********************************************************************************/
-kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformation, kg_u32* pInOutOffset, const kg_true_type_font* pTrueTypeFont, kg_u16 flags)
+kg_internal void kg_parse_true_type_glyf_transformation(kg_f32* pOutTransformation, kg_u32* pInOutOffset, const kg_true_type_font* pTrueTypeFont, kg_u16 flags)
 {
 	if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_ARGS_ARE_XY_VALUES) > 0u )
 	{
@@ -2284,8 +2292,8 @@ kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformatio
 			kg_read_data(&arg1, &pTrueTypeFont->data, pInOutOffset);
 			kg_read_data(&arg2, &pTrueTypeFont->data, pInOutOffset);
 
-			pOutTransformation[4] = (float)arg1;
-			pOutTransformation[5] = (float)arg2;
+			pOutTransformation[4] = (kg_f32)arg1;
+			pOutTransformation[5] = (kg_f32)arg2;
 		}
 		else
 		{
@@ -2295,8 +2303,8 @@ kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformatio
 			kg_read_data(&arg1, &pTrueTypeFont->data, pInOutOffset);
 			kg_read_data(&arg2, &pTrueTypeFont->data, pInOutOffset);
 
-			pOutTransformation[4] = (float)arg1;
-			pOutTransformation[5] = (float)arg2;
+			pOutTransformation[4] = (kg_f32)arg1;
+			pOutTransformation[5] = (kg_f32)arg2;
 		}
 	}
 
@@ -2305,12 +2313,12 @@ kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformatio
 		kg_s16 fixedPointScale = 0u;
 		kg_read_data(&fixedPointScale, &pTrueTypeFont->data, pInOutOffset);
 
-		const float scaleFloat = kg_convert_fixed_point_to_float(fixedPointScale);
+		const kg_f32 scalekg_f32 = kg_convert_fixed_point_to_kg_f32(fixedPointScale);
 
-		pOutTransformation[0] = scaleFloat;
+		pOutTransformation[0] = scalekg_f32;
 		pOutTransformation[1] = 0.0f;
 		pOutTransformation[2] = 0.0f;
-		pOutTransformation[3] = scaleFloat;
+		pOutTransformation[3] = scalekg_f32;
 	}
 	else if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_AN_X_AND_Y_SCALE) > 0u )
 	{
@@ -2320,10 +2328,10 @@ kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformatio
 		kg_read_data(&fixedPointScaleX, &pTrueTypeFont->data, pInOutOffset);
 		kg_read_data(&fixedPointScaleY, &pTrueTypeFont->data, pInOutOffset);
 
-		pOutTransformation[0] = kg_convert_fixed_point_to_float(fixedPointScaleX);
+		pOutTransformation[0] = kg_convert_fixed_point_to_kg_f32(fixedPointScaleX);
 		pOutTransformation[1] = 0.f;
 		pOutTransformation[2] = 0.f;
-		pOutTransformation[3] = kg_convert_fixed_point_to_float(fixedPointScaleY);
+		pOutTransformation[3] = kg_convert_fixed_point_to_kg_f32(fixedPointScaleY);
 	}
 	else if ( (flags & K15_GUI_TRUE_TYPE_COMPOUND_GLYPH_FLAG_WE_HAVE_A_TWO_BY_TWO) > 0u )
 	{
@@ -2337,10 +2345,10 @@ kg_internal void kg_parse_true_type_glyf_transformation(float* pOutTransformatio
 		kg_read_data(&fixedPointPosY, 	&pTrueTypeFont->data, pInOutOffset);
 		kg_read_data(&fixedPointScaleY, &pTrueTypeFont->data, pInOutOffset);
 
-		pOutTransformation[0] = kg_convert_fixed_point_to_float( fixedPointScaleX );
-		pOutTransformation[1] = kg_convert_fixed_point_to_float( fixedPointPosX );
-		pOutTransformation[2] = kg_convert_fixed_point_to_float( fixedPointPosY );
-		pOutTransformation[3] = kg_convert_fixed_point_to_float( fixedPointScaleY );
+		pOutTransformation[0] = kg_convert_fixed_point_to_kg_f32( fixedPointScaleX );
+		pOutTransformation[1] = kg_convert_fixed_point_to_kg_f32( fixedPointPosX );
+		pOutTransformation[2] = kg_convert_fixed_point_to_kg_f32( fixedPointPosY );
+		pOutTransformation[3] = kg_convert_fixed_point_to_kg_f32( fixedPointScaleY );
 	}
 }
 /*********************************************************************************/
@@ -2366,17 +2374,17 @@ kg_internal kg_result kg_parse_true_type_compound_glyf_outline(kg_true_type_glyf
 			return result;
 		}
 		
-		float transformation[6] = { 1.f, 0.f, 0.f, 1.f, 0.f, 0.f };
+		kg_f32 transformation[6] = { 1.f, 0.f, 0.f, 1.f, 0.f, 0.f };
 		kg_parse_true_type_glyf_transformation(transformation, &offset, pTrueTypeFont, flags);
 
-		const float xScale = kg_sqrtf( transformation[0] * transformation[0] + transformation[1] * transformation[1] );
-		const float yScale = kg_sqrtf( transformation[2] * transformation[2] + transformation[3] * transformation[3] );
+		const kg_f32 xScale = kg_sqrtf( transformation[0] * transformation[0] + transformation[1] * transformation[1] );
+		const kg_f32 yScale = kg_sqrtf( transformation[2] * transformation[2] + transformation[3] * transformation[3] );
 
 		for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < pOutlineContext->vertexCount; ++vertexIndex)
 		{
 			kg_true_type_vertex* pVertex = pOutlineContext->pVertexBuffer + vertexIndex;
-			const float x = (float)pVertex->xCoordinate;
-			const float y = (float)pVertex->yCoordinate;
+			const kg_f32 x = (kg_f32)pVertex->xCoordinate;
+			const kg_f32 y = (kg_f32)pVertex->yCoordinate;
 		
 			pVertex->xCoordinate = (kg_s16)(xScale * (transformation[0] * x + transformation[2] * y + transformation[4]));
 			pVertex->yCoordinate = (kg_s16)(yScale * (transformation[1] * x + transformation[3] * y + transformation[5]));
@@ -2479,8 +2487,18 @@ kg_internal kg_result kg_parse_true_type_glyph_outline(kg_glyph_outline* pOutGly
 	return K15_GUI_RESULT_FONT_DATA_ERROR;
 }
 /*********************************************************************************/
-kg_internal kg_float2 kg_generate_line_points_on_quadratic_curve_step(kg_float2 p0, kg_float2 p1, kg_float2 cp, float t)
+kg_internal kg_float2 kg_generate_line_points_on_quadratic_curve_step(kg_float2 p0, kg_float2 p1, kg_float2 cp, kg_f32 t)
 {
+	if (t <= 0.0f)
+	{
+		return p0;
+	}
+
+	if (t >= 1.0f)
+	{
+		return p1;
+	}
+
 	kg_float2 a0 = kg_float2_zero();
 	kg_float2 a1 = kg_float2_zero();
 	kg_float2 a2 = kg_float2_zero();
@@ -2497,7 +2515,7 @@ kg_internal kg_float2 kg_generate_line_points_on_quadratic_curve_step(kg_float2 
 	return a2;
 }
 /*********************************************************************************/
-kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints, size_t pointCount, kg_float2 p0, kg_float2 p1, kg_float2 cp, float error)
+kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints, size_t pointCount, kg_float2 p0, kg_float2 p1, kg_float2 cp, kg_f32 error)
 {
 	if (pointCount == 0u)
 	{
@@ -2509,34 +2527,56 @@ kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints
 		return 0u;
 	}
 
+	pPoints[0u] = p0;
+
 	if (pointCount == 2u)
 	{
-		pPoints[0u] = p0;
 		pPoints[1u] = p1;
-
 		return 2u;
 	}
 
-	size_t pointIndex = 0u;
-	const size_t segmentCount = pointCount;
-	const float dt = 1.f / (float)(segmentCount - 1u);
-	float t = 0.f;
-
-	for (size_t segmentIndex = 0u; segmentIndex < segmentCount; ++segmentIndex, t += dt)
+	if (pointCount == 1u)
 	{
-		pPoints[segmentIndex] = kg_generate_line_points_on_quadratic_curve_step(p0, p1, cp, t);
+		return 1u;
 	}
-	
-	return pointCount;
+
+	size_t pointCounter = 1u;
+
+	const float dt = 1.f / (float)(pointCount - 1u);
+	float t = dt;
+
+	kg_float2 nextPointOnCurve = kg_generate_line_points_on_quadratic_curve_step(p0, p1, cp, dt);
+	kg_float2 lastTangent = kg_float2_normalize(kg_float2_sub(nextPointOnCurve, p0));
+
+	for (size_t pointIndex = 1u; pointIndex < (pointCount - 1u); ++pointIndex, t += dt)
+	{
+		const kg_float2 currentPointOnCurve = nextPointOnCurve;
+		nextPointOnCurve = kg_generate_line_points_on_quadratic_curve_step(p0, p1, cp, t + dt);
+
+		const kg_float2 tangent = kg_float2_normalize(kg_float2_sub(nextPointOnCurve, currentPointOnCurve));
+		const float d = kg_float2_dot(tangent, lastTangent);
+
+		if (d < error)
+		{
+			pPoints[pointCounter++] = currentPointOnCurve;
+			lastTangent = tangent;
+		}
+	}
+
+	pPoints[pointCounter++] = p1;
+
+	kg_assert(pointCounter <= pointCount);
+
+	return pointCounter;
 }
 /*********************************************************************************/
-kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
+kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_kg_f32_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
 {
-	const float defaultError = 0.01f;
+	const kg_f32 defaultError = 0.01f;
 	const size_t lineBatchCount = 256u;
-	kg_line_float_2d* pLines = kg_nullptr;
+	kg_line_kg_f32_2d* pLines = kg_nullptr;
 
-	kg_result result = kg_allocate_from_linear_allocator(&pLines, pAllocator, sizeof(kg_line_float_2d) * lineBatchCount);
+	kg_result result = kg_allocate_from_linear_allocator(&pLines, pAllocator, sizeof(kg_line_kg_f32_2d) * lineBatchCount);
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{	
 		return 0u;
@@ -2554,7 +2594,7 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 			
 			if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
 			{
-				pLines[lineIndex] = kg_init_line_float_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->xCoordinate);
+				pLines[lineIndex] = kg_init_line_kg_f32_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->xCoordinate);
 				pV0 = pV1;
 
 				vertexIndex += 1u;
@@ -2577,7 +2617,7 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 
 				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
 				{
-					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
+					pLines[lineIndex + pointIndex - 1u] = kg_init_line_kg_f32_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
 					lineIndex++;
 				}
 
@@ -2609,7 +2649,7 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 				
 				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
 				{
-					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
+					pLines[lineIndex + pointIndex - 1u] = kg_init_line_kg_f32_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
 					lineIndex++;
 				}
 
@@ -2626,7 +2666,7 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 	return lineIndex;
 }
 /*********************************************************************************/
-kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocator, kg_glyph_cache_entry* pGlyph, kg_texture_atlas* pAtlas, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId, float fontSize)
+kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocator, kg_glyph_cache_entry* pGlyph, kg_texture_atlas* pAtlas, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId, kg_f32 fontSize)
 {
 	kg_glyph_outline glyphOutline;
 	kg_result result = kg_parse_true_type_glyph_outline(&glyphOutline, pAllocator, pTrueTypeFont, glyphId);
@@ -2637,15 +2677,15 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 	}
 
 	const size_t maxLineCount = 1024;
-	kg_line_float_2d* pLiness = kg_nullptr;
-	result = kg_allocate_from_linear_allocator(&pLiness, pAllocator, sizeof(kg_line_float_2d) * maxLineCount);
+	kg_line_kg_f32_2d* pLiness = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pLiness, pAllocator, sizeof(kg_line_kg_f32_2d) * maxLineCount);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	kg_line_float_2d* pLines = kg_nullptr;
+	kg_line_kg_f32_2d* pLines = kg_nullptr;
 	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLiness, pAllocator, &glyphOutline);
 
 
@@ -3074,23 +3114,23 @@ kg_internal kg_result kg_create_error_stack(kg_error_stack* pOutErrorStack, kg_l
 	return K15_GUI_RESULT_SUCCESS;
 }
 
-kg_internal kg_rect kg_create_rect(float x, float y, float w, float h)
+kg_internal kg_rect kg_create_rect(kg_f32 x, kg_f32 y, kg_f32 w, kg_f32 h)
 {
 	kg_rect rect;
-	rect.position 	= kg_create_float2(x, y);
-	rect.size 		= kg_create_float2(w, h);
+	rect.position 	= kg_create_kg_f322(x, y);
+	rect.size 		= kg_create_kg_f322(w, h);
 
 	return rect;
 }
 
-kg_internal kg_float4 kg_unpack_color(kg_color32 color)
+kg_internal kg_kg_f324 kg_unpack_color(kg_color32 color)
 {
-	const float r = (float)((color >> 24) & 0xFF) / 255.f;
-	const float g = (float)((color >> 16) & 0xFF) / 255.f;
-	const float b = (float)((color >>  8) & 0xFF) / 255.f;
-	const float a = (float)((color >>  0) & 0xFF) / 255.f;
+	const kg_f32 r = (kg_f32)((color >> 24) & 0xFF) / 255.f;
+	const kg_f32 g = (kg_f32)((color >> 16) & 0xFF) / 255.f;
+	const kg_f32 b = (kg_f32)((color >>  8) & 0xFF) / 255.f;
+	const kg_f32 a = (kg_f32)((color >>  0) & 0xFF) / 255.f;
 
-	return kg_create_float4(r, g, b, a);
+	return kg_create_kg_f324(r, g, b, a);
 }
 
 kg_internal kg_crc32 kg_generate_crc32(const char* pIdentifier)
@@ -3150,9 +3190,9 @@ kg_internal kg_element* kg_allocate_element(kg_context* pContext, const char* pI
 		pElement->prefSize			= kg_float2_zero();
 		pElement->size 				= kg_float2_zero();
 		pElement->position 			= kg_float2_zero();
-		pElement->padding			= kg_float4_zero();
-		pElement->margin			= kg_float4_zero();
-		pElement->border			= kg_float4_zero();
+		pElement->padding			= kg_kg_f324_zero();
+		pElement->margin			= kg_kg_f324_zero();
+		pElement->border			= kg_kg_f324_zero();
 		pElement->identifier 		= identifierHash;
 
 		for (kg_u32 componentIndex = 0u; componentIndex < K15_GUI_COMPONENT_COUNT; ++componentIndex)
@@ -3187,7 +3227,7 @@ kg_internal void kg_process_mouse_movement(kg_context* pContext, const kg_input_
 
 	const kg_window* pHotWindow 	= kg_nullptr;
 	const kg_window* pWindow 		= pContext->pFirstWindow;
-	const kg_float2 mousePosition 	= kg_create_float2((float)pInputEvent->data.mouse_move.x, (float)pInputEvent->data.mouse_move.y);
+	const kg_float2 mousePosition 	= kg_create_kg_f322((kg_f32)pInputEvent->data.mouse_move.x, (kg_f32)pInputEvent->data.mouse_move.y);
 	
 	while( pWindow )
 	{
@@ -3476,7 +3516,7 @@ kg_internal void kg_push_error(kg_context* pContext, kg_result errorResult, cons
 }
 
 /******************************RENDER LOGIC***************************************/
-kg_internal void kg_set_vertex_3d(kg_render_vertices* pVertices, kg_u32 vertexIndex, float x, float y, float z, float w, float u, float v, kg_color32 color)
+kg_internal void kg_set_vertex_3d(kg_render_vertices* pVertices, kg_u32 vertexIndex, kg_f32 x, kg_f32 y, kg_f32 z, kg_f32 w, kg_f32 u, kg_f32 v, kg_color32 color)
 {
 	if (vertexIndex >= pVertices->vertexCount)
 	{
@@ -3494,7 +3534,7 @@ kg_internal void kg_set_vertex_3d(kg_render_vertices* pVertices, kg_u32 vertexIn
 	pVertexData->color 		= kg_unpack_color(color);
 }
 
-kg_internal void kg_set_vertex_2d(kg_render_vertices* pVertices, kg_u32 vertexIndex, float x, float y, float u, float v, kg_color32 color)
+kg_internal void kg_set_vertex_2d(kg_render_vertices* pVertices, kg_u32 vertexIndex, kg_f32 x, kg_f32 y, kg_f32 u, kg_f32 v, kg_color32 color)
 {
 	kg_set_vertex_3d(pVertices, vertexIndex, x, y, 0.f, 1.f, u, v, color);
 }
@@ -3580,10 +3620,10 @@ kg_internal kg_result kg_render_element_text(kg_context* pContext, kg_rect textR
 		return result;
 	};
 
-	kg_float4 uvBounds  = kg_float4_zero();
+	kg_kg_f324 uvBounds  = kg_kg_f324_zero();
 	kg_float2 size 		= kg_float2_zero();
 	kg_float2 position  = textRect.position;
-	float advance 		= 0.f;
+	kg_f32 advance 		= 0.f;
 
 	pText = "gG";
 
@@ -3619,7 +3659,7 @@ kg_internal kg_result kg_render_element_text(kg_context* pContext, kg_rect textR
 		pGlyph->lastUsedFrameIndex = pContext->frameCounter;
 
 		uvBounds 	= pGlyph->pAtlasSlot->uvBounds;
-		size 		= kg_uint2_to_float2_cast(pGlyph->pAtlasSlot->size);
+		size 		= kg_uint2_to_kg_f322_cast(pGlyph->pAtlasSlot->size);
 		advance 	= 0.0f;//pGlyph->metrics.advanceWidth;
 
 		kg_set_vertex_2d(&vertices, 0, position.x, 				position.y + size.y, uvBounds.x, uvBounds.w, color);	
@@ -3726,9 +3766,9 @@ kg_internal kg_element* kg_insert_ui_element(kg_hash_map* pHashMap, kg_crc32 ide
 		//pElement->prefSize		= kg_float2_zero();
 		pElement->position		= kg_float2_zero();
 		//pElement->offset		= kg_float2_zero();
-		//pElement->border		= kg_float4_zero();
-		//pElement->margin		= kg_float4_zero();
-		//pElement->padding		= kg_float4_zero();
+		//pElement->border		= kg_kg_f324_zero();
+		//pElement->margin		= kg_kg_f324_zero();
+		//pElement->padding		= kg_kg_f324_zero();
 		pElement->layout		= K15_GUI_LAYOUT_VERTICAL;
 		pElement->identifier	= identifier;
 
@@ -4136,8 +4176,8 @@ kg_bool kg_begin_window(kg_context_handle contextHandle, const char* pTextID, co
 
 	if (isNew)
 	{
-		pWindow->position 	= kg_create_float2(10.f, 10.f);
-		pWindow->size		= kg_create_float2(150.f, 150.f);
+		pWindow->position 	= kg_create_kg_f322(10.f, 10.f);
+		pWindow->size		= kg_create_kg_f322(150.f, 150.f);
 		pWindow->flags		= K15_GUI_WINDOW_FLAG_IS_OPEN;
 	}
 
@@ -4204,7 +4244,7 @@ void kg_end_window(kg_context_handle contextHandle)
 		return;
 	}
 
-	const kg_float2 titleArea 	= kg_create_float2(pWindow->size.x, K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS);
+	const kg_float2 titleArea 	= kg_create_kg_f322(pWindow->size.x, K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS);
 	const kg_rect titleRect 	= kg_create_rect(pWindow->position.x, pWindow->position.y, titleArea.x, titleArea.y);
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
@@ -4216,7 +4256,7 @@ void kg_end_window(kg_context_handle contextHandle)
 		goto kg_end_window_end;
 	}
 
-	const kg_float2 windowArea 	= kg_create_float2(pWindow->size.x, kg_max(pWindow->size.y - K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS)); 
+	const kg_float2 windowArea 	= kg_create_kg_f322(pWindow->size.x, kg_max(pWindow->size.y - K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, K15_GUI_WINDOW_MIN_AREA_HEIGHT_IN_PIXELS)); 
 	const kg_rect windowRect	= kg_create_rect(pWindow->position.x, pWindow->position.y + K15_GUI_WINDOW_TITLE_HEIGHT_IN_PIXELS, windowArea.x, windowArea.y);
 
 	result |= kg_render_element_rect(pContext, windowRect, K15_GUI_COLOR_DARK_GREEN);
@@ -4411,7 +4451,7 @@ const char* kg_result_to_string(kg_result result)
 	return "";
 }
 
-void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight, unsigned int flags)
+void kg_calculate_column_major_projection_matrix(kg_f32* pMatrix, int screenWidth, int screenHeight, unsigned int flags)
 {
 	// m0  m1  m2  m3
 	// m4  m5  m6  m7
@@ -4423,8 +4463,8 @@ void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth
 	// z z z z
 	// w w w w
 
-	const float w = 1.f / (float)screenWidth;
-	const float h = 1.f / (float)screenHeight;
+	const kg_f32 w = 1.f / (kg_f32)screenWidth;
+	const kg_f32 h = 1.f / (kg_f32)screenHeight;
 
 	pMatrix[ 0] = (2.f * w);
 	pMatrix[ 1] = 0.f;
@@ -4450,7 +4490,7 @@ void kg_calculate_column_major_projection_matrix(float* pMatrix, int screenWidth
 	}
 }
 
-void kg_calculate_row_major_projection_matrix(float* pMatrix, int screenWidth, int screenHeight, unsigned int flags)
+void kg_calculate_row_major_projection_matrix(kg_f32* pMatrix, int screenWidth, int screenHeight, unsigned int flags)
 {
 	// m0  m1  m2  m3
 	// m4  m5  m6  m7
@@ -4462,8 +4502,8 @@ void kg_calculate_row_major_projection_matrix(float* pMatrix, int screenWidth, i
 	// x y z w
 	// x y z w
 
-	const float w = 1.f / (float)screenWidth;
-	const float h = 1.f / (float)screenHeight;
+	const kg_f32 w = 1.f / (kg_f32)screenWidth;
+	const kg_f32 h = 1.f / (kg_f32)screenHeight;
 
 	pMatrix[ 0] = (2.f * w);
 	pMatrix[ 1] = 0.f;
@@ -4527,20 +4567,20 @@ const kg_vertex_definition*	kg_get_vertex_definition()
 	vertexDefinition.stride 					= VertexStride;
 	vertexDefinition.attributeCount 			= sizeof(vertexDefinition.attributes) / sizeof(vertexDefinition.attributes[0]);
 	vertexDefinition.attributes[0].type 		= K15_GUI_POSITION_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[0].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
+	vertexDefinition.attributes[0].dataType 	= K15_GUI_kg_f32_DATA_TYPE;
 	vertexDefinition.attributes[0].offset		= 0u;
-	vertexDefinition.attributes[0].sizeInBytes 	= sizeof(kg_float4);
+	vertexDefinition.attributes[0].sizeInBytes 	= sizeof(kg_kg_f324);
 	vertexDefinition.attributes[0].size 		= 4;
 
 	vertexDefinition.attributes[1].type 		= K15_GUI_COLOR_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[1].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
-	vertexDefinition.attributes[1].offset		= sizeof(kg_float4);
-	vertexDefinition.attributes[1].sizeInBytes 	= sizeof(kg_float4);
+	vertexDefinition.attributes[1].dataType 	= K15_GUI_kg_f32_DATA_TYPE;
+	vertexDefinition.attributes[1].offset		= sizeof(kg_kg_f324);
+	vertexDefinition.attributes[1].sizeInBytes 	= sizeof(kg_kg_f324);
 	vertexDefinition.attributes[1].size 		= 4;
 
 	vertexDefinition.attributes[2].type 		= K15_GUI_TEXCOORD_ATTRIBUTE_TYPE;
-	vertexDefinition.attributes[2].dataType 	= K15_GUI_FLOAT_DATA_TYPE;
-	vertexDefinition.attributes[2].offset		= sizeof(kg_float4) * 2u;
+	vertexDefinition.attributes[2].dataType 	= K15_GUI_kg_f32_DATA_TYPE;
+	vertexDefinition.attributes[2].offset		= sizeof(kg_kg_f324) * 2u;
 	vertexDefinition.attributes[2].sizeInBytes 	= sizeof(kg_float2);
 	vertexDefinition.attributes[2].size 		= 2;
 	
