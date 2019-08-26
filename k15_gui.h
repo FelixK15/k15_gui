@@ -827,6 +827,7 @@ typedef enum
 	K15_GUI_TRUETYPE_OFFSET_HEAD_MAGIC_NUMBER 		= 12u, 	// Relative to 'head' table
 	K15_GUI_TRUETYPE_OFFSET_HEAD_INDEX_LOCA_FORMAT 	= 50u, 	// Relative to 'head' table
 	K15_GUI_TRUETYPE_OFFSET_HEAD_FLAGS 				= 16u, 	// Relative to 'head' table
+	K15_GUI_TRUETYPE_OFFSET_CHECKSUM_ADJUSTMENT		= 8u,	// Relative to 'head' table
 	K15_GUI_TRUETYPE_TABLE_DIRECTORY				= 12u  	// Absolute offset
 } kg_true_type_offsets;
 /*********************************************************************************/
@@ -1400,7 +1401,7 @@ kg_internal kg_result kg_allocate_texture_atlas_slot(kg_texture_atlas_slot** pOu
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
-kg_internal kg_u32 kg_calculate_true_type_table_checksum(kg_true_type_font* pTrueTypeFont, kg_u32 tableLength, kg_u32 tableOffset)
+kg_internal kg_u32 kg_calculate_true_type_table_checksum(const kg_true_type_font* pTrueTypeFont, kg_u32 tableLength, kg_u32 tableOffset)
 {
 	if (tableOffset + tableLength > pTrueTypeFont->data.memorySizeInBytes)
 	{
@@ -1409,7 +1410,7 @@ kg_internal kg_u32 kg_calculate_true_type_table_checksum(kg_true_type_font* pTru
 
 	//https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6.html#Overview
 	kg_u32 sum = 0;
-	kg_s32 count = (int)((tableLength + 3) & ~3) / 4;
+	kg_s32 count = (kg_s32)((tableLength + 3) & ~3) / 4;
 	while ( count-- > 0 && ( ( tableOffset + 4u ) < pTrueTypeFont->data.memorySizeInBytes ) )
 	{
 		kg_u32 part = 0u;
@@ -1420,6 +1421,27 @@ kg_internal kg_u32 kg_calculate_true_type_table_checksum(kg_true_type_font* pTru
 	}
 
 	return sum;
+}
+/*********************************************************************************/
+kg_internal kg_u32 kg_calculate_true_type_checksum(const kg_true_type_font* pTrueTypeFont)
+{
+	kg_u32 sum = 0;
+	kg_s32 count = (((kg_s32)pTrueTypeFont->data.memorySizeInBytes + 3) & ~3) / 4;
+	kg_u32 offset = 0u;
+	while ( count-- > 0 )
+	{
+		kg_u32 part = 0u;
+
+		if (offset != (pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] + K15_GUI_TRUETYPE_OFFSET_CHECKSUM_ADJUSTMENT))
+		{
+			kg_peek_data(&part, &pTrueTypeFont->data, offset);
+		}
+
+		sum += part;
+		offset += 4u;
+	}
+
+	return 0xB1B0AFBA - sum;
 }
 /*********************************************************************************/
 kg_internal size_t kg_query_true_type_table_offset(kg_true_type_font* pTrueTypeFont, kg_u16 tableCount, const char* pTableIdentifier)
@@ -1496,6 +1518,15 @@ kg_internal void kg_parse_true_type_table_offsets(kg_true_type_font* pTrueTypeFo
 /*********************************************************************************/
 kg_internal kg_result kg_verify_true_type_data(const kg_true_type_font* pTrueTypeFont)
 {
+	const kg_u32 calculatedTrueTypeChecksum = kg_calculate_true_type_checksum(pTrueTypeFont);
+	kg_u32 trueTypeChecksum = 0u;
+	kg_peek_data(&trueTypeChecksum, &pTrueTypeFont->data, pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] + K15_GUI_TRUETYPE_OFFSET_CHECKSUM_ADJUSTMENT);
+
+	if (trueTypeChecksum != calculatedTrueTypeChecksum)
+	{
+		return K15_GUI_RESULT_FONT_DATA_ERROR;
+	}
+	
 	if (pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] == 0u	||
 		pTrueTypeFont->tableOffsets[K15_GUI_TRUETYPE_TABLE_CMAP] == 0u)
 	{
@@ -2572,7 +2603,7 @@ kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints
 /*********************************************************************************/
 kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_kg_f32_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
 {
-	const kg_f32 defaultError = 0.01f;
+	const kg_f32 defaultError = 0.95f;
 	const size_t lineBatchCount = 256u;
 	kg_line_kg_f32_2d* pLines = kg_nullptr;
 
@@ -2677,18 +2708,15 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 	}
 
 	const size_t maxLineCount = 1024;
-	kg_line_kg_f32_2d* pLiness = kg_nullptr;
-	result = kg_allocate_from_linear_allocator(&pLiness, pAllocator, sizeof(kg_line_kg_f32_2d) * maxLineCount);
+	kg_line_kg_f32_2d* pLines = kg_nullptr;
+	result = kg_allocate_from_linear_allocator(&pLines, pAllocator, sizeof(kg_line_kg_f32_2d) * maxLineCount);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
 	}
 
-	kg_line_kg_f32_2d* pLines = kg_nullptr;
-	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLiness, pAllocator, &glyphOutline);
-
-
+	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, pAllocator, &glyphOutline);
 
 	//FK: TODO rasterize
 
