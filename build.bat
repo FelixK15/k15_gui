@@ -17,7 +17,7 @@ IF %OS%==32BIT set REG_FOLDER=HKLM\SOFTWARE\Microsoft\VisualStudio\SxS\VS7
 IF %REG_FOLDER%=="" GOTO DECISION
 
 ::try to get get visual studio path from registry for different versions
-FOR /l %%G IN (15, -1, 8) DO (
+FOR /l %%G IN (18, -1, 8) DO (
 	set REG_COMMAND=reg query !REG_FOLDER! /v %%G.0
 	!REG_COMMAND! >nul 2>nul
 
