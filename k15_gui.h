@@ -1,19 +1,26 @@
 #ifndef _K15_GUILayer_Context_h_
 #define _K15_GUILayer_Context_h_
 
+#ifdef kg_def
+# undef kg_def
+#endif
+
+#ifdef kg_true
+# undef kg_true
+#endif
+
+#ifdef kg_false
+# undef kg_false
+#endif
+
 #ifndef K15_GUI_STATIC
 # define kg_def static
 #else
 # define kg_def extern
 #endif //K15_GUI_STATIC
 
-#ifndef kg_true
-# define kg_true 1 
-#endif
-
-#ifndef kg_false
-# define kg_false 0
-#endif
+#define kg_true 1 
+#define kg_false 0
 
 #ifndef K15_GUI_DEFAULT_BUCKET_COUNT
 # define K15_GUI_DEFAULT_BUCKET_COUNT 128u
@@ -582,6 +589,7 @@ typedef struct
 	kg_hash_map*			pElementHashMap;
 	kg_window*				pFirstWindow;
 	size_t					allocatorFrameDataPosition;
+	kg_u32 					dpi;
 	kg_u32					currentWindowStackIndex;
 	kg_u32					windowZIndex;
 	kg_u32 					frameCounter;
@@ -649,6 +657,8 @@ kg_def kg_result 					kg_create_context(kg_context_handle* pOutHandle);
 kg_def kg_result 					kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle, const kg_context_parameter* pParameter, const kg_render_context_parameter* pRenderParameter, const char** pOutError);
 kg_def kg_result 					kg_set_viewport(kg_context_handle contextHandle, const kg_viewport* pViewport);
 kg_def kg_result					kg_get_viewport(kg_context_handle contextHandle, kg_viewport* pOutViewport);
+kg_def kg_result 					kg_set_dpi(kg_context_handle contextHandle, short dpi);
+kg_def kg_result 					kg_get_dpi(kg_context_handle contextHandle, unsigned short* pOutDpi);
 
 //*****************CONTROLS******************//
 kg_def kg_result 					kg_begin_frame(kg_context_handle contextHandle);
@@ -3959,6 +3969,7 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		kg_set_str(pOutError, "Could not load provided font - will fall back to default font.");
+		//FK: TODO: Load default font
 		//result = kg_init_true_type_font(&pContext->trueTypeFont, defaultFontData, kg_nullptr);
 
 		if (result != K15_GUI_RESULT_SUCCESS)
@@ -4039,7 +4050,7 @@ kg_result kg_create_context_with_custom_parameter(kg_context_handle* pOutHandle,
 	pContext->pElementHashMap 	= &pContext->elements[0];
 	pContext->pWindowHashMap 	= &pContext->windows[0];
 	pContext->pFirstWindow		= kg_nullptr;
-
+	pContext->dpi 				= 96u;
 	pOutHandle->value = (size_t)pContext;
 
 	return K15_GUI_RESULT_SUCCESS;
