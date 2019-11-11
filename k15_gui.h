@@ -1857,11 +1857,14 @@ kg_internal kg_result kg_parse_glyph_index_format_4(const kg_true_type_font* pTr
 	kg_read_data(&entrySelector, &pTrueTypeFont->data, &offset);
 	kg_read_data(&rangeShift, &pTrueTypeFont->data, &offset);
 
+	searchRange >>= 1u;
+	rangeShift 	>>= 1u;
+
 	const kg_u32 endCountPosition = offset;
 	kg_u32 search = endCountPosition;
 
 	kg_u16 cp = 0u;
-	kg_peek_data(&cp, &pTrueTypeFont->data, offset);
+	kg_peek_data(&cp, &pTrueTypeFont->data, search + rangeShift * 2u);
 
 	if (codePoint >= (kg_code_point)cp)
 	{
@@ -1898,7 +1901,7 @@ kg_internal kg_result kg_parse_glyph_index_format_4(const kg_true_type_font* pTr
 	}
 
 	kg_u16 idOffset = 0u;
-	kg_peek_data(&idOffset, &pTrueTypeFont->data, cmapOffset + 14u + segCount * 6u + 2u * item);	
+	kg_peek_data(&idOffset, &pTrueTypeFont->data, cmapOffset + 14u + segCount * 6u + 2u + 2u * item);	
 
 	offset = (size_t)idOffset;
 
@@ -1907,12 +1910,12 @@ kg_internal kg_result kg_parse_glyph_index_format_4(const kg_true_type_font* pTr
 	if (offset == 0u)
 	{
 		kg_peek_data(&codePointOffset, &pTrueTypeFont->data, cmapOffset + 14u + segCount * 4u + 2u + 2u * item);
-		*pOutGlyphId = codePoint + (kg_code_point)codePointOffset;
+		*pOutGlyphId = (codePoint + (kg_code_point)codePointOffset) & 0xffffu;
 		return K15_GUI_RESULT_SUCCESS;
 	}
 
 	kg_peek_data(&codePointOffset, &pTrueTypeFont->data, offset + (codePoint - (kg_code_point)start) * 2u + cmapOffset + 14u + segCount * 6u + 2u + 2u * item);
-	*pOutGlyphId = (kg_code_point)codePointOffset;
+	*pOutGlyphId = (kg_code_point)codePointOffset & 0xffffu;
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
@@ -2640,7 +2643,7 @@ kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints
 /*********************************************************************************/
 kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
 {
-	const kg_f32 defaultError = 0.95f;
+	const kg_f32 defaultError = 0.93f;
 	const size_t lineBatchCount = 256u;
 	kg_line_float_2d* pLines = kg_nullptr;
 
@@ -2657,12 +2660,12 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 		const kg_true_type_vertex* pV0 			= pOutline->pVertices + pContour->startIndex; 
 		for (kg_u32 vertexIndex = pContour->startIndex; vertexIndex < pContour->startIndex + pContour->length; )
 		{
-			const kg_true_type_vertex* pV1 = pOutline->pVertices + vertexIndex + 1u;
-			const kg_true_type_vertex* pV2 = pOutline->pVertices + vertexIndex + 2u;
+			const kg_true_type_vertex* pV1 = ( vertexIndex + 1u ) == pContour->length + pContour->startIndex ? pOutline->pVertices + pContour->startIndex : pOutline->pVertices + vertexIndex + 1u;
+			const kg_true_type_vertex* pV2 = ( vertexIndex + 2u ) == pContour->length + pContour->startIndex ? pOutline->pVertices + pContour->startIndex : pOutline->pVertices + vertexIndex + 2u;
 			
 			if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
 			{
-				pLines[lineIndex] = kg_init_line_float_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->xCoordinate);
+				pLines[lineIndex] = kg_init_line_float_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->yCoordinate);
 				pV0 = pV1;
 
 				vertexIndex += 1u;
@@ -2685,7 +2688,7 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 
 				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
 				{
-					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
+					pLines[lineIndex] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
 					lineIndex++;
 				}
 
