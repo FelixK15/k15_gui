@@ -23,12 +23,18 @@ typedef unsigned char 	uint8;
 
 typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 
-kg_float2* pPoints;
+kg_float2* pPoints = kg_nullptr;
+kg_line_float_2d* pLines = kg_nullptr;
+
+float scaleFactor = 0.5f;
+kg_float2 offset = {0.0f, 50.0f};
 size_t normalCount;
+int codePoint = 'n';
 size_t pointCount;
+size_t lineCount;
 const size_t maxPointCount = 20u;
 float error = 0.95f;
-
+int s_drawLinePoints = 1;
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
 
@@ -55,6 +61,31 @@ void generateCurvePoints()
 	pointCount = kg_generate_line_points_on_quadratic_curve(pPoints, maxPointCount, p0, p1, cp, error);
 }
 
+void generateGlyphPoints()
+{
+	kg_linear_allocator allocator;
+	void* pMemory = malloc(1024*1024);
+	kg_create_linear_allocator(&allocator, pMemory, 1024*1024);
+	kg_glyph_outline glyphOutline;
+
+	HANDLE arialFontHandle = CreateFile("C:/Windows/Fonts/arial.ttf", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, INVALID_HANDLE_VALUE);
+	assert(arialFontHandle != INVALID_HANDLE_VALUE);
+
+	HANDLE arialFontMapHandle = CreateFileMapping(arialFontHandle, NULL, PAGE_READONLY, 0, 0, NULL);
+	assert(arialFontMapHandle != INVALID_HANDLE_VALUE);
+
+	void* pArialFontMapData = MapViewOfFile(arialFontMapHandle, FILE_MAP_READ, 0, 0, 0);
+	kg_buffer fontBuffer = kg_create_buffer( pArialFontMapData, GetFileSize(arialFontHandle, NULL) );
+	
+	kg_true_type_font font;
+	kg_init_true_type_font(&font, &fontBuffer, NULL);
+	kg_glyph_id glyphId;
+	kg_parse_true_type_code_point_glyph_id(&font, &glyphId, codePoint);
+	kg_result result = kg_parse_true_type_glyph_outline(&glyphOutline, &allocator, &font, glyphId);
+	assert(result == K15_GUI_RESULT_SUCCESS);
+
+	lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, &allocator, &glyphOutline);
+}
 
 void printErrorToFile(const char* p_FileName)
 {
@@ -123,9 +154,23 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 				generateCurvePoints();
 			}
 		}
+		else if (p_wParam == VK_LEFT)
+		{
+			codePoint--;
+			generateGlyphPoints();
+		}
+		else if (p_wParam == VK_RIGHT)
+		{
+			codePoint++;
+			generateGlyphPoints();
+		}
 		else if (p_wParam == VK_F5)
 		{
 			generateCurvePoints();
+		}
+		else if (p_wParam == VK_SPACE)
+		{
+			s_drawLinePoints = !s_drawLinePoints;
 		}
 	}
 }
@@ -258,7 +303,8 @@ void setup(HWND p_HWND)
 
 	kg_allocate_from_linear_allocator(&pPoints, &allocator, sizeof(kg_float2) * maxPointCount);
 
-	generateCurvePoints();
+	//generateCurvePoints();
+	generateGlyphPoints();
 
 	HDC originalDC = GetDC(p_HWND);
 	backbufferDC = CreateCompatibleDC(originalDC);
@@ -289,59 +335,93 @@ void drawLinePoints()
 
 	static char text[20];
 
-	for (size_t pointIndex = 0u; pointIndex < pointCount; ++pointIndex)
+	if (pointCount > 0)
 	{
-		Rectangle(backbufferDC, 
-			(int)(pPoints[pointIndex].x - width  * 0.5f),
-			(int)(pPoints[pointIndex].y - height * 0.5f),
-			(int)(pPoints[pointIndex].x + width  * 0.5f),
-			(int)(pPoints[pointIndex].y + height * 0.5f));
-	
-		if (pointIndex != 0u)
+		for (size_t pointIndex = 0u; pointIndex < pointCount; ++pointIndex)
 		{
-			if (pointIndex == 1)
+			Rectangle(backbufferDC, 
+				(int)(pPoints[pointIndex].x - width  * 0.5f),
+				(int)(pPoints[pointIndex].y - height * 0.5f),
+				(int)(pPoints[pointIndex].x + width  * 0.5f),
+				(int)(pPoints[pointIndex].y + height * 0.5f));
+		
+			if (pointIndex != 0u)
 			{
-				v[0] = kg_float2_init(pPoints[pointIndex].x - pPoints[pointIndex - 1u].x,
-									pPoints[pointIndex].y - pPoints[pointIndex - 1].y);
+				if (pointIndex == 1)
+				{
+					v[0] = kg_float2_init(pPoints[pointIndex].x - pPoints[pointIndex - 1u].x,
+										pPoints[pointIndex].y - pPoints[pointIndex - 1].y);
+				}
+				else 
+				{
+					v[1] = kg_float2_init(pPoints[pointIndex].x - pPoints[pointIndex - 1u].x,
+										pPoints[pointIndex].y - pPoints[pointIndex - 1].y);
+				
+					v[0] = kg_float2_normalize(v[0]);
+					v[1] = kg_float2_normalize(v[1]);
+
+					const float d = kg_float2_dot(v[0], v[1]);
+					sprintf(text, "d:%.3f", d);
+
+					RECT textRect;
+					textRect.left 	= (LONG)(pPoints[pointIndex - 1].x + 0.f);
+					textRect.top 	= (LONG)(pPoints[pointIndex - 1].y + 0.f);
+					textRect.right 	= (LONG)(pPoints[pointIndex - 1].x + 80.f);
+					textRect.bottom = (LONG)(pPoints[pointIndex - 1].y + 80.f);
+
+					DrawTextA(backbufferDC, text, -1, &textRect, DT_LEFT | DT_TOP);
+				
+					v[0] = v[1];
+				}
 			}
-			else 
-			{
-				v[1] = kg_float2_init(pPoints[pointIndex].x - pPoints[pointIndex - 1u].x,
-									pPoints[pointIndex].y - pPoints[pointIndex - 1].y);
+		}
+	}
+	else if (lineCount > 0)
+	{
+		for (size_t lineIndex = 0u; lineIndex < lineCount; ++lineIndex)
+		{
+			Rectangle(backbufferDC, 
+				(int)(pLines[lineIndex].p0.x * scaleFactor - width  * 0.5f + offset.x),
+				(int)(pLines[lineIndex].p0.y * scaleFactor - height * 0.5f + offset.y),
+				(int)(pLines[lineIndex].p0.x * scaleFactor + width  * 0.5f + offset.x),
+				(int)(pLines[lineIndex].p0.y * scaleFactor + height * 0.5f + offset.y));
 			
-				v[0] = kg_float2_normalize(v[0]);
-				v[1] = kg_float2_normalize(v[1]);
-
-				const float d = kg_float2_dot(v[0], v[1]);
-				sprintf(text, "d:%.3f", d);
-
-				RECT textRect;
-				textRect.left 	= (LONG)(pPoints[pointIndex - 1].x + 0.f);
-				textRect.top 	= (LONG)(pPoints[pointIndex - 1].y + 0.f);
-				textRect.right 	= (LONG)(pPoints[pointIndex - 1].x + 80.f);
-				textRect.bottom = (LONG)(pPoints[pointIndex - 1].y + 80.f);
-
-				DrawTextA(backbufferDC, text, -1, &textRect, DT_LEFT | DT_TOP);
-			
-				v[0] = v[1];
-			}
+			Rectangle(backbufferDC, 
+				(int)(pLines[lineIndex].p1.x * scaleFactor - width  * 0.5f + offset.x),
+				(int)(pLines[lineIndex].p1.y * scaleFactor - height * 0.5f + offset.y),
+				(int)(pLines[lineIndex].p1.x * scaleFactor + width  * 0.5f + offset.x),
+				(int)(pLines[lineIndex].p1.y * scaleFactor + height * 0.5f + offset.y));
 		}
 	}
 }
 
 void drawLines()
 {
-	HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
-	HPEN oldPen = (HPEN)SelectObject(backbufferDC, pen);
-
-	for(size_t pointIndex = 0u; pointIndex < pointCount - 1; ++pointIndex)
+	if(pointCount > 0 || lineCount > 0)
 	{
-		MoveToEx(backbufferDC, (int)pPoints[pointIndex].x, (int)pPoints[pointIndex].y, 0u);
-		LineTo(backbufferDC, (int)pPoints[pointIndex + 1].x, (int)pPoints[pointIndex + 1].y);
-	}
+		HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+		HPEN oldPen = (HPEN)SelectObject(backbufferDC, pen);
 
-	SelectObject(backbufferDC, oldPen);
-	DeleteObject(pen);
+		if(pointCount > 0)
+		{
+			for(size_t pointIndex = 0u; pointIndex < pointCount - 1; ++pointIndex)
+			{
+				MoveToEx(backbufferDC, (int)pPoints[pointIndex].x, (int)pPoints[pointIndex].y, 0u);
+				LineTo(backbufferDC, (int)pPoints[pointIndex + 1].x, (int)pPoints[pointIndex + 1].y);
+			}
+		}
+		else
+		{
+			for(size_t lineIndex = 0u; lineIndex < lineCount; ++lineIndex)
+			{
+				MoveToEx(backbufferDC, (int)(pLines[lineIndex].p0.x * scaleFactor + offset.x), (int)(pLines[lineIndex].p0.y * scaleFactor + offset.y), 0u);
+				LineTo(backbufferDC, (int)(pLines[lineIndex].p1.x * scaleFactor + offset.x), (int)(pLines[lineIndex].p1.y * scaleFactor + offset.y));	
+			}
+		}
+
+		SelectObject(backbufferDC, oldPen);
+		DeleteObject(pen);
+	}
 }
 
 void drawDeltaTime(uint32 p_DeltaTimeInMS)
@@ -362,7 +442,11 @@ void drawDeltaTime(uint32 p_DeltaTimeInMS)
 
 void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)
 {
-	drawLinePoints();
+	if (s_drawLinePoints)
+	{
+		drawLinePoints();
+	}
+
 	drawLines();
 	drawDeltaTime(p_DeltaTimeInMS);
 	swapBuffers(p_HWND);

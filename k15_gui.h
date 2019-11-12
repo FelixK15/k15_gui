@@ -2316,7 +2316,7 @@ kg_internal kg_result kg_parse_true_type_simple_glyf_outline(kg_true_type_glyf_o
 			yCoordinate = previousYCoordinate + yCoordinate;
 		}
 
-		pVertex->yCoordinate 	= yCoordinate;
+		pVertex->yCoordinate 	= pOutlineContext->yMax - yCoordinate;
 		previousYCoordinate 	= yCoordinate;
 	}
 
@@ -2490,7 +2490,7 @@ kg_internal kg_result kg_parse_true_type_glyf_outline_and_bounding_box(kg_true_t
 	kg_read_data(&pOutlineContext->xMin, &pTrueTypeFont->data, &offset);
 	kg_read_data(&pOutlineContext->yMin, &pTrueTypeFont->data, &offset);
 	kg_read_data(&pOutlineContext->xMax, &pTrueTypeFont->data, &offset);
-	kg_read_data(&pOutlineContext->xMax, &pTrueTypeFont->data, &offset);
+	kg_read_data(&pOutlineContext->yMax, &pTrueTypeFont->data, &offset);
 
 	return kg_parse_true_type_glyf_outline(pOutlineContext, pTrueTypeFont, glyphId);
 }
@@ -2643,7 +2643,7 @@ kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints
 /*********************************************************************************/
 kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
 {
-	const kg_f32 defaultError = 0.93f;
+	const kg_f32 defaultError = 0.98f;
 	const size_t lineBatchCount = 256u;
 	kg_line_float_2d* pLines = kg_nullptr;
 
@@ -2665,11 +2665,9 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 			
 			if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
 			{
-				pLines[lineIndex] = kg_init_line_float_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->yCoordinate);
+				pLines[lineIndex++] = kg_init_line_float_2d(pV0->xCoordinate, pV0->yCoordinate, pV1->xCoordinate, pV1->yCoordinate);
 				pV0 = pV1;
-
 				vertexIndex += 1u;
-				++lineIndex;
 				continue;
 			}
 			else if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC && pV2->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
@@ -2686,10 +2684,9 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 					continue;
 				}
 
-				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
+				for (size_t pointIndex = 0u; pointIndex < ( pointCount - 1u ); ++pointIndex)
 				{
-					pLines[lineIndex] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
-					lineIndex++;
+					pLines[lineIndex++] = kg_init_line_float_2d(pPoints[pointIndex].x, pPoints[pointIndex].y, pPoints[pointIndex + 1].x, pPoints[pointIndex + 1].y);					
 				}
 
 				pV0 = pV2;
@@ -2698,12 +2695,12 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 			else if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC && pV2->type == K15_GUI_TRUETYPE_VERTEX_TYPE_QUADRATIC)
 			{
 				const kg_true_type_vertex* pV3 = pOutline->pVertices + vertexIndex + 3u;
-				
+
 				const kg_float2 cp1 = {pV1->xCoordinate, pV1->yCoordinate};
-				const kg_float2 cp2 = {pV2->yCoordinate, pV2->yCoordinate};
+				const kg_float2 cp2 = {pV2->xCoordinate, pV2->yCoordinate};
 
 				const kg_float2 p0 = {pV0->xCoordinate, pV0->yCoordinate};
-				const kg_float2 p1 = {(cp1.x + cp2.x) * 0.5f, (cp2.y + cp2.y) * 0.5f};
+				const kg_float2 p1 = {(cp1.x + cp2.x) * 0.5f, (cp1.y + cp2.y) * 0.5f};
 				const kg_float2 p2 = {pV3->xCoordinate, pV3->yCoordinate};
 				
 				vertexIndex += 3u;
@@ -2712,16 +2709,30 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 				kg_float2* pPoints = kg_nullptr;
 				kg_allocate_from_linear_allocator(&pPoints, pAllocator, sizeof(kg_float2) * 32u);
 				size_t pointCount = kg_generate_line_points_on_quadratic_curve(pPoints, 32u, p0, p1, cp1, defaultError);
-
 				if (pointCount == 0u)
 				{
 					continue;
 				}
 				
-				for (size_t pointIndex = 1u; pointIndex < pointCount; ++pointIndex)
+				for (size_t pointIndex = 0u; pointIndex < (pointCount - 1u); ++pointIndex)
 				{
-					pLines[lineIndex + pointIndex - 1u] = kg_init_line_float_2d(pPoints[pointIndex - 1u].x, pPoints[pointIndex - 1u].y, pPoints[pointIndex].x, pPoints[pointIndex].y);					
-					lineIndex++;
+					pLines[lineIndex++] = kg_init_line_float_2d(pPoints[pointIndex].x, pPoints[pointIndex].y, pPoints[pointIndex + 1].x, pPoints[pointIndex + 1].y);					
+				}
+
+				if (lineIndex == lineBatchCount)
+				{
+					break;
+				}
+
+				pointCount = kg_generate_line_points_on_quadratic_curve(pPoints, 32u, p1, p2, cp2, defaultError);
+				if (pointCount == 0u)
+				{
+					continue;
+				}
+				
+				for (size_t pointIndex = 0u; pointIndex < (pointCount - 1u); ++pointIndex)
+				{
+					pLines[lineIndex++] = kg_init_line_float_2d(pPoints[pointIndex].x, pPoints[pointIndex].y, pPoints[pointIndex + 1].x, pPoints[pointIndex + 1].y);					
 				}
 
 				if (lineIndex == lineBatchCount)
