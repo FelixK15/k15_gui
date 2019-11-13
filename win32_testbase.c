@@ -26,14 +26,14 @@ typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 kg_float2* pPoints = kg_nullptr;
 kg_line_float_2d* pLines = kg_nullptr;
 
-float scaleFactor = 0.5f;
+float scaleFactor = 0.3f;
 kg_float2 offset = {0.0f, 50.0f};
 size_t normalCount;
-int codePoint = 'n';
+int codePoint = 192;
 size_t pointCount;
 size_t lineCount;
 const size_t maxPointCount = 20u;
-float error = 0.95f;
+float error = 0.98f;
 int s_drawLinePoints = 1;
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
@@ -80,11 +80,27 @@ void generateGlyphPoints()
 	kg_true_type_font font;
 	kg_init_true_type_font(&font, &fontBuffer, NULL);
 	kg_glyph_id glyphId;
-	kg_parse_true_type_code_point_glyph_id(&font, &glyphId, codePoint);
-	kg_result result = kg_parse_true_type_glyph_outline(&glyphOutline, &allocator, &font, glyphId);
-	assert(result == K15_GUI_RESULT_SUCCESS);
+	kg_result result = kg_parse_true_type_code_point_glyph_id(&font, &glyphId, codePoint);
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		lineCount = 0u;
+		return;
+	}
 
-	lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, &allocator, &glyphOutline);
+	result = kg_parse_true_type_glyph_outline(&glyphOutline, &allocator, &font, glyphId);
+	if (result != K15_GUI_RESULT_SUCCESS)
+	{
+		lineCount = 0u;
+		return;
+	}
+
+	lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, &allocator, &glyphOutline, error);
+
+	for (size_t lineIndex = 0u; lineIndex < lineCount; ++lineIndex)
+	{
+		pLines[lineIndex].p0.y = glyphOutline.yMax - pLines[lineIndex].p0.y;
+		pLines[lineIndex].p1.y = glyphOutline.yMax - pLines[lineIndex].p1.y;
+	}
 }
 
 void printErrorToFile(const char* p_FileName)
@@ -132,26 +148,26 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 		{
 			if (error > 0.f)
 			{
-				error -= 0.001f;
+				error -= 0.01f;
 				if (error < 0.f)
 				{
 					error = 0.f;
 				}
 
-				generateCurvePoints();
+				generateGlyphPoints();
 			}
 		}
 		else if (p_wParam == VK_UP)
 		{
 			if (error < 1.f)
 			{
-				error += 0.001f;
+				error += 0.01f;
 				if (error > 1.f)
 				{
 					error = 1.f;
 				}
 				
-				generateCurvePoints();
+				generateGlyphPoints();
 			}
 		}
 		else if (p_wParam == VK_LEFT)
@@ -166,7 +182,7 @@ void K15_KeyInput(HWND p_HWND, UINT p_Message, WPARAM p_wParam, LPARAM p_lParam)
 		}
 		else if (p_wParam == VK_F5)
 		{
-			generateCurvePoints();
+			generateGlyphPoints();
 		}
 		else if (p_wParam == VK_SPACE)
 		{
@@ -436,8 +452,8 @@ void drawDeltaTime(uint32 p_DeltaTimeInMS)
 	SetTextColor(backbufferDC, RGB(255, 255, 255));
 	SetBkColor(backbufferDC, RGB(0, 0, 0));
 
-	sprintf_s(messageBuffer, 64, "error: %.3f", error);
-	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_LEFT | DT_TOP);
+	sprintf_s(messageBuffer, 64, "error: %.3f\ncodepoint: %d\nlinecount: %d\npointcount: %d", error, codePoint, lineCount, pointCount);
+	DrawTextA(backbufferDC, messageBuffer, -1, &textRect, DT_RIGHT | DT_TOP);
 }
 
 void doFrame(uint32 p_DeltaTimeInMS, HWND p_HWND)

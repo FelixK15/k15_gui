@@ -462,8 +462,8 @@ typedef struct
 {
 	kg_true_type_vertex_type 	type;
 	kg_u8					 	flags;
-	kg_u16						xCoordinate;
-	kg_u16						yCoordinate;
+	kg_s16						xCoordinate;
+	kg_s16						yCoordinate;
 } kg_true_type_vertex;
 /*********************************************************************************/
 typedef struct
@@ -2045,7 +2045,7 @@ kg_internal kg_result kg_parse_true_type_code_point_glyph_id(const kg_true_type_
 		}
 	}
 
-	return K15_GUI_RESULT_NOT_SUPPORTED;
+	return K15_GUI_RESULT_RESOURCE_NOT_FOUND;
 }
 /*********************************************************************************/
 
@@ -2283,7 +2283,7 @@ kg_internal kg_result kg_parse_true_type_simple_glyf_outline(kg_true_type_glyf_o
 	kg_s16 xCoordinate = 0u;
 	kg_s16 yCoordinate = 0u;
 
-	for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < totalVertexCount; ++vertexIndex)
+	for (kg_u32 vertexIndex = 0u; vertexIndex < totalVertexCount; ++vertexIndex)
 	{
 		kg_true_type_vertex* pVertex = pVertices + vertexIndex;
 
@@ -2306,7 +2306,7 @@ kg_internal kg_result kg_parse_true_type_simple_glyf_outline(kg_true_type_glyf_o
 		previousXCoordinate 	= xCoordinate;
 	}
 
-	for (kg_u32 vertexIndex = startVertexIndex; vertexIndex < totalVertexCount; ++vertexIndex)
+	for (kg_u32 vertexIndex = 0u; vertexIndex < totalVertexCount; ++vertexIndex)
 	{
 		kg_true_type_vertex* pVertex = pVertices + vertexIndex;
 
@@ -2325,7 +2325,7 @@ kg_internal kg_result kg_parse_true_type_simple_glyf_outline(kg_true_type_glyf_o
 			yCoordinate = previousYCoordinate + yCoordinate;
 		}
 
-		pVertex->yCoordinate 	= pOutlineContext->yMax - yCoordinate;
+		pVertex->yCoordinate 	= yCoordinate;
 		previousYCoordinate 	= yCoordinate;
 	}
 
@@ -2515,11 +2515,11 @@ kg_internal kg_result kg_begin_true_type_glyf_outline_parse(kg_glyph_outline* pO
 	kg_true_type_vertex* pVertexBuffer = kg_nullptr;
 
 	const size_t maxVertexCount = 512u;
-	const size_t maxContourCount = 256u;
+	const size_t maxContourCount = 32u;
 
 	kg_result result = K15_GUI_RESULT_SUCCESS;
-	result |= kg_allocate_from_linear_allocator(&pContourBuffer, pAllocator, sizeof(kg_true_type_contour) * 512u);
-	result |= kg_allocate_from_linear_allocator(&pVertexBuffer, pAllocator, sizeof(kg_true_type_vertex) * 512u);
+	result |= kg_allocate_from_linear_allocator(&pContourBuffer, pAllocator, sizeof(kg_true_type_contour) * maxContourCount);
+	result |= kg_allocate_from_linear_allocator(&pVertexBuffer, pAllocator, sizeof(kg_true_type_vertex) * maxVertexCount);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
@@ -2650,9 +2650,9 @@ kg_internal size_t kg_generate_line_points_on_quadratic_curve(kg_float2* pPoints
 	return pointCounter;
 }
 /*********************************************************************************/
-kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline)
+kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_float_2d** pOutLines, kg_linear_allocator* pAllocator, kg_glyph_outline* pOutline, kg_f32 error)
 {
-	const kg_f32 defaultError = 0.98f;
+	const kg_f32 defaultError = error;
 	const size_t lineBatchCount = 256u;
 	kg_line_float_2d* pLines = kg_nullptr;
 
@@ -2665,18 +2665,27 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 	size_t lineIndex = 0u;
 	for (kg_u32 contourIndex = 0u; contourIndex < pOutline->contourCount; ++contourIndex)
 	{
-		const kg_true_type_contour* pContour 	= pOutline->pContours + contourIndex;
-		const kg_true_type_vertex* pV0 			= pOutline->pVertices + pContour->startIndex; 
-		
-		kg_float2 p0 = kg_float2_init((float)pV0->xCoordinate, (float)pV0->yCoordinate);
-		
-		for (kg_u32 vertexIndex = pContour->startIndex; vertexIndex < pContour->startIndex + pContour->length; )
+		const kg_true_type_contour* pContour = pOutline->pContours + contourIndex;
+		const kg_u32 vertexStart = pContour->startIndex;
+		const kg_u32 vertexCount = pContour->length;
+
+		if (vertexCount == 0u)
 		{
-			const kg_true_type_vertex* pV1 = pOutline->pVertices + ( ( vertexIndex + 1u ) % pContour->length );
-			const kg_true_type_vertex* pV2 = pOutline->pVertices + ( ( vertexIndex + 2u ) % pContour->length );
+			continue;
+		}
+
+		const kg_true_type_vertex* pV0 	= pOutline->pVertices + vertexStart; 
+		kg_float2 p0 = kg_float2_init((float)pV0->xCoordinate - pOutline->xMin, (float)(pV0->yCoordinate - pOutline->yMin));
+		
+		for (kg_u32 vertexIndex = 0u; vertexIndex < vertexCount; )
+		{
+			const kg_u32 v1Index = vertexStart + ( vertexIndex + 1u ) % vertexCount;
+			const kg_u32 v2Index = vertexStart + ( vertexIndex + 2u ) % vertexCount;
+			const kg_true_type_vertex* pV1 = pOutline->pVertices + v1Index;
+			const kg_true_type_vertex* pV2 = pOutline->pVertices + v2Index;
 			
-			const kg_float2 p1 = kg_float2_init((float)pV1->xCoordinate, (float)pV1->yCoordinate);
-			const kg_float2 p2 = kg_float2_init((float)pV2->xCoordinate, (float)pV2->yCoordinate);
+			const kg_float2 p1 = kg_float2_init((float)(pV1->xCoordinate - pOutline->xMin), (float)(pV1->yCoordinate - pOutline->yMin));
+			const kg_float2 p2 = kg_float2_init((float)(pV2->xCoordinate - pOutline->xMin), (float)(pV2->yCoordinate - pOutline->yMin));
 
 			if(pV1->type == K15_GUI_TRUETYPE_VERTEX_TYPE_ON_CURVE)
 			{
@@ -2748,7 +2757,7 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 	}
 
 	kg_line_float_2d* pLines = kg_nullptr;
-	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, pAllocator, &glyphOutline);
+	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, pAllocator, &glyphOutline, 0.98f);
 
 	const kg_f32 unitsToPixel 			= (float)(fontSize * dpi * (glyphOutline.xMax - glyphOutline.xMin)) / (float)(dpi * unitsPerEm);//pointSize * resolution / ( 72 points per inch * units_per_em )
 	const kg_u32 glyphWidthInPixels 	= (kg_u32)(((glyphOutline.xMax - glyphOutline.xMin) * unitsToPixel) + 0.5f);
