@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <wingdi.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 #define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
 
@@ -27,13 +30,10 @@ typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 kg_float2* pPoints = kg_nullptr;
 kg_line_float_2d* pLines = kg_nullptr;
 
-void* pDIBPixels = NULL;
-
-
 float scaleFactor = 0.3f;
 kg_float2 offset = {0.0f, 50.0f};
 size_t normalCount;
-int codePoint = 'c';
+int codePoint = 'I';
 size_t pointCount;
 size_t lineCount;
 const size_t maxPointCount = 20u;
@@ -42,6 +42,7 @@ int s_drawLinePoints = 1;
 
 void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height);
 
+BITMAPINFO glyphInfo;
 HDC backbufferDC = 0;
 HBITMAP backbufferBitmap = 0;
 uint32 screenWidth = 1024;
@@ -68,9 +69,8 @@ void generateCurvePoints()
 
 void generateGlyphPoints()
 {
-	kg_reset_linear_allocator(&allocator, 0u);
 	kg_clear_texture_atlas(&atlas);
-	HANDLE arialFontHandle = CreateFile("C:/Windows/Fonts/bahnschrift.ttf", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, INVALID_HANDLE_VALUE);
+	HANDLE arialFontHandle = CreateFile("C:/Windows/Fonts/arial.ttf", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, INVALID_HANDLE_VALUE);
 	assert(arialFontHandle != INVALID_HANDLE_VALUE);
 
 	HANDLE arialFontMapHandle = CreateFileMapping(arialFontHandle, NULL, PAGE_READONLY, 0, 0, NULL);
@@ -92,24 +92,8 @@ void generateGlyphPoints()
 	kg_u16 unitsPerEm = 0u;
 	kg_read_data(&unitsPerEm, &font.data, &offset );
 
-	kg_rasterize_true_type_glyph(&allocator, NULL, &atlas, &font, glyphId, unitsPerEm, 96, 12 );
-	HDC glyphDC = CreateCompatibleDC( backbufferDC );
-	BITMAPINFO glyphInfo;
-	glyphInfo.bmiHeader.biSize 			= sizeof(BITMAPINFOHEADER);
-	glyphInfo.bmiHeader.biWidth 		= atlas.size.x;
-	glyphInfo.bmiHeader.biHeight 		= atlas.size.y;
-	glyphInfo.bmiHeader.biSizeImage		= atlas.size.x * atlas.size.y;
-	glyphInfo.bmiHeader.biPlanes 		= 1;
-	glyphInfo.bmiHeader.biBitCount 		= 8;
-	glyphInfo.bmiHeader.biCompression 	= BI_RGB;
-	glyphInfo.bmiColors[0].rgbBlue 		= 0xFF;
-	glyphInfo.bmiColors[0].rgbRed 		= 0xFF;
-	glyphInfo.bmiColors[0].rgbGreen 	= 0xFF;
-
-	HBITMAP glyphDipSection = CreateDIBSection( glyphDC, &glyphInfo, DIB_RGB_COLORS, &pDIBPixels, NULL, 0 );
-
-	SelectObject( glyphDC, glyphDipSection );
-	StretchDIBits( glyphDC, 0, 0, atlas.size.x, atlas.size.y, 0, 0, atlas.size.x, atlas.size.y, pDIBPixels, &glyphInfo, DIB_RGB_COLORS, SRCCOPY );
+	kg_rasterize_true_type_glyph(&allocator, NULL, &atlas, &font, glyphId, unitsPerEm, 96, 24 );
+	stbi_write_png("test.png", atlas.size.x, atlas.size.y, atlas.pixelFormat, atlas.pImageData, atlas.size.x);
 
 	UnmapViewOfFile(pArialFontMapData);
 	CloseHandle(arialFontMapHandle);
@@ -327,17 +311,21 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 
 void setup(HWND p_HWND)
 {
+	const uint32 atlasWidth = 256;
+	const uint32 atlasHeight = 256;
+	const kg_pixel_format atlasFormat = K15_GUI_PIXEL_FORMAT_R8;
+	const uint32 atlasSizeInBytes = atlasWidth * atlasHeight * atlasFormat;
+	HDC originalDC = GetDC(p_HWND);
+	backbufferDC = CreateCompatibleDC(originalDC);
+
 	kg_buffer allocatorBuffer = kg_create_buffer(malloc(1024*1024*5), 1024*1024*5);
 	kg_create_linear_allocator(&allocator, allocatorBuffer.pMemory, allocatorBuffer.memorySizeInBytes);
-	kg_create_texture_atlas(&atlas, &allocator, 256, 256, K15_GUI_PIXEL_FORMAT_R8);
+	kg_create_texture_atlas(&atlas, &allocator, atlasWidth, atlasHeight, atlasFormat);
 
 	kg_allocate_from_linear_allocator(&pPoints, &allocator, sizeof(kg_float2) * maxPointCount);
 
 	//generateCurvePoints();
 	generateGlyphPoints();
-
-	HDC originalDC = GetDC(p_HWND);
-	backbufferDC = CreateCompatibleDC(originalDC);
 	resizeBackbuffer(p_HWND, screenWidth, screenHeight);
 }
 

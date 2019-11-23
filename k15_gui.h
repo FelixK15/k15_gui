@@ -501,7 +501,7 @@ typedef struct
 /*********************************************************************************/
 typedef struct
 {
-	kg_uint4	uvBounds;
+	kg_float4	uvBounds;
 	kg_uint2	position;
 	kg_uint2	size;
 } kg_texture_atlas_slot;
@@ -1374,6 +1374,8 @@ kg_internal kg_result kg_create_texture_atlas(kg_texture_atlas* pOutTextureAtlas
 		return result;
 	}
 
+	kg_memset(pImageData, 0x00, imageDataSizeInBytes);
+
 	pOutTextureAtlas->pImageData 	= pImageData;
 	pOutTextureAtlas->size.x 		= width;
 	pOutTextureAtlas->size.y 		= height;
@@ -1389,14 +1391,15 @@ kg_internal kg_result kg_clear_texture_atlas(kg_texture_atlas* pTextureAtlas)
 {
 	pTextureAtlas->slotCount 	= 0u;
 	pTextureAtlas->skyLine 		= kg_uint2_zero();
+	kg_memset(pTextureAtlas->pImageData, 0x00, pTextureAtlas->size.x * pTextureAtlas->size.y * pTextureAtlas->pixelFormat);
 
 	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
 kg_internal kg_result kg_allocate_texture_atlas_slot(kg_texture_atlas_slot** pOutSlot, kg_texture_atlas* pTextureAtlas, kg_u32 width, kg_u32 height)
 {
-	kg_assert(height >= 4u);
-	kg_assert(width >= 4u);
+	//kg_assert(height >= 4u);
+	//kg_assert(width >= 4u);
 
 	if (width > pTextureAtlas->size.x || height > pTextureAtlas->size.y)
 	{
@@ -1421,11 +1424,11 @@ kg_internal kg_result kg_allocate_texture_atlas_slot(kg_texture_atlas_slot** pOu
 	kg_texture_atlas_slot* pSlot = pTextureAtlas->pSlots + slotIndex;
 	pSlot->size.x 		= width;
 	pSlot->size.y 		= height;
-	pSlot->position 	= kg_create_uint2(pTextureAtlas->skyLine.x - width, pTextureAtlas->skyLine.y);
-	pSlot->uvBounds.x 	= pTextureAtlas->skyLine.x / pTextureAtlas->size.x; 
-	pSlot->uvBounds.y 	= pTextureAtlas->skyLine.y / pTextureAtlas->size.y; 
-	pSlot->uvBounds.z 	= (pTextureAtlas->skyLine.x + width) / pTextureAtlas->size.x; 
-	pSlot->uvBounds.w 	= (pTextureAtlas->skyLine.y + height) / pTextureAtlas->size.y; 
+	pSlot->position 	= kg_create_uint2(pTextureAtlas->skyLine.x - width, pTextureAtlas->skyLine.y - height);
+	pSlot->uvBounds.x 	= (kg_f32)pTextureAtlas->skyLine.x / (kg_f32)pTextureAtlas->size.x; 
+	pSlot->uvBounds.y 	= (kg_f32)pTextureAtlas->skyLine.y / (kg_f32)pTextureAtlas->size.y; 
+	pSlot->uvBounds.z 	= (kg_f32)(pTextureAtlas->skyLine.x + width) / (kg_f32)pTextureAtlas->size.x; 
+	pSlot->uvBounds.w 	= (kg_f32)(pTextureAtlas->skyLine.y + height) / (kg_f32)pTextureAtlas->size.y; 
 
 	*pOutSlot = pSlot;
 
@@ -2765,6 +2768,11 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 		}
 	}
 
+	for (kg_u32 i = 0u; i < lineIndex; ++i)
+	{
+		pLines[i].p0.y = pOutline->yMax - pLines[i].p0.y;
+		pLines[i].p1.y = pOutline->yMax - pLines[i].p1.y;
+	}
 	*pOutLines = pLines;
 	return lineIndex;
 }
@@ -2838,7 +2846,6 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 {
 	kg_glyph_outline glyphOutline;
 	kg_result result = kg_parse_true_type_glyph_outline(&glyphOutline, pAllocator, pTrueTypeFont, glyphId);
-
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
@@ -2847,13 +2854,12 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 	kg_line_float_2d* pLines = kg_nullptr;
 	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, pAllocator, &glyphOutline, 0.99f);
 
-	const kg_f32 unitsToPixel 			= (float)(fontSize * (glyphOutline.xMax - glyphOutline.xMin)) / (float)(dpi * unitsPerEm);//pointSize * resolution / ( 72 points per inch * units_per_em )
+	const kg_f32 unitsToPixel 			= (float)(fontSize * dpi) / (float)(dpi * unitsPerEm);//pointSize * resolution / ( 72 points per inch * units_per_em )
 	const kg_u32 glyphWidthInPixels 	= (kg_u32)(((glyphOutline.xMax - glyphOutline.xMin) * unitsToPixel) + 0.5f);
 	const kg_u32 glyphHeightInPixels 	= (kg_u32)(((glyphOutline.yMax - glyphOutline.yMin) * unitsToPixel) + 0.5f);
 	
 	kg_texture_atlas_slot* pAtlasSlot = kg_nullptr;
 	result = kg_allocate_texture_atlas_slot(&pAtlasSlot, pAtlas, glyphWidthInPixels, glyphHeightInPixels);
-	
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
 		return result;
@@ -2871,7 +2877,7 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 	kg_float2 intersectionPoints[8u];
 	const kg_u32 maxIntersectionPoints = kg_countof(intersectionPoints);
 
-	for (kg_u32 y = 0u; y < pAtlasSlot->size.y; ++y, pPixmap += glyphWidthInPixels)
+	for (kg_u32 y = pAtlasSlot->position.y; y < pAtlasSlot->size.y + pAtlasSlot->position.y; ++y, pPixmap += pAtlas->size.x * pAtlas->pixelFormat)
 	{
 		rasterizerLine.p0.y = (kg_f32)y;
 		rasterizerLine.p1.y = (kg_f32)y;
@@ -2879,7 +2885,7 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 		const kg_u32 intersectionPointsCount = kg_find_line_float_2d_intersections( &intersectionPoints[0], maxIntersectionPoints, rasterizerLine, pLines, lineCount, unitsToPixel);
 		kg_sort(intersectionPoints, intersectionPointsCount, sizeof(kg_float2), kg_compare_intersection_points );
 
-		kg_u32 fillOffset = 0;
+		kg_u32 fillOffset = pAtlasSlot->position.x;
 		kg_u8 fillValue = 0x0;
 		for (kg_u32 intersectionIndex = 0u; intersectionIndex < intersectionPointsCount; ++intersectionIndex)
 		{
@@ -2897,6 +2903,7 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 		const kg_u32 pixelCount = glyphWidthInPixels - fillOffset;
 		kg_memset(pPixmap + fillOffset, fillValue, pixelCount);
 	}
+
 
 	return result;
 }
@@ -3834,7 +3841,7 @@ kg_internal kg_result kg_render_element_text(kg_context* pContext, kg_rect textR
 
 		pGlyph->lastUsedFrameIndex = pContext->frameCounter;
 
-		uvBounds 	= kg_uint4_to_float4_cast(pGlyph->pAtlasSlot->uvBounds);
+		uvBounds 	= pGlyph->pAtlasSlot->uvBounds;
 		size 		= kg_uint2_to_float2_cast(pGlyph->pAtlasSlot->size);
 		advance 	= 0.0f;//pGlyph->metrics.advanceWidth;
 
