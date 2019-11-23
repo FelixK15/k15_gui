@@ -2932,7 +2932,7 @@ kg_internal kg_result kg_create_glyph_cache(kg_glyph_cache* pOutGlyphCache, kg_l
 kg_internal kg_result kg_create_image_cache(kg_image_cache* pOutImageCache, kg_linear_allocator* pAllocator, kg_u32 imageAtlasDimension)
 {
 	kg_texture_atlas imageAtlas;
-	kg_result result = kg_create_texture_atlas(&imageAtlas, pAllocator, imageAtlasDimension, imageAtlasDimension, K15_GUI_PIXEL_FORMAT_R8G8B8A8);
+	kg_result result = kg_create_texture_atlas(&imageAtlas, pAllocator, imageAtlasDimension, imageAtlasDimension, K15_GUI_PIXEL_FORMAT_R8);
 
 	if (result != K15_GUI_RESULT_SUCCESS)
 	{
