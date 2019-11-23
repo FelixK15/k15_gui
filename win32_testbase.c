@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <shellscalingapi.h>
 #include <stdio.h>
+#include <wingdi.h>
 
 #define K15_GUI_IMPLEMENTATION
 #include "k15_gui.h"
@@ -26,10 +27,13 @@ typedef LRESULT(CALLBACK* WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 kg_float2* pPoints = kg_nullptr;
 kg_line_float_2d* pLines = kg_nullptr;
 
+void* pDIBPixels = NULL;
+
+
 float scaleFactor = 0.3f;
 kg_float2 offset = {0.0f, 50.0f};
 size_t normalCount;
-int codePoint = 192;
+int codePoint = 'c';
 size_t pointCount;
 size_t lineCount;
 const size_t maxPointCount = 20u;
@@ -45,6 +49,7 @@ uint32 screenHeight = 768;
 uint32 timePerFrameInMS = 16;
 
 kg_linear_allocator allocator;
+kg_texture_atlas atlas;
 
 void generateCurvePoints()
 {
@@ -63,19 +68,16 @@ void generateCurvePoints()
 
 void generateGlyphPoints()
 {
-	kg_linear_allocator allocator;
-	void* pMemory = malloc(1024*1024);
-	kg_create_linear_allocator(&allocator, pMemory, 1024*1024);
-	kg_glyph_outline glyphOutline;
-
-	HANDLE arialFontHandle = CreateFile("C:/Windows/Fonts/arial.ttf", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, INVALID_HANDLE_VALUE);
+	kg_reset_linear_allocator(&allocator, 0u);
+	kg_clear_texture_atlas(&atlas);
+	HANDLE arialFontHandle = CreateFile("C:/Windows/Fonts/bahnschrift.ttf", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, INVALID_HANDLE_VALUE);
 	assert(arialFontHandle != INVALID_HANDLE_VALUE);
 
 	HANDLE arialFontMapHandle = CreateFileMapping(arialFontHandle, NULL, PAGE_READONLY, 0, 0, NULL);
 	assert(arialFontMapHandle != INVALID_HANDLE_VALUE);
 
 	void* pArialFontMapData = MapViewOfFile(arialFontMapHandle, FILE_MAP_READ, 0, 0, 0);
-	kg_buffer fontBuffer = kg_create_buffer( pArialFontMapData, GetFileSize(arialFontHandle, NULL) );
+	kg_buffer fontBuffer = kg_create_buffer(pArialFontMapData, GetFileSize(arialFontHandle, NULL));
 	
 	kg_true_type_font font;
 	kg_init_true_type_font(&font, &fontBuffer, NULL);
@@ -86,21 +88,32 @@ void generateGlyphPoints()
 		lineCount = 0u;
 		return;
 	}
+	kg_u32 offset = font.tableOffsets[K15_GUI_TRUETYPE_TABLE_HEAD] + 18;
+	kg_u16 unitsPerEm = 0u;
+	kg_read_data(&unitsPerEm, &font.data, &offset );
 
-	result = kg_parse_true_type_glyph_outline(&glyphOutline, &allocator, &font, glyphId);
-	if (result != K15_GUI_RESULT_SUCCESS)
-	{
-		lineCount = 0u;
-		return;
-	}
+	kg_rasterize_true_type_glyph(&allocator, NULL, &atlas, &font, glyphId, unitsPerEm, 96, 12 );
+	HDC glyphDC = CreateCompatibleDC( backbufferDC );
+	BITMAPINFO glyphInfo;
+	glyphInfo.bmiHeader.biSize 			= sizeof(BITMAPINFOHEADER);
+	glyphInfo.bmiHeader.biWidth 		= atlas.size.x;
+	glyphInfo.bmiHeader.biHeight 		= atlas.size.y;
+	glyphInfo.bmiHeader.biSizeImage		= atlas.size.x * atlas.size.y;
+	glyphInfo.bmiHeader.biPlanes 		= 1;
+	glyphInfo.bmiHeader.biBitCount 		= 8;
+	glyphInfo.bmiHeader.biCompression 	= BI_RGB;
+	glyphInfo.bmiColors[0].rgbBlue 		= 0xFF;
+	glyphInfo.bmiColors[0].rgbRed 		= 0xFF;
+	glyphInfo.bmiColors[0].rgbGreen 	= 0xFF;
 
-	lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, &allocator, &glyphOutline, error);
+	HBITMAP glyphDipSection = CreateDIBSection( glyphDC, &glyphInfo, DIB_RGB_COLORS, &pDIBPixels, NULL, 0 );
 
-	for (size_t lineIndex = 0u; lineIndex < lineCount; ++lineIndex)
-	{
-		pLines[lineIndex].p0.y = glyphOutline.yMax - pLines[lineIndex].p0.y;
-		pLines[lineIndex].p1.y = glyphOutline.yMax - pLines[lineIndex].p1.y;
-	}
+	SelectObject( glyphDC, glyphDipSection );
+	StretchDIBits( glyphDC, 0, 0, atlas.size.x, atlas.size.y, 0, 0, atlas.size.x, atlas.size.y, pDIBPixels, &glyphInfo, DIB_RGB_COLORS, SRCCOPY );
+
+	UnmapViewOfFile(pArialFontMapData);
+	CloseHandle(arialFontMapHandle);
+	CloseHandle(arialFontHandle);
 }
 
 void printErrorToFile(const char* p_FileName)
@@ -314,8 +327,9 @@ void resizeBackbuffer(HWND p_HWND, uint32 p_Width, uint32 p_Height)
 
 void setup(HWND p_HWND)
 {
-	kg_buffer allocatorBuffer = kg_create_buffer(malloc(1024*1024), 1024*1024);
+	kg_buffer allocatorBuffer = kg_create_buffer(malloc(1024*1024*5), 1024*1024*5);
 	kg_create_linear_allocator(&allocator, allocatorBuffer.pMemory, allocatorBuffer.memorySizeInBytes);
+	kg_create_texture_atlas(&atlas, &allocator, 256, 256, K15_GUI_PIXEL_FORMAT_R8);
 
 	kg_allocate_from_linear_allocator(&pPoints, &allocator, sizeof(kg_float2) * maxPointCount);
 

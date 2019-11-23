@@ -697,6 +697,7 @@ kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_rend
 #ifdef K15_GUI_IMPLEMENTATION
 
 #define kg_internal static
+#define kg_inline 
 
 #ifndef K15_GUI_STRIP_DEBUG_RENDERING
 # define K15_GUI_STRIP_DEBUG_RENDERING 0
@@ -789,10 +790,25 @@ kg_def kg_result					kg_get_render_data(kg_context_handle contextHandle, kg_rend
 # define kg_fabs(a) K15_GUI_FABS(a)
 #endif //K15_GUI_FABS
 
+#ifndef K15_GUI_FLOOR
+# include "math.h"
+# define kg_floor(a) floorf(a)
+#else
+# define kg_floor(a) K15_GUI_FLOOR(a)
+#endif //K15_GUI_FLOOR
+
+#ifndef K15_GUI_SORT
+# define kg_sort(b,s,e,f) qsort(b,s,e,f)
+#else
+# define kg_sort(b,s,e,f) K15_GUI_QUICKSORT(b,s,e,f)
+#endif //K15_GUI_QUICKSORT
+
 kg_internal const kg_u32 kg_ptr_size_in_bytes = sizeof(void*);
 
 #define kg_size_kilo_bytes(n) ((n)*1024)
 #define kg_size_mega_bytes(n) ((n)*1024*1024)
+
+#define kg_countof(a) (sizeof(a)/sizeof(a[0]))
 
 #define kg_nullptr (void*)(0)
 
@@ -1373,12 +1389,19 @@ kg_internal kg_result kg_clear_texture_atlas(kg_texture_atlas* pTextureAtlas)
 {
 	pTextureAtlas->slotCount 	= 0u;
 	pTextureAtlas->skyLine 		= kg_uint2_zero();
+
+	return K15_GUI_RESULT_SUCCESS;
 }
 /*********************************************************************************/
 kg_internal kg_result kg_allocate_texture_atlas_slot(kg_texture_atlas_slot** pOutSlot, kg_texture_atlas* pTextureAtlas, kg_u32 width, kg_u32 height)
 {
 	kg_assert(height >= 4u);
 	kg_assert(width >= 4u);
+
+	if (width > pTextureAtlas->size.x || height > pTextureAtlas->size.y)
+	{
+		return K15_GUI_RESULT_OUT_OF_MEMORY; 
+	}
 
 	if (pTextureAtlas->skyLine.x + width > pTextureAtlas->size.x)
 	{
@@ -2746,6 +2769,71 @@ kg_internal size_t kg_true_type_create_line_segments_from_glyph_outline(kg_line_
 	return lineIndex;
 }
 /*********************************************************************************/
+kg_internal kg_f32 kg_get_line_float_2d_width( const kg_line_float_2d* pLine )
+{
+	return pLine->p1.x - pLine->p0.x;
+}
+/*********************************************************************************/
+kg_internal kg_f32 kg_get_line_float_2d_height( const kg_line_float_2d* pLine )
+{
+	return pLine->p1.y - pLine->p0.y;
+}
+/*********************************************************************************/
+kg_internal kg_u32 kg_find_line_float_2d_intersections( kg_float2* pOutIntersectionPoints, kg_u32 intersectionPointsCapacity, kg_line_float_2d line, const kg_line_float_2d* pLines, kg_u32 lineCount, kg_f32 lineScaleFactor)
+{
+	/*
+	float s1_x, s1_y, s2_x, s2_y;
+    s1_x = p1_x - p0_x;     s1_y = p1_y - p0_y;
+    s2_x = p3_x - p2_x;     s2_y = p3_y - p2_y;
+
+    float s, t;
+    s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+    t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+	*/
+
+	kg_u32 intersectionPointIndex = 0u;
+	const kg_f32 s1x = kg_get_line_float_2d_width( &line );
+	const kg_f32 s1y = kg_get_line_float_2d_height( &line );
+
+	for (kg_u32 lineIndex = 0u; lineIndex < lineCount && intersectionPointIndex != intersectionPointsCapacity; ++lineIndex)
+	{
+		kg_line_float_2d lineSegment = pLines[lineIndex];
+		lineSegment.p0 = kg_float2_scale(lineSegment.p0, lineScaleFactor);
+		lineSegment.p1 = kg_float2_scale(lineSegment.p1, lineScaleFactor);
+
+		const kg_f32 s2x = kg_get_line_float_2d_width( &lineSegment );
+		const kg_f32 s2y = kg_get_line_float_2d_height( &lineSegment );
+
+		if (s1y == 0.0f && s2y == 0.0f)
+		{
+			continue;
+		}
+
+		const kg_f32 s = (-s1y * (line.p0.x - lineSegment.p0.x) + s1x * (line.p0.y - lineSegment.p0.y)) / (-s2x * s1y + s1x * s2y);
+		const kg_f32 t = ( s2x * (line.p0.y - lineSegment.p0.y) - s2y * (line.p0.x - lineSegment.p0.x)) / (-s2x * s1y + s1x * s2y);
+		
+		if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
+		{
+			const kg_float2 intersectionPoint = kg_float2_init( line.p0.x + (t * s1x), line.p0.y + (t * s1y));
+			pOutIntersectionPoints[intersectionPointIndex++] = intersectionPoint;
+		}
+	}
+
+	return intersectionPointIndex;
+}
+/*********************************************************************************/
+kg_internal kg_inline kg_f32 kg_frac( kg_f32 number )
+{
+	return number - (kg_f32)((kg_u32)number);
+}
+kg_internal kg_s32 kg_compare_intersection_points( const void* pP0, const void* pP1 )
+{
+	const kg_float2* pA = (kg_float2*)(pP0);
+	const kg_float2* pB = (kg_float2*)(pP1);
+
+	return pA->x > pB->x;
+}
+/*********************************************************************************/
 kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocator, kg_glyph_cache_entry* pGlyph, kg_texture_atlas* pAtlas, const kg_true_type_font* pTrueTypeFont, kg_glyph_id glyphId, kg_u32 unitsPerEm, kg_u32 dpi, kg_u32 fontSize)
 {
 	kg_glyph_outline glyphOutline;
@@ -2757,9 +2845,9 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 	}
 
 	kg_line_float_2d* pLines = kg_nullptr;
-	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, pAllocator, &glyphOutline, 0.98f);
+	const size_t lineCount = kg_true_type_create_line_segments_from_glyph_outline(&pLines, pAllocator, &glyphOutline, 0.99f);
 
-	const kg_f32 unitsToPixel 			= (float)(fontSize * dpi * (glyphOutline.xMax - glyphOutline.xMin)) / (float)(dpi * unitsPerEm);//pointSize * resolution / ( 72 points per inch * units_per_em )
+	const kg_f32 unitsToPixel 			= (float)(fontSize * (glyphOutline.xMax - glyphOutline.xMin)) / (float)(dpi * unitsPerEm);//pointSize * resolution / ( 72 points per inch * units_per_em )
 	const kg_u32 glyphWidthInPixels 	= (kg_u32)(((glyphOutline.xMax - glyphOutline.xMin) * unitsToPixel) + 0.5f);
 	const kg_u32 glyphHeightInPixels 	= (kg_u32)(((glyphOutline.yMax - glyphOutline.yMin) * unitsToPixel) + 0.5f);
 	
@@ -2771,9 +2859,44 @@ kg_internal kg_result kg_rasterize_true_type_glyph(kg_linear_allocator* pAllocat
 		return result;
 	}
 
-	//pAtlas->
-	//FK: TODO rasterize
+	kg_u8* pPixmap = kg_get_texture_atlas_slot_pixmap(pAtlas, pAtlasSlot);
+	kg_assert(pPixmap != NULL);
 
+	kg_line_float_2d rasterizerLine;
+	rasterizerLine.p0.x = 0u;
+	rasterizerLine.p0.y = 0u;
+	rasterizerLine.p1.x = (kg_f32)glyphWidthInPixels;
+	rasterizerLine.p1.y = 0u;
+
+	kg_float2 intersectionPoints[8u];
+	const kg_u32 maxIntersectionPoints = kg_countof(intersectionPoints);
+
+	for (kg_u32 y = 0u; y < pAtlasSlot->size.y; ++y, pPixmap += glyphWidthInPixels)
+	{
+		rasterizerLine.p0.y = (kg_f32)y;
+		rasterizerLine.p1.y = (kg_f32)y;
+
+		const kg_u32 intersectionPointsCount = kg_find_line_float_2d_intersections( &intersectionPoints[0], maxIntersectionPoints, rasterizerLine, pLines, lineCount, unitsToPixel);
+		kg_sort(intersectionPoints, intersectionPointsCount, sizeof(kg_float2), kg_compare_intersection_points );
+
+		kg_u32 fillOffset = 0;
+		kg_u8 fillValue = 0x0;
+		for (kg_u32 intersectionIndex = 0u; intersectionIndex < intersectionPointsCount; ++intersectionIndex)
+		{
+			const kg_float2* pIntersectionPoint = intersectionPoints + intersectionIndex;
+			const kg_f32 intersectionX = pIntersectionPoint->x;
+
+			const kg_u32 pixelCount = (kg_u32)(kg_floor(intersectionX) - fillOffset);
+			kg_memset(pPixmap + fillOffset, fillValue, pixelCount);
+			pPixmap[pixelCount] += (kg_u8)kg_frac(intersectionX);
+
+			fillOffset = fillOffset + pixelCount;
+			fillValue = ~fillValue; 
+		}
+
+		const kg_u32 pixelCount = glyphWidthInPixels - fillOffset;
+		kg_memset(pPixmap + fillOffset, fillValue, pixelCount);
+	}
 
 	return result;
 }
